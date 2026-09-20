@@ -192,7 +192,6 @@ npm run test:resource:real-apps -- \
 | `--ifds-stats` | 支持 | 支持 | 在报告中保存 IFDS 求解时间和传播统计。 |
 | `--lifecycle-root-only` | 支持 | 不适用 | 空指针实验仅运行生命周期 DummyMain root，关闭 supplemental roots。 |
 | `--no-compact-dispatcher` | 支持 | 支持 | RQ1.5 `M1-NoCompact` 消融。 |
-| `--no-empty-scope-removal` | 支持 | 支持 | RQ1.5 `M1-NoEmpty` 消融。 |
 | `--no-ability-prune` | 支持 | 支持 | RQ1.5 `M1-NoAbilityPrune` 消融。 |
 
 真实应用集合的下载、版本固定和 `meta.json` 维护方式见 [HarmonyRealApps/README.md](./HarmonyRealApps/README.md)。完整参数可使用对应命令的 `--help` 查看。

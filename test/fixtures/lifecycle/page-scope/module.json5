@@ -1,0 +1,18 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "Page-scope lifecycle fixture",
+    "mainElement": "EntryAbility",
+    "pages": "$profile:main_pages",
+    "routerMap": "$profile:router_map",
+    "deviceTypes": ["phone"],
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/EntryAbility.ets",
+        "exported": true
+      }
+    ]
+  }
+}

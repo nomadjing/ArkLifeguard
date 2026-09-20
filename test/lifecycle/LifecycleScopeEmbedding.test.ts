@@ -3,7 +3,7 @@ import 'arkanalyzer';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import { LifecycleModelCreator } from '../../src/lifecycle/LifecycleModelCreator';
 import { HierarchicalLifecycleModelCreator } from '../../src/lifecycle/HierarchicalLifecycleModelCreator';
-import { OptimizedFlatLifecycleModelCreator } from '../../src/lifecycle/BackEdgeLifecycleModelCreator';
+import { OptimizedFlatLifecycleModelCreator } from '../../src/lifecycle/FlatLifecycleModelCreator';
 import type { BasicBlock } from '../../src/adapter/arkanalyzer';
 import { buildLifecycleScene } from '../helpers/buildScene';
 
@@ -59,12 +59,30 @@ describe('lifecycle scope embedding', () => {
         const entryForeground = findBlock('EntryAbility.onForeground');
         const secondForeground = findBlock('SecondAbility.onForeground');
         const entryTap = findBlock('EntryPage.handleEntryTap');
+        const childTap = findBlock('EntryChild.handleChildTap');
         const secondTap = findBlock('SecondPage.handleSecondTap');
 
         expect(canReachWithout(entryForeground, entryTap, secondForeground)).toBe(true);
+        expect(canReachWithout(entryForeground, childTap, secondForeground)).toBe(true);
         expect(canReachWithout(entryForeground, secondTap, secondForeground)).toBe(false);
         expect(canReachWithout(secondForeground, secondTap, entryForeground)).toBe(true);
         expect(canReachWithout(secondForeground, entryTap, entryForeground)).toBe(false);
+    });
+
+    it('reports ownership expansion and direct cross-Ability transition pruning', () => {
+        const creator = new HierarchicalLifecycleModelCreator(
+            buildLifecycleScene('ability-scope-nesting')
+        );
+        creator.create();
+        const statistics = creator.getLifecycleModelStatistics();
+
+        expect(statistics.ownership.directPageRoots).toBe(2);
+        expect(statistics.ownership.viewTreeComponentEdges).toBeGreaterThan(0);
+        expect(statistics.components.owned).toBe(3);
+        expect(statistics.transitions.candidateCallbackTransitions)
+            .toBeGreaterThan(statistics.transitions.retainedCallbackTransitions);
+        expect(statistics.transitions.prunedCrossAbilityTransitions)
+            .toBeGreaterThan(0);
     });
 
     it('keeps callbacks in one global scope in M0-OptFlat', () => {

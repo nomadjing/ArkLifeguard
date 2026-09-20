@@ -1,3 +1,5 @@
+import { EntryChild } from './EntryChild';
+
 @Component
 struct EntryPage {
     aboutToAppear(): void {
@@ -17,6 +19,7 @@ struct EntryPage {
         Column() {
             Button('Entry')
                 .onClick(this.handleEntryTap)
+            EntryChild()
         }
     }
 }

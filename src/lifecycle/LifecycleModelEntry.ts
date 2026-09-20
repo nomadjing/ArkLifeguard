@@ -8,7 +8,7 @@ import { Scene } from "../adapter/arkanalyzer";
 import {
   FlatLifecycleModelCreator,
   OptimizedFlatLifecycleModelCreator,
-} from "./BackEdgeLifecycleModelCreator";
+} from "./FlatLifecycleModelCreator";
 import { HierarchicalLifecycleModelCreator } from "./HierarchicalLifecycleModelCreator";
 import { LifecycleModelCreator } from "./LifecycleModelCreator";
 import { LifecycleModelConfig } from "./LifecycleTypes";
@@ -16,7 +16,6 @@ import { LifecycleModelConfig } from "./LifecycleTypes";
 export type LifecycleModelMode =
   | "flat"
   | "opt-flat"
-  | "back-edge"
   | "hierarchical"
   | "bounded-unroll";
 
@@ -28,7 +27,7 @@ export function createLifecycleModelCreator(
   mode: LifecycleModelMode = DEFAULT_LIFECYCLE_MODEL_MODE,
   config?: Partial<LifecycleModelConfig>,
 ): LifecycleModelCreator {
-  if (mode === "flat" || mode === "back-edge") {
+  if (mode === "flat") {
     return new FlatLifecycleModelCreator(scene, config);
   }
   if (mode === "opt-flat") {

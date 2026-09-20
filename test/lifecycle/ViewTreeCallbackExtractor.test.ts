@@ -55,6 +55,15 @@ describe('ViewTreeCallbackExtractor', () => {
         expect(eventTypes.has(UIEventType.ON_APPEAR)).toBe(true);
     });
 
+    it('extracts a custom child callback only from the child receiver', () => {
+        const scene = buildLifecycleScene('complex-ui');
+        const callbacks = new ViewTreeCallbackExtractor(scene)
+            .extractFromComponent(getClass(scene, 'ChildComponent'));
+
+        expect(callbacks.map(callback => callback.callbackMethod.getName()))
+            .toContain('handleClick');
+    });
+
     it('skips a component when ArkAnalyzer cannot render a recursive ViewTree signature', () => {
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         const componentClass = {

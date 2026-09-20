@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "Lifecycle Model Showcase"
+    },
+    {
+      "name": "module_desc",
+      "value": "HarmonyOS lifecycle modeling showcase"
+    },
+    {
+      "name": "entry_ability_desc",
+      "value": "Entry UIAbility"
+    },
+    {
+      "name": "entry_ability_label",
+      "value": "Lifecycle Showcase"
+    },
+    {
+      "name": "feature_ability_desc",
+      "value": "Secondary UIAbility"
+    },
+    {
+      "name": "feature_ability_label",
+      "value": "Feature Ability"
+    }
+  ]
+}

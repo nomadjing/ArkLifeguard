@@ -67,16 +67,6 @@ describe('interchangeable lifecycle model entry', () => {
         ]));
     });
 
-    it('keeps back-edge as a compatibility alias for flat', () => {
-        const creator = createLifecycleModelCreator(
-            buildLifecycleScene('simple'),
-            'back-edge'
-        );
-        creator.create();
-
-        expect(hasCycle([...creator.getDummyMain().getCfg()!.getBlocks()])).toBe(true);
-    });
-
     it('excludes test-source abilities from the flat model', () => {
         const creator = createLifecycleModelCreator(
             buildLifecycleScene('ability-scope-nesting'),
@@ -144,7 +134,6 @@ describe('interchangeable lifecycle model entry', () => {
     it('supports independent M1 optimization ablations', () => {
         const create = (optimizations: {
             compactDispatcher?: boolean;
-            removeEmptyScopes?: boolean;
             pruneUnreachableAbilities?: boolean;
         }, fixture = 'ability-scope-nesting') => {
             const creator = createLifecycleModelCreator(
@@ -163,11 +152,6 @@ describe('interchangeable lifecycle model entry', () => {
             .flatMap(invokedNames).sort())
             .toEqual([...full.getDummyMain().getCfg()!.getBlocks()]
                 .flatMap(invokedNames).sort());
-
-        const emptyFull = create({}, 'edge-cases');
-        const noEmpty = create({ removeEmptyScopes: false }, 'edge-cases');
-        expect(noEmpty.getDummyMain().getCfg()!.getBlocks().size)
-            .toBeGreaterThan(emptyFull.getDummyMain().getCfg()!.getBlocks().size);
 
         const noPrune = create({ pruneUnreachableAbilities: false });
         expect(noPrune.getAbilities().map(ability => ability.name))

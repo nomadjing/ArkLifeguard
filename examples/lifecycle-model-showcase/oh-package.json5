@@ -1,0 +1,10 @@
+{
+  "name": "lifecycle-model-showcase",
+  "version": "1.0.0",
+  "description": "Minimal HarmonyOS lifecycle modeling showcase",
+  "main": "",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {}
+}

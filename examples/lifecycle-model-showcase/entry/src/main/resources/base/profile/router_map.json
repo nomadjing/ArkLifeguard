@@ -1,0 +1,14 @@
+{
+  "routerMap": [
+    {
+      "name": "ProfileDestination",
+      "pageSourceFile": "src/main/ets/navigation/ProfileDestination.ets",
+      "buildFunction": "ProfileDestinationBuilder"
+    },
+    {
+      "name": "SettingsDestination",
+      "pageSourceFile": "src/main/ets/navigation/SettingsDestination.ets",
+      "buildFunction": "SettingsDestinationBuilder"
+    }
+  ]
+}

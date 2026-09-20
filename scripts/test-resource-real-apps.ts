@@ -45,7 +45,6 @@ interface Options {
     collectSolverStatistics: boolean;
     lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
     compactLifecycleDispatcher: boolean;
-    removeEmptyLifecycleScopes: boolean;
     pruneUnreachableAbilities: boolean;
     limit?: number;
     listOnly: boolean;
@@ -97,7 +96,6 @@ interface RealAppsReport {
         lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
         lifecycleOptimizations: {
             compactDispatcher: boolean;
-            removeEmptyScopes: boolean;
             pruneUnreachableAbilities: boolean;
         };
     };
@@ -161,7 +159,6 @@ function help(): void {
         '  --ifds-stats                Collect aggregate IFDS solver statistics',
         '  --lifecycle-model <mode>    flat, opt-flat or hierarchical; default: flat',
         '  --no-compact-dispatcher     M1-NoCompact ablation',
-        '  --no-empty-scope-removal    M1-NoEmpty ablation',
         '  --no-ability-prune          M1-NoAbilityPrune ablation',
         '  --list                      List projects without analyzing',
         '  -h, --help                  Show this help',
@@ -206,7 +203,6 @@ function parseArgs(args: string[]): Options {
     let collectSolverStatistics = false;
     let lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'> = 'flat';
     let compactLifecycleDispatcher = true;
-    let removeEmptyLifecycleScopes = true;
     let pruneUnreachableAbilities = true;
     let limit: number | undefined;
     let listOnly = false;
@@ -281,8 +277,6 @@ function parseArgs(args: string[]): Options {
             lifecycleModel = value;
         } else if (arg === '--no-compact-dispatcher') {
             compactLifecycleDispatcher = false;
-        } else if (arg === '--no-empty-scope-removal') {
-            removeEmptyLifecycleScopes = false;
         } else if (arg === '--no-ability-prune') {
             pruneUnreachableAbilities = false;
         } else if (arg === '--list') {
@@ -309,7 +303,6 @@ function parseArgs(args: string[]): Options {
         collectSolverStatistics,
         lifecycleModel,
         compactLifecycleDispatcher,
-        removeEmptyLifecycleScopes,
         pruneUnreachableAbilities,
         limit,
         listOnly,
@@ -381,7 +374,6 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
             analyzeNavigation: false,
             lifecycleModel: options.lifecycleModel,
             compactLifecycleDispatcher: options.compactLifecycleDispatcher,
-            removeEmptyLifecycleScopes: options.removeEmptyLifecycleScopes,
             pruneUnreachableAbilities: options.pruneUnreachableAbilities,
             maxAbilitiesPerFlow: options.maxAbilitiesPerFlow,
             maxNavigationHops: options.maxNavigationHops,
@@ -557,7 +549,6 @@ async function main(): Promise<void> {
             lifecycleModel: options.lifecycleModel,
             lifecycleOptimizations: {
                 compactDispatcher: options.compactLifecycleDispatcher,
-                removeEmptyScopes: options.removeEmptyLifecycleScopes,
                 pruneUnreachableAbilities: options.pruneUnreachableAbilities,
             },
         },
@@ -587,7 +578,6 @@ async function main(): Promise<void> {
             '--lifecycle-model', options.lifecycleModel,
         ];
         if (!options.compactLifecycleDispatcher) childArgs.push('--no-compact-dispatcher');
-        if (!options.removeEmptyLifecycleScopes) childArgs.push('--no-empty-scope-removal');
         if (!options.pruneUnreachableAbilities) childArgs.push('--no-ability-prune');
         if (options.collectSolverStatistics) childArgs.push('--ifds-stats');
         const child = spawnSync(process.execPath, childArgs, {

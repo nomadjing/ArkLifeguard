@@ -15,7 +15,7 @@
 
 /**
  * @file index.ts
- * @description TEST_lifecycle 模块入口
+ * @description 生命周期模型模块入口
  * 
  * 本模块提供扩展版的生命周期建模功能，用于构建包含多 Ability 和精细化
  * UI 回调的 DummyMain 函数。
@@ -23,35 +23,29 @@
  * ## 模块结构
  * 
  * ```
- * TEST_lifecycle/
+ * lifecycle/
  * ├── index.ts                      # 模块入口（本文件）
  * ├── LifecycleTypes.ts             # 类型定义
  * ├── AbilityCollector.ts           # Ability/Component 收集器
  * ├── ViewTreeCallbackExtractor.ts  # UI 回调提取器
- * └── LifecycleModelCreator.ts      # 核心：扩展版 DummyMain 创建器
+ * ├── FlatLifecycleModelCreator.ts  # Flat / optimized-flat
+ * └── HierarchicalLifecycleModelCreator.ts # canonical hierarchy
  * ```
  * 
  * ## 快速使用
  * 
  * ```typescript
- * import { LifecycleModelCreator } from './TEST_lifecycle';
+ * import { createLifecycleModelCreator } from './lifecycle';
  * 
  * // 假设 scene 已经构建完成
- * const creator = new LifecycleModelCreator(scene);
+ * const creator = createLifecycleModelCreator(scene, 'hierarchical');
  * creator.create();
  * 
  * // 获取生成的 DummyMain
  * const dummyMain = creator.getDummyMain();
  * ```
  * 
- * ## 与原 DummyMainCreater 的区别
- * 
- * | 功能 | DummyMainCreater | LifecycleModelCreator |
- * |------|------------------|----------------------|
- * | 多 Ability | ❌ 单个 Scene | ✅ 所有 Ability |
- * | 页面跳转 | ❌ | ✅ (TODO) |
- * | UI 回调 | 粗糙收集 | ✅ ViewTree 精细化 |
- * | 控件实例化 | ❌ | ✅ (TODO) |
+ * Flat、optimized-flat 与 hierarchical 通过同一入口选择。
  */
 
 // ============================================================================
@@ -69,6 +63,7 @@ export {
     // 信息接口
     AbilityInfo,
     ComponentInfo,
+    PageInfo,
     UICallbackInfo,
     
     // 导航相关
@@ -91,8 +86,7 @@ export { LifecycleModelCreator } from './LifecycleModelCreator';
 export {
     FlatLifecycleModelCreator,
     OptimizedFlatLifecycleModelCreator,
-    BackEdgeLifecycleModelCreator,
-} from './BackEdgeLifecycleModelCreator';
+} from './FlatLifecycleModelCreator';
 export { HierarchicalLifecycleModelCreator } from './HierarchicalLifecycleModelCreator';
 export {
     createLifecycleModelCreator,

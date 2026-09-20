@@ -39,7 +39,6 @@ export interface ProjectAnalysisOptions {
     runResourceAnalysis?: boolean;
     lifecycleModel?: LifecycleModelMode;
     compactLifecycleDispatcher?: boolean;
-    removeEmptyLifecycleScopes?: boolean;
     pruneUnreachableAbilities?: boolean;
     maxCallbackIterations?: number;
     maxAbilitiesPerFlow?: number;
@@ -123,7 +122,6 @@ export interface ProjectAnalysisResult {
         lifecycleModel: LifecycleModelMode;
         lifecycleOptimizations: {
             compactDispatcher: boolean;
-            removeEmptyScopes: boolean;
             pruneUnreachableAbilities: boolean;
         };
         bounds: {
@@ -263,7 +261,6 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     runResourceAnalysis: true,
     lifecycleModel: DEFAULT_LIFECYCLE_MODEL_MODE,
     compactLifecycleDispatcher: DEFAULT_LIFECYCLE_CONFIG.optimizations.compactDispatcher,
-    removeEmptyLifecycleScopes: DEFAULT_LIFECYCLE_CONFIG.optimizations.removeEmptyScopes,
     pruneUnreachableAbilities: DEFAULT_LIFECYCLE_CONFIG.optimizations.pruneUnreachableAbilities,
     maxCallbackIterations: DEFAULT_LIFECYCLE_CONFIG.bounds.maxCallbackIterations,
     maxAbilitiesPerFlow: 0,
@@ -317,7 +314,6 @@ export class ProjectAnalyzer {
                 enableViewTreeParsing: this.options.extractUICallbacks,
                 optimizations: {
                     compactDispatcher: this.options.compactLifecycleDispatcher,
-                    removeEmptyScopes: this.options.removeEmptyLifecycleScopes,
                     pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
                 },
                 ...boundedUnrollConfig,
@@ -461,7 +457,6 @@ export class ProjectAnalyzer {
                 lifecycleModel: this.options.lifecycleModel,
                 lifecycleOptimizations: {
                     compactDispatcher: this.options.compactLifecycleDispatcher,
-                    removeEmptyScopes: this.options.removeEmptyLifecycleScopes,
                     pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
                 },
                 bounds: {

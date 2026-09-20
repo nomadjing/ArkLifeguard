@@ -91,4 +91,19 @@ describe('AbilityCollector', () => {
         expect(target?.targetAbilityName).toBe('SecondAbility');
         expect(target?.sourceMethod.getDeclaringArkClass().getName()).toBe('EntryPage');
     });
+
+    it('expands Page ownership through custom-component ViewTree edges', () => {
+        const collector = new AbilityCollector(
+            buildLifecycleScene('ability-scope-nesting')
+        );
+        const entry = collector.collectAllAbilities()
+            .find(ability => ability.name === 'EntryAbility');
+
+        expect(entry?.pageComponents.map(component => component.name))
+            .toContain('EntryPage');
+        expect(entry?.components.map(component => component.name))
+            .toEqual(expect.arrayContaining(['EntryPage', 'EntryChild']));
+        expect(collector.getOwnershipExpansionStatistics().viewTreeComponentEdges)
+            .toBeGreaterThan(0);
+    });
 });

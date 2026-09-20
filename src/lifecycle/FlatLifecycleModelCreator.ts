@@ -494,6 +494,3 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
     to.addPredecessorBlock(from);
   }
 }
-
-/** @deprecated Use FlatLifecycleModelCreator; retained for source compatibility. */
-export { FlatLifecycleModelCreator as BackEdgeLifecycleModelCreator };

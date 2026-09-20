@@ -26,7 +26,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Scene,ArkClass,ArkMethod,ClassSignature} from '../adapter/arkanalyzer';
+import {
+    Scene,
+    ArkClass,
+    ArkMethod,
+    ClassSignature,
+} from '../adapter/arkanalyzer';
 import {
     AbilityInfo,
     AbilityLifecycleMethodStage,
@@ -36,8 +41,12 @@ import {
     FormExtensionLifecycleStage,
     ComponentLifecycleStage,
     NavigationType,
+    PageInfo,
 } from './LifecycleTypes';
-import { NavigationAnalyzer } from './NavigationAnalyzer';
+import {
+    NavigationAnalysisResult,
+    NavigationAnalyzer,
+} from './NavigationAnalyzer';
 
 // ============================================================================
 // 常量定义
@@ -110,6 +119,9 @@ interface ModuleConfig {
     moduleName: string;
     mainElement?: string;
     abilities: ModuleAbilityConfig[];
+    filePath: string;
+    pagesProfile?: string;
+    routerMapProfile?: string;
 }
 
 export class AbilityCollector {
@@ -124,12 +136,28 @@ export class AbilityCollector {
     
     /** 路由分析器 */
     private navigationAnalyzer: NavigationAnalyzer;
+
+    /** 避免 ownership 闭包和 Ability 跳转收集重复扫描同一类。 */
+    private navigationAnalysisCache: Map<string, NavigationAnalysisResult> = new Map();
+
+    /** RQ1.5.1 ownership 扩展的直接证据计数。 */
+    private ownershipExpansionStatistics = {
+        viewTreeComponentEdges: 0,
+        navigationPageEdges: 0,
+        viewTreeFailures: 0,
+    };
     
     /** 缓存：从 module.json5 读取的配置 */
     private moduleConfigs: ModuleConfig[] = [];
     
     /** 缓存：入口 Ability 名称集合 */
     private entryAbilityNames: Set<string> = new Set();
+
+    /** Declarative Page graph assembled from main_pages.json/router_map.json. */
+    private pageInfos: PageInfo[] = [];
+    private pageInfosResolved = false;
+    private routePagePaths: Map<string, string> = new Map();
+    private declarativePageOwners: Map<string, Set<string>> = new Map();
 
     constructor(scene: Scene) {
         this.scene = scene;
@@ -250,6 +278,9 @@ export class AbilityCollector {
                 moduleName: module.name || '',
                 mainElement: module.mainElement,
                 abilities: [],
+                filePath,
+                pagesProfile: module.pages,
+                routerMapProfile: module.routerMap,
             };
             
             // 解析 abilities 数组
@@ -326,11 +357,14 @@ export class AbilityCollector {
             console.log('[AbilityCollector] Components not collected yet, collecting now...');
             this.collectAllComponents();
         }
+        this.resolveDeclarativePages();
         
         // 阶段 2: 分析跳转关系（需要在 Ability 和 Component 都收集完后进行）
         for (const ability of abilities) {
             this.analyzeNavigationTargets(ability);
         }
+        this.expandAbilityComponentOwnership(abilities);
+        this.refreshPageOwnership(abilities);
         this.analyzeComponentAbilityNavigation(abilities);
         
         return abilities;
@@ -368,6 +402,62 @@ export class AbilityCollector {
         // 当前简化实现：返回第一个找到的 Ability
         const abilities = this.collectAllAbilities();
         return abilities.length > 0 ? abilities[0] : null;
+    }
+
+    /** Return the explicit Page graph after component ownership is available. */
+    public getPageInfos(): readonly PageInfo[] {
+        this.collectAllAbilities();
+        return this.pageInfos.map(page => ({
+            ...page,
+            components: [...page.components],
+            routeNames: [...page.routeNames],
+            abilityNames: [...page.abilityNames],
+        }));
+    }
+
+    /** Resolve every Page scope that contains this component. */
+    public getPagesForComponent(component: ComponentInfo): readonly PageInfo[] {
+        this.collectAllAbilities();
+        const signature = component.signature.toString();
+        return this.pageInfos.filter(page => page.components.some(candidate =>
+            candidate.signature.toString() === signature
+        ));
+    }
+
+    /** Resolve a router/main-pages target to Page roots, keeping ambiguity visible. */
+    public resolvePageTarget(target: string): readonly PageInfo[] {
+        this.collectAllAbilities();
+        const normalized = this.normalizePagePath(target);
+        const routePath = this.routePagePaths.get(target) ??
+            this.routePagePaths.get(normalized);
+        const resolved = routePath ? this.normalizePagePath(routePath) : normalized;
+        return this.pageInfos.filter(page =>
+            page.id === resolved || page.routeNames.includes(target) ||
+            page.routeNames.includes(normalized)
+        );
+    }
+
+    /** Extract Page targets from one callback method. */
+    public getNavigationTargetPages(method: ArkMethod): readonly PageInfo[] {
+        const result = new Map<string, PageInfo>();
+        for (const target of this.navigationAnalyzer.analyzeMethod(method)) {
+            if (target.navigationType === NavigationType.START_ABILITY ||
+                target.navigationType === NavigationType.ROUTER_BACK) {
+                continue;
+            }
+            for (const page of this.resolvePageTarget(target.targetAbilityName)) {
+                result.set(page.id, page);
+            }
+        }
+        return [...result.values()];
+    }
+
+    /** Whether a callback contains a Page-routing operation, resolved or not. */
+    public hasPageNavigation(method: ArkMethod): boolean {
+        return this.navigationAnalyzer.analyzeMethod(method).some(target =>
+            target.navigationType !== NavigationType.START_ABILITY &&
+            target.navigationType !== NavigationType.ROUTER_BACK
+        );
     }
 
     // ========================================================================
@@ -435,6 +525,7 @@ export class AbilityCollector {
             name: arkClass.getName(),
             lifecycleMethods: this.collectAbilityLifecycleMethods(arkClass),
             components: [], // 将在后续填充
+            pageComponents: [], // 将由 loadContent/router 解析填充
             navigationTargets: [], // 将在后续填充
             isEntry: this.checkIsEntryAbility(arkClass),
             hasUnresolvedAbilityNavigation: false,
@@ -542,7 +633,7 @@ export class AbilityCollector {
         console.log(`[AbilityCollector] Analyzing navigation targets for ${ability.name}`);
         
         // 使用 NavigationAnalyzer 分析
-        const analysisResult = this.navigationAnalyzer.analyzeClass(ability.arkClass);
+        const analysisResult = this.analyzeNavigation(ability.arkClass);
         
         // 将分析结果添加到 ability.navigationTargets
         for (const target of analysisResult.navigationTargets) {
@@ -553,8 +644,19 @@ export class AbilityCollector {
         if (analysisResult.initialPage) {
             const component = this.findComponentByPagePath(analysisResult.initialPage);
             if (component) {
-                ability.components.push(component);
+                this.addPageRoot(ability, component);
                 console.log(`[AbilityCollector] Linked ${ability.name} -> ${component.name}`);
+            }
+        }
+
+        for (const target of analysisResult.navigationTargets) {
+            if (target.navigationType === NavigationType.START_ABILITY ||
+                target.navigationType === NavigationType.ROUTER_BACK) {
+                continue;
+            }
+            const component = this.findComponentByPagePath(target.targetAbilityName);
+            if (component && this.addPageRoot(ability, component)) {
+                this.ownershipExpansionStatistics.navigationPageEdges++;
             }
         }
         
@@ -570,15 +672,123 @@ export class AbilityCollector {
     }
 
     /**
+     * Expand each directly loaded/navigated Page into its reachable custom
+     * component closure. Navigation discovered in an owned component may add a
+     * new Page root, so the worklist reaches a fixed point.
+     */
+    private expandAbilityComponentOwnership(abilities: AbilityInfo[]): void {
+        for (const ability of abilities) {
+            const pending = [...ability.components];
+            const visited = new Set<string>();
+            while (pending.length > 0) {
+                const component = pending.pop()!;
+                const signature = component.signature.toString();
+                if (visited.has(signature)) continue;
+                visited.add(signature);
+
+                for (const child of this.collectViewTreeComponents(component)) {
+                    if (this.addOwnedComponent(ability, child)) {
+                        this.ownershipExpansionStatistics.viewTreeComponentEdges++;
+                        pending.push(child);
+                    }
+                }
+
+                const navigation = this.analyzeNavigation(component.arkClass);
+                for (const target of navigation.navigationTargets) {
+                    if (target.navigationType === NavigationType.START_ABILITY ||
+                        target.navigationType === NavigationType.ROUTER_BACK) {
+                        continue;
+                    }
+                    const page = this.findComponentByPagePath(
+                        target.targetAbilityName
+                    );
+                    if (!page) continue;
+                    const addedPage = this.addPageRoot(ability, page);
+                    if (addedPage) {
+                        this.ownershipExpansionStatistics.navigationPageEdges++;
+                    }
+                    if (!visited.has(page.signature.toString())) pending.push(page);
+                }
+            }
+        }
+    }
+
+    private collectViewTreeComponents(component: ComponentInfo): ComponentInfo[] {
+        try {
+            const root = component.arkClass.getViewTree()?.getRoot();
+            if (!root) {
+                this.ownershipExpansionStatistics.viewTreeFailures++;
+                return [];
+            }
+            const result = new Map<string, ComponentInfo>();
+            root.walk(node => {
+                if (!node.isCustomComponent() ||
+                    !(node.signature instanceof ClassSignature)) {
+                    return false;
+                }
+                const child = this.componentCache.get(node.signature) ??
+                    [...this.componentCache.values()].find(candidate =>
+                        candidate.signature.toString() === node.signature!.toString()
+                    );
+                if (child && child.signature.toString() !==
+                    component.signature.toString()) {
+                    result.set(child.signature.toString(), child);
+                }
+                return false;
+            });
+            return [...result.values()];
+        } catch (error) {
+            this.ownershipExpansionStatistics.viewTreeFailures++;
+            console.warn(
+                `[AbilityCollector] Failed to expand ViewTree ownership for ` +
+                `${component.name}: ${String(error)}`
+            );
+            return [];
+        }
+    }
+
+    private addPageRoot(ability: AbilityInfo, component: ComponentInfo): boolean {
+        const signature = component.signature.toString();
+        const added = !ability.pageComponents.some(page =>
+            page.signature.toString() === signature
+        );
+        if (added) ability.pageComponents.push(component);
+        this.addOwnedComponent(ability, component);
+        return added;
+    }
+
+    private addOwnedComponent(
+        ability: AbilityInfo,
+        component: ComponentInfo
+    ): boolean {
+        const signature = component.signature.toString();
+        if (ability.components.some(owned =>
+            owned.signature.toString() === signature
+        )) {
+            return false;
+        }
+        ability.components.push(component);
+        return true;
+    }
+
+    private analyzeNavigation(arkClass: ArkClass): NavigationAnalysisResult {
+        const key = arkClass.getSignature().toString();
+        let result = this.navigationAnalysisCache.get(key);
+        if (!result) {
+            result = this.navigationAnalyzer.analyzeClass(arkClass);
+            this.navigationAnalysisCache.set(key, result);
+        }
+        return result;
+    }
+
+    /**
      * Attribute startAbility calls in page/component methods to their owning
      * Ability. If the component owner is unknown, disable M1 Ability pruning
      * because the call may be reachable from any retained page scope.
      */
     private analyzeComponentAbilityNavigation(abilities: AbilityInfo[]): void {
         for (const component of this.componentCache.values()) {
-            const analysisResult = this.navigationAnalyzer.analyzeClass(
-                component.arkClass
-            );
+            const analysisResult = this.analyzeNavigation(component.arkClass);
             const targets = analysisResult.navigationTargets.filter(target =>
                 target.navigationType === NavigationType.START_ABILITY
             );
@@ -628,25 +838,228 @@ export class AbilityCollector {
      * 需要匹配到已收集的 Component
      */
     private findComponentByPagePath(pagePath: string): ComponentInfo | undefined {
-        // 提取页面名称（最后一部分）
-        // 'pages/Index' -> 'Index'
-        const parts = pagePath.split('/');
-        const pageName = parts[parts.length - 1];
-        
-        // 在已收集的 Component 中查找
-        for (const [, component] of this.componentCache) {
-            // 匹配组件名
-            if (component.name === pageName) {
-                return component;
-            }
-            // 也尝试匹配完整路径
-            if (component.name === pagePath) {
-                return component;
-            }
+        const routedPath = this.routePagePaths.get(pagePath) ??
+            this.routePagePaths.get(this.normalizePagePath(pagePath));
+        if (routedPath) pagePath = routedPath;
+        const normalizedPath = pagePath.replace(/\\/g, '/')
+            .replace(/^\.?\//, '')
+            .replace(/\.(ets|ts)$/i, '');
+        const pageName = normalizedPath.split('/').filter(Boolean).at(-1);
+        const components = [...this.componentCache.values()];
+        const pathMatches = components.filter(component => {
+            const filePath = component.arkClass.getDeclaringArkFile().getFilePath()
+                .replace(/\\/g, '/')
+                .replace(/\.(ets|ts)$/i, '');
+            return filePath.endsWith(`/${normalizedPath}`);
+        });
+        if (pathMatches.length === 1) return pathMatches[0];
+
+        const nameMatches = components.filter(component =>
+            component.name === pageName || component.name === pagePath
+        );
+        if (nameMatches.length === 1) return nameMatches[0];
+
+        if (pathMatches.length > 1 || nameMatches.length > 1) {
+            console.warn(
+                `[AbilityCollector] Ambiguous component for page: ${pagePath}`
+            );
         }
         
         console.log(`[AbilityCollector] Component not found for page: ${pagePath}`);
         return undefined;
+    }
+
+    /**
+     * Read main_pages.json and router_map.json once Components are known.  The
+     * parser deliberately only accepts concrete source strings; dynamic routes
+     * remain outside this graph and are handled by the conservative fallback.
+     */
+    private resolveDeclarativePages(): void {
+        if (this.pageInfosResolved) return;
+        this.pageInfosResolved = true;
+
+        const pagePaths = new Set<string>();
+        const routeNamesByPath = new Map<string, Set<string>>();
+        for (const module of this.moduleConfigs) {
+            for (const source of this.readProfileStrings(module, module.pagesProfile, 'src')) {
+                const pagePath = this.normalizePagePath(source);
+                pagePaths.add(pagePath);
+                if (module.mainElement) {
+                    this.addDeclarativePageOwner(pagePath, module.mainElement);
+                }
+            }
+            for (const route of this.readRouterMap(module)) {
+                const pagePath = this.normalizePagePath(route.pageSourceFile);
+                pagePaths.add(pagePath);
+                if (module.mainElement) {
+                    this.addDeclarativePageOwner(pagePath, module.mainElement);
+                }
+                this.routePagePaths.set(route.name, pagePath);
+                this.routePagePaths.set(this.normalizePagePath(route.name), pagePath);
+                let names = routeNamesByPath.get(pagePath);
+                if (!names) {
+                    names = new Set<string>();
+                    routeNamesByPath.set(pagePath, names);
+                }
+                names.add(route.name);
+            }
+        }
+
+        for (const pagePath of pagePaths) {
+            const root = this.findComponentByPagePath(pagePath);
+            if (!root) continue;
+            this.addPageInfo(pagePath, root, routeNamesByPath.get(pagePath));
+        }
+    }
+
+    private refreshPageOwnership(abilities: readonly AbilityInfo[]): void {
+        const existingRoots = new Set(
+            this.pageInfos.map(page => page.root.signature.toString())
+        );
+        for (const ability of abilities) {
+            for (const root of ability.pageComponents) {
+                if (!existingRoots.has(root.signature.toString())) {
+                    const id = this.componentPageId(root);
+                    this.addPageInfo(id, root);
+                    existingRoots.add(root.signature.toString());
+                }
+            }
+        }
+        for (const page of this.pageInfos) {
+            for (const ownerName of this.declarativePageOwners.get(page.id) ?? []) {
+                const ability = abilities.find(candidate => candidate.name === ownerName);
+                if (!ability) continue;
+                this.addPageRoot(ability, page.root);
+                for (const component of page.components) {
+                    this.addOwnedComponent(ability, component);
+                }
+            }
+        }
+        for (const page of this.pageInfos) {
+            page.abilityNames = abilities.filter(ability =>
+                ability.components.some(component =>
+                    component.signature.toString() === page.root.signature.toString()
+                )
+            ).map(ability => ability.name);
+        }
+    }
+
+    private addDeclarativePageOwner(pagePath: string, abilityName: string): void {
+        let owners = this.declarativePageOwners.get(pagePath);
+        if (!owners) {
+            owners = new Set<string>();
+            this.declarativePageOwners.set(pagePath, owners);
+        }
+        owners.add(abilityName);
+    }
+
+    private addPageInfo(
+        id: string,
+        root: ComponentInfo,
+        routeNames: ReadonlySet<string> = new Set<string>(),
+    ): void {
+        const normalizedId = this.normalizePagePath(id);
+        const existing = this.pageInfos.find(page =>
+            page.root.signature.toString() === root.signature.toString()
+        );
+        if (existing) {
+            for (const routeName of routeNames) {
+                if (!existing.routeNames.includes(routeName)) {
+                    existing.routeNames.push(routeName);
+                }
+            }
+            return;
+        }
+        const components = new Map<string, ComponentInfo>();
+        const pending = [root];
+        while (pending.length > 0) {
+            const component = pending.pop()!;
+            const signature = component.signature.toString();
+            if (components.has(signature)) continue;
+            components.set(signature, component);
+            for (const child of this.collectViewTreeComponents(component)) {
+                pending.push(child);
+            }
+        }
+        this.pageInfos.push({
+            id: normalizedId,
+            root,
+            components: [...components.values()],
+            routeNames: [...routeNames],
+            abilityNames: [],
+        });
+    }
+
+    private readProfileStrings(
+        module: ModuleConfig,
+        reference: string | undefined,
+        key: string,
+    ): string[] {
+        const parsed = this.readProfileJson(module, reference);
+        const values = parsed && Array.isArray(parsed[key]) ? parsed[key] : [];
+        return values.filter((value: unknown): value is string =>
+            typeof value === 'string'
+        );
+    }
+
+    private readRouterMap(
+        module: ModuleConfig,
+    ): Array<{ name: string; pageSourceFile: string }> {
+        const parsed = this.readProfileJson(module, module.routerMapProfile);
+        const values = parsed && Array.isArray(parsed.routerMap) ? parsed.routerMap : [];
+        return values.flatMap((value: unknown) => {
+            if (!value || typeof value !== 'object') return [];
+            const route = value as { name?: unknown; pageSourceFile?: unknown };
+            return typeof route.name === 'string' &&
+                typeof route.pageSourceFile === 'string'
+                ? [{ name: route.name, pageSourceFile: route.pageSourceFile }]
+                : [];
+        });
+    }
+
+    private readProfileJson(
+        module: ModuleConfig,
+        reference: string | undefined,
+    ): Record<string, unknown> | undefined {
+        if (!reference || typeof reference !== 'string') return undefined;
+        const profileName = reference.replace(/^\$profile:/, '')
+            .replace(/\.json$/i, '');
+        const candidates = [
+            path.join(path.dirname(module.filePath), 'resources/base/profile', `${profileName}.json`),
+            path.join(path.dirname(module.filePath), 'resources/base/profile', profileName),
+            path.join(path.dirname(module.filePath), 'profile', `${profileName}.json`),
+        ];
+        for (const candidate of candidates) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(candidate, 'utf-8'));
+                if (parsed && typeof parsed === 'object') {
+                    return parsed as Record<string, unknown>;
+                }
+            } catch {
+                // The next conventional profile location may still exist.
+            }
+        }
+        return undefined;
+    }
+
+    private normalizePagePath(value: string): string {
+        return value.replace(/\\/g, '/')
+            .replace(/^\.?\//, '')
+            .replace(/^src\/main\/ets\//, '')
+            .replace(/\.(ets|ts)$/i, '');
+    }
+
+    private componentPageId(component: ComponentInfo): string {
+        const filePath = component.arkClass.getDeclaringArkFile().getFilePath();
+        return this.normalizePagePath(filePath);
+    }
+
+    public getOwnershipExpansionStatistics(): Readonly<{
+        viewTreeComponentEdges: number;
+        navigationPageEdges: number;
+        viewTreeFailures: number;
+    }> {
+        return { ...this.ownershipExpansionStatistics };
     }
 
     /**

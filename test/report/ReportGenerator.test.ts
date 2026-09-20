@@ -24,7 +24,6 @@ const result: ProjectAnalysisResult = {
         lifecycleModel: 'flat',
         lifecycleOptimizations: {
             compactDispatcher: true,
-            removeEmptyScopes: true,
             pruneUnreachableAbilities: true,
         },
         bounds: {
@@ -82,6 +81,28 @@ const result: ProjectAnalysisResult = {
         pages: { owned: 1, unknown: 0 },
         components: { owned: 1, reachable: 1, fallback: 0 },
         callbacks: { bound: 1, fallback: 0 },
+        ownership: {
+            directPageRoots: 1,
+            viewTreeComponentEdges: 0,
+            navigationPageEdges: 0,
+            viewTreeFailures: 0,
+        },
+        transitions: {
+            candidateCallbackTransitions: 1,
+            retainedCallbackTransitions: 1,
+            prunedCrossAbilityTransitions: 0,
+            conservativeFallbackTransitions: 0,
+        },
+        pageTransitions: {
+            discoveredPages: 1,
+            boundCallbacks: 1,
+            fallbackCallbacks: 0,
+            candidateCallbackTransitions: 1,
+            retainedCallbackTransitions: 1,
+            prunedCrossPageTransitions: 0,
+            conservativeFallbackTransitions: 0,
+            legalNavigationTransitions: 0,
+        },
     },
     nullness: {
         enabled: true,

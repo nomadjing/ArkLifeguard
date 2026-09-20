@@ -154,10 +154,33 @@ export class LifecycleModelCreator {
     pages: { owned: 0, unknown: 0 },
     components: { owned: 0, reachable: 0, fallback: 0 },
     callbacks: { bound: 0, fallback: 0 },
+    ownership: {
+      directPageRoots: 0,
+      viewTreeComponentEdges: 0,
+      navigationPageEdges: 0,
+      viewTreeFailures: 0,
+    },
+    transitions: {
+      candidateCallbackTransitions: 0,
+      retainedCallbackTransitions: 0,
+      prunedCrossAbilityTransitions: 0,
+      conservativeFallbackTransitions: 0,
+    },
+    pageTransitions: {
+      discoveredPages: 0,
+      boundCallbacks: 0,
+      fallbackCallbacks: 0,
+      candidateCallbackTransitions: 0,
+      retainedCallbackTransitions: 0,
+      prunedCrossPageTransitions: 0,
+      conservativeFallbackTransitions: 0,
+      legalNavigationTransitions: 0,
+    },
   };
 
   private collectedAbilitiesCount = 0;
   private collectedComponents: ComponentInfo[] = [];
+  private collectedPageComponentSignatures = new Set<string>();
   private collectedOwnedComponentSignatures = new Set<string>();
 
   // ========================================================================
@@ -259,7 +282,22 @@ export class LifecycleModelCreator {
       pages: { ...this.lifecycleModelStatistics.pages },
       components: { ...this.lifecycleModelStatistics.components },
       callbacks: { ...this.lifecycleModelStatistics.callbacks },
+      ownership: { ...this.lifecycleModelStatistics.ownership },
+      transitions: { ...this.lifecycleModelStatistics.transitions },
+      pageTransitions: { ...this.lifecycleModelStatistics.pageTransitions },
     };
+  }
+
+  /** Page-scope subclasses use the shared collector after callbacks are filled. */
+  protected getAbilityCollector(): AbilityCollector {
+    return this.abilityCollector;
+  }
+
+  /** Record model-specific Page transition counts after its CFG is built. */
+  protected setPageTransitionStatistics(
+    statistics: LifecycleModelStatistics['pageTransitions'],
+  ): void {
+    this.lifecycleModelStatistics.pageTransitions = { ...statistics };
   }
 
   /**
@@ -304,6 +342,11 @@ export class LifecycleModelCreator {
     console.log(`  Found ${this.components.length} Components (@Entry first)`);
     this.collectedAbilitiesCount = this.abilities.length;
     this.collectedComponents = [...this.components];
+    this.collectedPageComponentSignatures = new Set(
+      this.abilities.flatMap(ability =>
+        ability.pageComponents.map(component => component.signature.toString())
+      ),
+    );
     this.collectedOwnedComponentSignatures = new Set(
       this.abilities.flatMap(ability =>
         ability.components.map(component => component.signature.toString())
@@ -410,11 +453,19 @@ export class LifecycleModelCreator {
         this.collectedOwnedComponentSignatures.has(signature)
       )
       .map(([, component]) => component);
+    const reachableOwnedComponents = ownedComponents.filter(component =>
+      reachableComponents.has(component.signature.toString())
+    );
     const fallbackComponents = [...collectedComponents.entries()]
       .filter(([signature]) =>
         !this.collectedOwnedComponentSignatures.has(signature)
       )
       .map(([, component]) => component);
+    const transitionStatistics = this.computeCallbackTransitionStatistics(
+      [...reachableComponents.values()],
+    );
+    const ownershipExpansion = this.abilityCollector
+      .getOwnershipExpansionStatistics();
     this.lifecycleModelStatistics = {
       abilities: {
         collected: this.collectedAbilitiesCount,
@@ -424,10 +475,12 @@ export class LifecycleModelCreator {
           this.collectedAbilitiesCount - this.abilities.length,
         ),
       },
-      // AbilityCollector currently represents loadContent pages as ComponentInfo.
       pages: {
-        owned: ownedComponents.length,
-        unknown: fallbackComponents.length,
+        owned: this.collectedPageComponentSignatures.size,
+        unknown: this.collectedComponents.filter(component =>
+          component.isEntry &&
+          !this.collectedPageComponentSignatures.has(component.signature.toString())
+        ).length,
       },
       components: {
         owned: ownedComponents.length,
@@ -435,7 +488,7 @@ export class LifecycleModelCreator {
         fallback: fallbackComponents.length,
       },
       callbacks: {
-        bound: ownedComponents.reduce(
+        bound: reachableOwnedComponents.reduce(
           (sum, component) => sum + component.uiCallbacks.length,
           0,
         ),
@@ -444,6 +497,108 @@ export class LifecycleModelCreator {
           0,
         ),
       },
+      ownership: {
+        directPageRoots: this.collectedPageComponentSignatures.size,
+        ...ownershipExpansion,
+      },
+      transitions: transitionStatistics,
+      pageTransitions: this.computeDefaultPageTransitionStatistics(
+        [...reachableComponents.values()],
+      ),
+    };
+  }
+
+  /**
+   * Flat and Ability-scoped models deliberately retain the global/cross-Page
+   * callback pairs.  The Page-scope creator replaces these with its actual
+   * retained/pruned counts after constructing the CFG.
+   */
+  private computeDefaultPageTransitionStatistics(
+    components: readonly ComponentInfo[],
+  ): LifecycleModelStatistics['pageTransitions'] {
+    const collector = this.abilityCollector;
+    const registrations = components.flatMap(component =>
+      component.uiCallbacks.map(callback => ({ component, callback }))
+    );
+    const candidateCallbackTransitions = registrations.length ** 2;
+    const boundCallbacks = registrations.filter(({ component }) =>
+      collector.getPagesForComponent(component).length > 0
+    ).length;
+    const fallbackCallbacks = registrations.length - boundCallbacks;
+    let conservativeFallbackTransitions = 0;
+    let legalNavigationTransitions = 0;
+    for (const source of registrations) {
+      const sourcePages = collector.getPagesForComponent(source.component);
+      const navigationPages = new Set(
+        collector.getNavigationTargetPages(source.callback.callbackMethod)
+          .map(page => page.id),
+      );
+      for (const target of registrations) {
+        const targetPages = collector.getPagesForComponent(target.component);
+        if (sourcePages.length === 0 || targetPages.length === 0) {
+          conservativeFallbackTransitions++;
+        }
+        if (targetPages.some(page => navigationPages.has(page.id)) &&
+          !sourcePages.some(sourcePage =>
+            targetPages.some(targetPage => targetPage.id === sourcePage.id)
+          )) {
+          legalNavigationTransitions++;
+        }
+      }
+    }
+    return {
+      discoveredPages: collector.getPageInfos().length,
+      boundCallbacks,
+      fallbackCallbacks,
+      candidateCallbackTransitions,
+      retainedCallbackTransitions: candidateCallbackTransitions,
+      prunedCrossPageTransitions: 0,
+      conservativeFallbackTransitions,
+      legalNavigationTransitions,
+    };
+  }
+
+  private computeCallbackTransitionStatistics(
+    components: readonly ComponentInfo[],
+  ): LifecycleModelStatistics['transitions'] {
+    const ownersByComponent = new Map<string, Set<string>>();
+    for (const ability of this.abilities) {
+      const abilityKey = ability.signature.toString();
+      for (const component of ability.components) {
+        const componentKey = component.signature.toString();
+        let owners = ownersByComponent.get(componentKey);
+        if (!owners) {
+          owners = new Set<string>();
+          ownersByComponent.set(componentKey, owners);
+        }
+        owners.add(abilityKey);
+      }
+    }
+    const registrations = components.flatMap(component => {
+      const owners = ownersByComponent.get(component.signature.toString()) ??
+        new Set<string>();
+      return component.uiCallbacks.map(() => owners);
+    });
+    const candidateCallbackTransitions = registrations.length ** 2;
+    let prunedCrossAbilityTransitions = 0;
+    let conservativeFallbackTransitions = 0;
+    for (const sourceOwners of registrations) {
+      for (const targetOwners of registrations) {
+        if (sourceOwners.size === 0 || targetOwners.size === 0) {
+          conservativeFallbackTransitions++;
+          continue;
+        }
+        if (![...sourceOwners].some(owner => targetOwners.has(owner))) {
+          prunedCrossAbilityTransitions++;
+        }
+      }
+    }
+    return {
+      candidateCallbackTransitions,
+      retainedCallbackTransitions:
+        candidateCallbackTransitions - prunedCrossAbilityTransitions,
+      prunedCrossAbilityTransitions,
+      conservativeFallbackTransitions,
     };
   }
 

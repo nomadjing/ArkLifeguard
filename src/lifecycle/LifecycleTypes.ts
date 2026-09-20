@@ -156,6 +156,9 @@ export interface AbilityInfo {
   /** 该 Ability 关联的 UI Component 列表 */
   components: ComponentInfo[];
 
+  /** 由 loadContent/router 直接解析到的 Page 根组件。 */
+  pageComponents: ComponentInfo[];
+
   /** 可跳转到的目标 Ability 列表 */
   navigationTargets: AbilityNavigationTarget[];
 
@@ -189,6 +192,19 @@ export interface ComponentInfo {
 
   /** 是否是 @Entry 组件 */
   isEntry: boolean;
+}
+
+/**
+ * A declarative ArkUI Page root and the custom-component closure rendered
+ * below it.  `routeNames` comes from `router_map.json`; `id` is the canonical
+ * source path used by `main_pages.json` (for example, `pages/Detail`).
+ */
+export interface PageInfo {
+  id: string;
+  root: ComponentInfo;
+  components: ComponentInfo[];
+  routeNames: string[];
+  abilityNames: string[];
 }
 
 // ============================================================================
@@ -360,9 +376,6 @@ export interface LifecycleOptimizationConfig {
   /** 用一个 scope head 直接分派到各回调，避免链式条件分派。 */
   compactDispatcher: boolean;
 
-  /** 不为没有可调用生命周期/事件方法的 scope 生成占位 CFG。 */
-  removeEmptyScopes: boolean;
-
   /** 仅保留入口 Ability 及静态可达的 startAbility 闭包。 */
   pruneUnreachableAbilities: boolean;
 }
@@ -386,6 +399,44 @@ export interface LifecycleModelStatistics {
   callbacks: {
     bound: number;
     fallback: number;
+  };
+  ownership: {
+    /** loadContent/router 直接解析到的 Page 根。 */
+    directPageRoots: number;
+    /** 从 Page ViewTree 中发现的 custom-component 关系。 */
+    viewTreeComponentEdges: number;
+    /** 从已归属 Component 的导航调用中解析的 Page 关系。 */
+    navigationPageEdges: number;
+    /** ViewTree 无法构建的已归属 Component 数。 */
+    viewTreeFailures: number;
+  };
+  transitions: {
+    /** Flat 全局 callback pool 中的有序 callback 对。 */
+    candidateCallbackTransitions: number;
+    /** M1 在共同 Ability scope 或 fallback 下保留的有序对。 */
+    retainedCallbackTransitions: number;
+    /** 因 owner Ability 集合不相交而裁剪的有序对。 */
+    prunedCrossAbilityTransitions: number;
+    /** 因任一端 ownership 未知而保守保留的有序对。 */
+    conservativeFallbackTransitions: number;
+  };
+  pageTransitions: {
+    /** Page roots obtained from main_pages/router_map or code discovery. */
+    discoveredPages: number;
+    /** UI callbacks with one or more resolved Page owners. */
+    boundCallbacks: number;
+    /** UI callbacks without a resolved Page owner and therefore kept global. */
+    fallbackCallbacks: number;
+    /** Ordered callback pairs before Page-scope pruning. */
+    candidateCallbackTransitions: number;
+    /** Ordered callback pairs represented by the selected lifecycle model. */
+    retainedCallbackTransitions: number;
+    /** Ordered pairs removed because their Page owners are disjoint. */
+    prunedCrossPageTransitions: number;
+    /** Pairs kept because one endpoint has unknown/ambiguous Page ownership. */
+    conservativeFallbackTransitions: number;
+    /** Cross-Page pairs retained because the source callback has that route. */
+    legalNavigationTransitions: number;
   };
 }
 
@@ -424,7 +475,6 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleModelConfig = {
   maxNavigationDepth: 10,
   optimizations: {
     compactDispatcher: true,
-    removeEmptyScopes: true,
     pruneUnreachableAbilities: true,
   },
   bounds: {

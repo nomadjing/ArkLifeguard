@@ -36,7 +36,6 @@ interface Options {
     timeoutMs: number;
     lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
     compactLifecycleDispatcher: boolean;
-    removeEmptyLifecycleScopes: boolean;
     pruneUnreachableAbilities: boolean;
     collectSolverStatistics: boolean;
     lifecycleRootOnly: boolean;
@@ -93,7 +92,6 @@ interface RealAppsReport {
         lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
         lifecycleOptimizations: {
             compactDispatcher: boolean;
-            removeEmptyScopes: boolean;
             pruneUnreachableAbilities: boolean;
         };
         collectSolverStatistics: boolean;
@@ -145,7 +143,6 @@ function help(): void {
         '  --timeout-ms <n>          Per-project timeout; default: 600000',
         '  --lifecycle-model <mode>  flat, opt-flat or hierarchical; default: flat',
         '  --no-compact-dispatcher   M1-NoCompact ablation',
-        '  --no-empty-scope-removal  M1-NoEmpty ablation',
         '  --no-ability-prune        M1-NoAbilityPrune ablation',
         '  --ifds-stats              Collect IFDS solver time and counters',
         '  --lifecycle-root-only     Disable module-initializer/framework-sink roots',
@@ -188,7 +185,6 @@ function parseArgs(args: string[]): Options {
     let timeoutMs = 600_000;
     let lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'> = 'flat';
     let compactLifecycleDispatcher = true;
-    let removeEmptyLifecycleScopes = true;
     let pruneUnreachableAbilities = true;
     let collectSolverStatistics = false;
     let lifecycleRootOnly = false;
@@ -286,10 +282,6 @@ function parseArgs(args: string[]): Options {
             compactLifecycleDispatcher = false;
             continue;
         }
-        if (arg === '--no-empty-scope-removal') {
-            removeEmptyLifecycleScopes = false;
-            continue;
-        }
         if (arg === '--no-ability-prune') {
             pruneUnreachableAbilities = false;
             continue;
@@ -349,7 +341,6 @@ function parseArgs(args: string[]): Options {
         timeoutMs,
         lifecycleModel,
         compactLifecycleDispatcher,
-        removeEmptyLifecycleScopes,
         pruneUnreachableAbilities,
         collectSolverStatistics,
         lifecycleRootOnly,
@@ -462,7 +453,6 @@ function analyzeProject(
             lifecycle: {
                 optimizations: {
                     compactDispatcher: options.compactLifecycleDispatcher,
-                    removeEmptyScopes: options.removeEmptyLifecycleScopes,
                     pruneUnreachableAbilities: options.pruneUnreachableAbilities,
                 },
             },
@@ -590,7 +580,6 @@ function createReport(
             lifecycleModel: options.lifecycleModel,
             lifecycleOptimizations: {
                 compactDispatcher: options.compactLifecycleDispatcher,
-                removeEmptyScopes: options.removeEmptyLifecycleScopes,
                 pruneUnreachableAbilities: options.pruneUnreachableAbilities,
             },
             collectSolverStatistics: options.collectSolverStatistics,
@@ -707,8 +696,6 @@ function runParent(options: Options): void {
                 ...(options.lifecycleRootOnly ? ['--lifecycle-root-only'] : []),
                 ...(!options.compactLifecycleDispatcher
                     ? ['--no-compact-dispatcher'] : []),
-                ...(!options.removeEmptyLifecycleScopes
-                    ? ['--no-empty-scope-removal'] : []),
                 ...(!options.pruneUnreachableAbilities
                     ? ['--no-ability-prune'] : []),
             ],
