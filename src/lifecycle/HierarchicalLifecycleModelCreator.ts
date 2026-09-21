@@ -14,6 +14,7 @@ import {
   Cfg,
   Local,
   RelationalBinaryOperator,
+  Stmt,
   ValueUtil,
 } from "../adapter/arkanalyzer";
 import { LifecycleModelCreator } from "./LifecycleModelCreator";
@@ -25,6 +26,7 @@ import {
   ComponentLifecycleStage,
   LifecycleModelStatistics,
   PageInfo,
+  ScopeModelInfo,
   UICallbackInfo,
 } from "./LifecycleTypes";
 
@@ -142,9 +144,45 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
     cfg.addBlock(returnBlock);
     this.linkBlocks(abilityHead, returnBlock);
 
+    this.scopeModelInfo = this.buildScopeModelInfo(
+      abilityHead, scopes, fallbackHead, fallbackReturnHead, fallbackComponents,
+    );
+
     this.dummyMain.setBody(new ArkBody(new Set(this.classInstanceMap.values()), cfg));
     this.linkStmtsToCfg(cfg);
     this.setPageTransitionStatistics(this.computePageTransitionStatistics(scopes));
+  }
+
+  /** Assemble the scope-structure view consumed by profiling / debugging tools. */
+  private buildScopeModelInfo(
+    abilityHead: BasicBlock,
+    scopes: ReadonlyMap<string, PageScope>,
+    fallbackHead: BasicBlock,
+    fallbackReturnHead: BasicBlock,
+    fallbackComponents: readonly ComponentInfo[],
+  ): ScopeModelInfo {
+    const instanceNamesOf = (components: readonly ComponentInfo[]): string[] =>
+      [...new Set(components.map(component =>
+        this.getOrCreateClassInstance(component.arkClass).getName()
+      ))];
+    return {
+      abilityHead: this.firstStmt(abilityHead),
+      pageScopes: [...scopes.values()].map(scope => ({
+        pageId: scope.page.id,
+        head: this.firstStmt(scope.head),
+        eventHead: this.firstStmt(scope.eventHead),
+        instanceNames: instanceNamesOf(scope.components),
+      })),
+      fallbackHead: this.firstStmt(fallbackHead),
+      fallbackReturnHead: this.firstStmt(fallbackReturnHead),
+      fallbackInstanceNames: instanceNamesOf(fallbackComponents),
+    };
+  }
+
+  private firstStmt(block: BasicBlock): Stmt {
+    const stmts = block.getStmts();
+    if (stmts.length === 0) throw new Error('dispatch head block has no statement');
+    return stmts[0];
   }
 
   private collectUnambiguousPageGroups(): Array<{

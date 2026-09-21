@@ -29,6 +29,7 @@ import {
   ArkMethod,
   ClassSignature,
   ArkField,
+  Stmt,
   ViewTreeNode,
 } from "../adapter/arkanalyzer";
 
@@ -438,6 +439,35 @@ export interface LifecycleModelStatistics {
     /** Cross-Page pairs retained because the source callback has that route. */
     legalNavigationTransitions: number;
   };
+}
+
+/**
+ * DummyMain 的 scope 结构信息（仅分层模型提供）。
+ *
+ * 用于 profiling / 调试：把"哪个 Stmt 是哪个 Page scope / fallback / Ability
+ * 分发器"暴露给上层，配合 IFDS 求解结果做按 scope 的事实统计。Flat /
+ * bounded-unroll 等无 scope 结构的模型返回 undefined。
+ */
+export interface PageScopeInfo {
+  pageId: string;
+  /** Page scope 分发器块中的语句（`if true != false`）。 */
+  head: Stmt;
+  /** onPageShow 之后的分发器块语句；无 onPageShow 时与 head 相同。 */
+  eventHead: Stmt;
+  /** 该 scope 内组件对应的合成实例 Local 名称（如 `%6`）。 */
+  instanceNames: string[];
+}
+
+export interface ScopeModelInfo {
+  /** Ability 级生命周期分发器块语句（外层循环头）。 */
+  abilityHead?: Stmt;
+  pageScopes: PageScopeInfo[];
+  /** fallback 分发器块语句（归属未知 / 歧义的回调集中于此）。 */
+  fallbackHead?: Stmt;
+  /** fallback 返回分发器块语句。 */
+  fallbackReturnHead?: Stmt;
+  /** fallback 组件对应的合成实例 Local 名称。 */
+  fallbackInstanceNames: string[];
 }
 
 /**

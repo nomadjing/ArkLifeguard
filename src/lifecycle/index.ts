@@ -77,6 +77,8 @@ export {
     LifecycleModelConfig,
     LifecycleOptimizationConfig,
     LifecycleModelStatistics,
+    ScopeModelInfo,
+    PageScopeInfo,
     DEFAULT_LIFECYCLE_CONFIG,
 } from './LifecycleTypes';
 

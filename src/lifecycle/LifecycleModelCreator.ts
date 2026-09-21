@@ -99,6 +99,7 @@ import {
   DEFAULT_LIFECYCLE_CONFIG,
   BoundsConfig,
   NavigationType,
+  ScopeModelInfo,
 } from "./LifecycleTypes";
 
 // ============================================================================
@@ -147,6 +148,9 @@ export class LifecycleModelCreator {
 
   /** 类实例 Local 映射：类签名 -> Local 变量 */
   protected classInstanceMap: Map<string, Local> = new Map();
+
+  /** DummyMain 的 scope 结构信息（仅分层模型在 buildDummyMainCfg 中填充）。 */
+  protected scopeModelInfo?: ScopeModelInfo;
 
   /** Collected/effective hierarchy counts used by RQ1.5 reports. */
   private lifecycleModelStatistics: LifecycleModelStatistics = {
@@ -286,6 +290,14 @@ export class LifecycleModelCreator {
       transitions: { ...this.lifecycleModelStatistics.transitions },
       pageTransitions: { ...this.lifecycleModelStatistics.pageTransitions },
     };
+  }
+
+  /**
+   * DummyMain 的 scope 结构信息，供 profiling / 调试使用。
+   * 仅分层模型返回非 undefined；Flat / bounded-unroll 返回 undefined。
+   */
+  public getScopeModelInfo(): ScopeModelInfo | undefined {
+    return this.scopeModelInfo;
   }
 
   /** Page-scope subclasses use the shared collector after callbacks are filled. */
