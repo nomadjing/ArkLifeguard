@@ -55,12 +55,17 @@ export class ReportGenerator {
             },
             resourceAnalysis: {
                 enabled: result.resourceAnalysis.enabled,
+                engine: result.resourceAnalysis.engine,
                 success: result.resourceAnalysis.success,
+                ...(result.resourceAnalysis.error ? { error: result.resourceAnalysis.error } : {}),
                 resourceLeaks: result.resourceAnalysis.resourceLeaks,
                 methodLocal: {
                     leaks: result.resourceAnalysis.methodLocal.leaks,
                 },
             },
+            ...(result.newResourceAnalysis
+                ? { newResourceAnalysis: result.newResourceAnalysis }
+                : {}),
             duration: { total: result.duration.total },
             warnings: result.warnings,
             errors: result.errors,
@@ -80,12 +85,22 @@ export class ReportGenerator {
             '',
             '【总体结果】',
             `  空指针报告: ${result.nullness.enabled ? result.summary.nullDereferences : '未启用'}`,
-            `  跨过程资源泄漏报告: ${result.resourceAnalysis.enabled ? result.summary.resourceLeaks : '未启用'}`,
-            `  方法内资源候选: ${result.resourceAnalysis.methodLocal.leaks.length}`,
+            `  跨过程资源泄漏报告: ${this.resourceCount(result, result.summary.resourceLeaks)}`,
+            `  方法内资源候选: ${this.resourceCount(result, result.resourceAnalysis.methodLocal.leaks.length)}`,
         ];
+        if (result.newResourceAnalysis) {
+            lines.push(`  新资源分析: ${result.newResourceAnalysis.success
+                ? result.newResourceAnalysis.diagnostics.length : '失败'}`);
+            lines.push('', '【新资源泄漏诊断】');
+            lines.push(result.newResourceAnalysis.success
+                ? '  新资源分析已完成。'
+                : `  分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
+        }
         lines.push('', '【资源泄漏诊断】');
         if (!result.resourceAnalysis.enabled) {
             lines.push('  未启用资源泄漏分析。');
+        } else if (!result.resourceAnalysis.success) {
+            lines.push(`  分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
         } else if (result.resourceAnalysis.resourceLeaks.length === 0) {
             lines.push('  未检出资源泄漏候选问题。');
         } else {
@@ -99,6 +114,8 @@ export class ReportGenerator {
         lines.push('', '【方法内资源泄漏诊断】');
         if (!result.resourceAnalysis.enabled) {
             lines.push('  未启用资源泄漏分析。');
+        } else if (!result.resourceAnalysis.success) {
+            lines.push(`  分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
         } else if (result.resourceAnalysis.methodLocal.leaks.length === 0) {
             lines.push('  未检出方法内资源泄漏候选问题。');
         } else {
@@ -141,13 +158,24 @@ export class ReportGenerator {
             '| 指标 | 数值 |',
             '|---|---:|',
             `| 空指针报告 | ${result.nullness.enabled ? result.summary.nullDereferences : '未启用'} |`,
-            `| 跨过程资源泄漏报告 | ${result.resourceAnalysis.enabled ? result.summary.resourceLeaks : '未启用'} |`,
-            `| 方法内资源候选 | ${result.resourceAnalysis.methodLocal.leaks.length} |`,
+            `| 跨过程资源泄漏报告 | ${this.resourceCount(result, result.summary.resourceLeaks)} |`,
+            `| 方法内资源候选 | ${this.resourceCount(result, result.resourceAnalysis.methodLocal.leaks.length)} |`,
+            ...(result.newResourceAnalysis
+                ? [`| 新资源分析 | ${result.newResourceAnalysis.success
+                    ? result.newResourceAnalysis.diagnostics.length : '失败'} |`]
+                : []),
             `| 总耗时(ms) | ${result.duration.total} |`,
         ];
+        if (result.newResourceAnalysis) {
+            lines.push('', '## 新资源泄漏诊断', '', result.newResourceAnalysis.success
+                ? '新资源分析已完成。'
+                : `分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
+        }
         lines.push('', '## 资源泄漏诊断', '');
         if (!result.resourceAnalysis.enabled) {
             lines.push('未启用资源泄漏分析。');
+        } else if (!result.resourceAnalysis.success) {
+            lines.push(`分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
         } else if (result.resourceAnalysis.resourceLeaks.length === 0) {
             lines.push('未检出资源泄漏候选问题。');
         } else {
@@ -160,6 +188,8 @@ export class ReportGenerator {
         lines.push('', '## 方法内资源泄漏诊断', '');
         if (!result.resourceAnalysis.enabled) {
             lines.push('未启用资源泄漏分析。');
+        } else if (!result.resourceAnalysis.success) {
+            lines.push(`分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
         } else if (result.resourceAnalysis.methodLocal.leaks.length === 0) {
             lines.push('未检出方法内资源泄漏候选问题。');
         } else {
@@ -189,8 +219,12 @@ export class ReportGenerator {
         const title = this.escape(options.title ?? 'ArkLifeguard HarmonyOS 静态分析报告');
         const summary: Array<[string, string | number]> = [
             ['空指针报告', result.nullness.enabled ? result.summary.nullDereferences : '未启用'],
-            ['跨过程资源泄漏报告', result.resourceAnalysis.enabled ? result.summary.resourceLeaks : '未启用'],
-            ['方法内资源候选', result.resourceAnalysis.methodLocal.leaks.length],
+            ['跨过程资源泄漏报告', this.resourceCount(result, result.summary.resourceLeaks)],
+            ['方法内资源候选', this.resourceCount(result, result.resourceAnalysis.methodLocal.leaks.length)],
+            ...(result.newResourceAnalysis
+                ? [['新资源分析', result.newResourceAnalysis.success
+                    ? result.newResourceAnalysis.diagnostics.length : '失败'] as [string, string | number]]
+                : []),
             ['总耗时(ms)', result.duration.total],
         ];
         const summaryRows = summary
@@ -206,6 +240,8 @@ export class ReportGenerator {
             </li>`).join('')}</ol>`;
         const resourceLeaks = !result.resourceAnalysis.enabled
             ? '<p>未启用资源泄漏分析。</p>'
+            : !result.resourceAnalysis.success
+            ? `<p>分析失败：${this.escape(result.resourceAnalysis.error ?? '未知错误')}</p>`
             : result.resourceAnalysis.resourceLeaks.length === 0
             ? '<p>未检出资源泄漏候选问题。</p>'
             : `<ol>${result.resourceAnalysis.resourceLeaks.map(leak => `<li>
@@ -215,6 +251,8 @@ export class ReportGenerator {
             </li>`).join('')}</ol>`;
         const methodLocalLeaks = !result.resourceAnalysis.enabled
             ? '<p>未启用资源泄漏分析。</p>'
+            : !result.resourceAnalysis.success
+            ? `<p>分析失败：${this.escape(result.resourceAnalysis.error ?? '未知错误')}</p>`
             : result.resourceAnalysis.methodLocal.leaks.length === 0
             ? '<p>未检出方法内资源泄漏候选问题。</p>'
             : `<ol>${result.resourceAnalysis.methodLocal.leaks.map(leak => `<li>
@@ -230,10 +268,21 @@ export class ReportGenerator {
 <p>项目: <code>${this.escape(result.project.path)}</code></p>
 <p>状态: <strong class="${result.status}">${result.status}</strong></p>
 <h2>结果摘要</h2><table>${summaryRows}</table>
+${result.newResourceAnalysis
+    ? `<h2>新资源泄漏诊断</h2><p>${result.newResourceAnalysis.success
+        ? '新资源分析已完成。'
+        : `分析失败：${this.escape(result.newResourceAnalysis.error ?? '未知错误')}`}</p>`
+    : ''}
 <h2>资源泄漏诊断</h2>${resourceLeaks}
 <h2>方法内资源泄漏诊断</h2>${methodLocalLeaks}
 <h2>空指针诊断</h2>${diagnostics}
 </body></html>`;
+    }
+
+    private resourceCount(result: ProjectAnalysisResult, count: number): number | string {
+        if (!result.resourceAnalysis.enabled) return '未启用';
+        if (!result.resourceAnalysis.success) return '失败';
+        return count;
     }
 
     private appendMessages(lines: string[], result: ProjectAnalysisResult): void {

@@ -21,6 +21,7 @@ describe('ProjectAnalyzer end-to-end application service', () => {
         expect(result.dummyMain.statements).toBeGreaterThan(0);
         expect(result.nullness.success).toBe(true);
         expect(result.resourceAnalysis.success).toBe(true);
+        expect(result.resourceAnalysis.engine).toBe('legacy');
         expect(result.resourceAnalysis.analyzedMethods).toBeGreaterThan(0);
         expect(result.resourceAnalysis.amplification.reachedStatements)
             .toBe(result.resourceAnalysis.reachedStatements);
@@ -62,5 +63,30 @@ describe('ProjectAnalyzer end-to-end application service', () => {
             resourceType: 'AVPlayer',
             source: { relativePath: 'EntryAbility.ets' },
         });
+    });
+
+    it('keeps the new engine separate and reports its missing implementation as failure', async () => {
+        const result = await new ProjectAnalyzer({
+            sdkPaths: [fixturePath('sdk')],
+            runNullness: false,
+            resourceEngine: 'new',
+        }).analyze(fixturePath('resource', 'source-sink'));
+
+        expect(result.status).toBe('failed');
+        expect(result.settings.resourceEngine).toBe('new');
+        expect(result.resourceAnalysis).toMatchObject({
+            enabled: false,
+            engine: 'legacy',
+            success: true,
+            resourceLeaks: [],
+            taintLeaks: [],
+        });
+        expect(result.newResourceAnalysis).toMatchObject({
+            status: 'not-implemented', success: false, diagnostics: [],
+        });
+        expect(result.newResourceAnalysis?.error).toContain('尚未实现');
+        expect(result.resourceAnalysis.methodLocal.leaks).toEqual([]);
+        expect(result.summary.resourceLeaks).toBe(0);
+        expect(result.errors).toContain(result.newResourceAnalysis?.error);
     });
 });

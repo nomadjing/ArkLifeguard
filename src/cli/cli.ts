@@ -12,6 +12,7 @@ import {
     Option,
 } from 'commander';
 import { ProjectAnalysisOptions, ProjectAnalyzer } from '../application';
+import type { ResourceEngine } from '../application/ProjectAnalyzer';
 import type { LifecycleModelMode } from '../lifecycle';
 import {
     LifecycleReportGenerator,
@@ -32,6 +33,7 @@ interface AnalyzeCliOptions {
     navigation: boolean;
     uiCallbacks: boolean;
     checks: AnalysisCheck[];
+    resourceEngine: ResourceEngine;
     lifecycleModel: LifecycleModelMode;
     compactLifecycleDispatcher: boolean;
     pruneUnreachableAbilities: boolean;
@@ -72,6 +74,8 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
             '--checks <checks>',
             'checks to run: all, nullness, resource, or a comma-separated list'
         ).argParser(parseChecks).default(['nullness', 'resource'] as AnalysisCheck[], 'all'))
+        .addOption(new Option('--resource-engine <engine>', 'resource analysis engine')
+            .choices(['legacy', 'new']).default('legacy'))
         .addOption(new Option('--lifecycle-model <mode>', 'DummyMain lifecycle model')
             .choices([
                 'flat',
@@ -105,6 +109,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     extractUICallbacks: options.uiCallbacks,
                     runNullness,
                     runResourceAnalysis,
+                    resourceEngine: options.resourceEngine,
                     lifecycleModel: options.lifecycleModel,
                     compactLifecycleDispatcher: options.compactLifecycleDispatcher,
                     pruneUnreachableAbilities: options.pruneUnreachableAbilities,

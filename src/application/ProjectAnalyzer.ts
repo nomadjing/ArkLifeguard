@@ -27,7 +27,11 @@ import {
     SourceSinkLocationScanner,
     TaintAnalysisRunner,
 } from '../analysis/resource';
+import { ResourceRunner } from '../analysis/resourceleak';
+import type { ResourceAnalysisResult } from '../analysis/resourceleak';
 import type { IFDSSolverStatistics } from '../ifds';
+
+export type ResourceEngine = 'legacy' | 'new';
 
 export interface ProjectAnalysisOptions {
     sdkRoot?: string;
@@ -37,6 +41,7 @@ export interface ProjectAnalysisOptions {
     analyzeNavigation?: boolean;
     runNullness?: boolean;
     runResourceAnalysis?: boolean;
+    resourceEngine?: ResourceEngine;
     lifecycleModel?: LifecycleModelMode;
     compactLifecycleDispatcher?: boolean;
     pruneUnreachableAbilities?: boolean;
@@ -119,6 +124,7 @@ export interface ProjectAnalysisResult {
         analyzeNavigation: boolean;
         runNullness: boolean;
         runResourceAnalysis: boolean;
+        resourceEngine: ResourceEngine;
         lifecycleModel: LifecycleModelMode;
         lifecycleOptimizations: {
             compactDispatcher: boolean;
@@ -175,6 +181,7 @@ export interface ProjectAnalysisResult {
     };
     resourceAnalysis: {
         enabled: boolean;
+        engine: 'legacy';
         success: boolean;
         entryMethod: string;
         resourceLeaks: ResourceLeakRecord[];
@@ -194,6 +201,7 @@ export interface ProjectAnalysisResult {
         };
         error?: string;
     };
+    newResourceAnalysis?: ResourceAnalysisResult;
     duration: {
         sceneBuilding: number;
         lifecycleModeling: number;
@@ -259,6 +267,7 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     analyzeNavigation: true,
     runNullness: true,
     runResourceAnalysis: true,
+    resourceEngine: 'legacy',
     lifecycleModel: DEFAULT_LIFECYCLE_MODEL_MODE,
     compactLifecycleDispatcher: DEFAULT_LIFECYCLE_CONFIG.optimizations.compactDispatcher,
     pruneUnreachableAbilities: DEFAULT_LIFECYCLE_CONFIG.optimizations.pruneUnreachableAbilities,
@@ -337,6 +346,7 @@ export class ProjectAnalyzer {
 
         const resourceStart = Date.now();
         let resourceResult: ReturnType<TaintAnalysisRunner['runWithDummyMain']> | null = null;
+        let newResourceResult: ResourceAnalysisResult | null = null;
         let methodLocalDetector: ResourceLeakDetector | null = null;
         let methodLocalLeaks: ReturnType<ResourceLeakDetector['detect']> = [];
         let scannedLocations: ReturnType<SourceSinkLocationScanner['scan']> = {
@@ -346,19 +356,35 @@ export class ProjectAnalyzer {
         let resourceError: string | undefined;
         try {
             if (this.options.runResourceAnalysis) {
-                resourceResult = new TaintAnalysisRunner(scene, {
-                    maxCallbackIterations: this.options.maxCallbackIterations,
-                    maxAbilitiesPerFlow: this.options.maxAbilitiesPerFlow,
-                    maxNavigationHops: this.options.maxNavigationHops,
-                    maxPropagationDepth: this.options.maxPropagationDepth,
-                    collectSolverStatistics: this.options.collectSolverStatistics,
-                }).runWithDummyMain(dummyMain, creator.getAbilityMethodSet());
-                methodLocalDetector = new ResourceLeakDetector(scene);
-                methodLocalLeaks = methodLocalDetector.detect();
-                scannedLocations = new SourceSinkLocationScanner(scene).scan();
+                if (this.options.resourceEngine === 'legacy') {
+                    resourceResult = new TaintAnalysisRunner(scene, {
+                        maxCallbackIterations: this.options.maxCallbackIterations,
+                        maxAbilitiesPerFlow: this.options.maxAbilitiesPerFlow,
+                        maxNavigationHops: this.options.maxNavigationHops,
+                        maxPropagationDepth: this.options.maxPropagationDepth,
+                        collectSolverStatistics: this.options.collectSolverStatistics,
+                    }).runWithDummyMain(dummyMain, creator.getAbilityMethodSet());
+                    methodLocalDetector = new ResourceLeakDetector(scene);
+                    methodLocalLeaks = methodLocalDetector.detect();
+                    scannedLocations = new SourceSinkLocationScanner(scene).scan();
+                } else {
+                    newResourceResult = new ResourceRunner(scene).runWithDummyMain(dummyMain);
+                    if (!newResourceResult.success) {
+                        resourceError = newResourceResult.error ?? '新资源分析失败，未生成诊断。';
+                    }
+                }
             }
         } catch (error) {
             resourceError = error instanceof Error ? error.message : String(error);
+            if (this.options.runResourceAnalysis && this.options.resourceEngine === 'new') {
+                newResourceResult = {
+                    status: 'failed',
+                    success: false,
+                    entryMethod: dummyMain.getSignature().toString(),
+                    diagnostics: [],
+                    error: resourceError,
+                };
+            }
         }
         const resourceAnalysis = Date.now() - resourceStart;
 
@@ -387,8 +413,12 @@ export class ProjectAnalyzer {
             ? [...nullnessResult.reachedFacts.values()].reduce((sum, facts) => sum + facts.length, 0)
             : 0;
         const nullnessSuccess = nullnessResult?.success ?? !this.options.runNullness;
+        const legacyEnabled = this.options.runResourceAnalysis &&
+            this.options.resourceEngine === 'legacy';
         const resourceSuccess = !this.options.runResourceAnalysis ||
-            (resourceResult?.success === true && resourceError === undefined);
+            (legacyEnabled
+                ? resourceResult?.success === true && resourceError === undefined
+                : newResourceResult?.success === true && resourceError === undefined);
         const errors = [
             ...(!nullnessSuccess && nullnessResult?.error ? [nullnessResult.error] : []),
             ...(!resourceSuccess && resourceResult?.error ? [resourceResult.error] : []),
@@ -456,6 +486,7 @@ export class ProjectAnalyzer {
                 analyzeNavigation: this.options.analyzeNavigation,
                 runNullness: this.options.runNullness,
                 runResourceAnalysis: this.options.runResourceAnalysis,
+                resourceEngine: this.options.resourceEngine,
                 lifecycleModel: this.options.lifecycleModel,
                 lifecycleOptimizations: {
                     compactDispatcher: this.options.compactLifecycleDispatcher,
@@ -520,8 +551,9 @@ export class ProjectAnalyzer {
                 ...(nullnessResult?.error ? { error: nullnessResult.error } : {}),
             },
             resourceAnalysis: {
-                enabled: this.options.runResourceAnalysis,
-                success: resourceSuccess,
+                enabled: legacyEnabled,
+                engine: 'legacy',
+                success: !legacyEnabled || resourceSuccess,
                 entryMethod: resourceResult?.entryMethod ?? '',
                 resourceLeaks,
                 taintLeaks,
@@ -544,10 +576,11 @@ export class ProjectAnalyzer {
                     sourceCount: methodLocalDetector?.getSourceCount() ?? 0,
                     sinkCount: methodLocalDetector?.getSinkCount() ?? 0,
                 },
-                ...((resourceResult?.error ?? resourceError)
+                ...((legacyEnabled && (resourceResult?.error ?? resourceError))
                     ? { error: resourceResult?.error ?? resourceError }
                     : {}),
             },
+            ...(newResourceResult ? { newResourceAnalysis: newResourceResult } : {}),
             duration: {
                 sceneBuilding,
                 lifecycleModeling,

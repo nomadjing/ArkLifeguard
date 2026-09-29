@@ -21,8 +21,10 @@ import {
 import type { IFDSSolverStatistics } from '../src/ifds';
 import type { LifecycleModelMode } from '../src/lifecycle';
 import type { LifecycleModelStatistics } from '../src/lifecycle';
+import type { ResourceAnalysisResult } from '../src/analysis/resourceleak';
 
 type ProjectStatus = 'success' | 'failed' | 'timeout';
+type ResourceEngine = 'legacy' | 'new';
 
 interface ProjectMetadata {
     name: string;
@@ -36,6 +38,7 @@ interface MetadataFile {
 interface Options {
     realAppsRoot: string;
     sdkRoot: string;
+    engine: ResourceEngine;
     projects: string[];
     outputPath?: string;
     timeoutMs: number;
@@ -79,6 +82,7 @@ interface ProjectResult {
     resourceLeaks: ResourceLeakRecord[];
     taintLeaks: TaintLeakRecord[];
     methodLocalLeaks: MethodLocalResourceLeakRecord[];
+    newResourceAnalysis?: ResourceAnalysisResult;
 }
 
 interface RealAppsReport {
@@ -88,6 +92,7 @@ interface RealAppsReport {
     completed: boolean;
     settings: {
         sdkRoot: string;
+        engine: ResourceEngine;
         timeoutMs: number;
         maxAbilitiesPerFlow: number;
         maxNavigationHops: number;
@@ -152,6 +157,7 @@ function help(): void {
         '  --output <file>             Persist the JSON report; omitted means console only',
         '  --real-apps-root <path>     HarmonyRealApps directory containing meta.json',
         '  --sdk-root <path>           SDK root containing openharmony/ets and hms/ets',
+        '  --engine <legacy|new>      Resource analysis engine; default: legacy',
         '  --timeout-ms <n>            Hard per-project timeout; default: 180000',
         '  --max-abilities-per-flow <n>  Ability bound; 0 disables it; default: 0',
         '  --max-navigation-hops <n>   Navigation bound; 0 disables it; default: 0',
@@ -194,6 +200,7 @@ function nonNegativeInteger(value: string, option: string): number {
 function parseArgs(args: string[]): Options {
     let realAppsRoot = defaultRealAppsRoot;
     let sdkRoot: string | undefined;
+    let engine: ResourceEngine = 'legacy';
     const projects: string[] = [];
     let outputPath: string | undefined;
     let timeoutMs = 180_000;
@@ -237,6 +244,12 @@ function parseArgs(args: string[]): Options {
             realAppsRoot = path.resolve(arg.slice('--real-apps-root='.length));
         } else if (arg === '--sdk-root') {
             sdkRoot = path.resolve(consume(arg));
+        } else if (arg === '--engine') {
+            const value = consume(arg);
+            if (value !== 'legacy' && value !== 'new') {
+                throw new Error(`--engine must be legacy or new: ${value}`);
+            }
+            engine = value;
         } else if (arg.startsWith('--sdk-root=')) {
             sdkRoot = path.resolve(arg.slice('--sdk-root='.length));
         } else if (arg === '--timeout-ms') {
@@ -294,6 +307,7 @@ function parseArgs(args: string[]): Options {
     return {
         realAppsRoot,
         sdkRoot: sdkRoot ?? path.resolve(realAppsRoot, '../sdk/default'),
+        engine,
         projects,
         outputPath,
         timeoutMs,
@@ -371,6 +385,7 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
             sdkRoot: options.sdkRoot,
             runNullness: false,
             runResourceAnalysis: true,
+            resourceEngine: options.engine,
             analyzeNavigation: false,
             lifecycleModel: options.lifecycleModel,
             compactLifecycleDispatcher: options.compactLifecycleDispatcher,
@@ -384,6 +399,7 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         record.classes = result.summary.classes;
         record.methods = result.summary.methods;
         record.resourceLeaks = result.resourceAnalysis.resourceLeaks;
+        record.newResourceAnalysis = result.newResourceAnalysis;
         record.taintLeaks = result.resourceAnalysis.taintLeaks;
         record.methodLocalLeaks = result.resourceAnalysis.methodLocal.leaks;
         record.resourceLeakCount = record.resourceLeaks.length;
@@ -401,8 +417,10 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         record.lifecycleStatistics = result.lifecycleStatistics;
         record.dummyMain = result.dummyMain;
         record.amplification = result.resourceAnalysis.amplification;
-        if (result.status !== 'success' || !result.resourceAnalysis.success) {
-            record.error = result.resourceAnalysis.error ??
+        if (result.status !== 'success' ||
+            (options.engine === 'legacy' && !result.resourceAnalysis.success) ||
+            (options.engine === 'new' && !result.newResourceAnalysis?.success)) {
+            record.error = result.newResourceAnalysis?.error ?? result.resourceAnalysis.error ??
                 (result.errors.join('; ') || 'Resource analysis failed without an error message');
         } else {
             record.status = 'success';
@@ -541,6 +559,7 @@ async function main(): Promise<void> {
         completed: false,
         settings: {
             sdkRoot: options.sdkRoot,
+            engine: options.engine,
             timeoutMs: options.timeoutMs,
             maxAbilitiesPerFlow: options.maxAbilitiesPerFlow,
             maxNavigationHops: options.maxNavigationHops,
@@ -572,6 +591,7 @@ async function main(): Promise<void> {
             '--worker-result', resultPath,
             '--real-apps-root', options.realAppsRoot,
             '--sdk-root', options.sdkRoot,
+            '--engine', options.engine,
             '--max-abilities-per-flow', String(options.maxAbilitiesPerFlow),
             '--max-navigation-hops', String(options.maxNavigationHops),
             '--max-propagation-depth', String(options.maxPropagationDepth),

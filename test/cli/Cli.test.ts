@@ -45,10 +45,36 @@ describe('ArkLifeguard CLI', () => {
         expect(json).toBeDefined();
         expect(JSON.parse(json ?? '{}').resourceAnalysis).toMatchObject({
             enabled: true,
+            engine: 'legacy',
             success: true,
         });
         expect(JSON.parse(json ?? '{}').nullness).toMatchObject({ enabled: false });
         output.mockRestore();
+    });
+
+    it('returns failure for the unfinished new resource engine', async () => {
+        const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        try {
+            const code = await runCLI([
+                'node', 'arklifeguard', 'analyze', fixturePath('resource', 'source-sink'),
+                '--sdk', fixturePath('sdk'), '--checks', 'resource',
+                '--resource-engine', 'new', '--format', 'json',
+            ]);
+            expect(code).toBe(2);
+            const json = output.mock.calls.map(call => call.join(' '))
+                .find(value => value.startsWith('{'));
+            const report = JSON.parse(json ?? '{}');
+            expect(report.status).toBe('failed');
+            expect(report.resourceAnalysis).toMatchObject({
+                engine: 'legacy', enabled: false, resourceLeaks: [],
+            });
+            expect(report.newResourceAnalysis).toMatchObject({
+                status: 'not-implemented', success: false, diagnostics: [],
+            });
+            expect(report.newResourceAnalysis.error).toContain('尚未实现');
+        } finally {
+            output.mockRestore();
+        }
     });
 
     it('runs both core checks by default', async () => {
