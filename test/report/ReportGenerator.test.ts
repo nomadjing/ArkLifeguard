@@ -21,6 +21,7 @@ const result: ProjectAnalysisResult = {
         analyzeNavigation: true,
         runNullness: true,
         runResourceAnalysis: true,
+        resourceEngine: 'legacy',
         lifecycleModel: 'flat',
         lifecycleOptimizations: {
             compactDispatcher: true,
@@ -121,6 +122,7 @@ const result: ProjectAnalysisResult = {
     },
     resourceAnalysis: {
         enabled: true,
+        engine: 'legacy',
         success: true,
         entryMethod: 'DummyMain.main()',
         resourceLeaks: [{
@@ -240,6 +242,7 @@ describe('ReportGenerator', () => {
         });
         expect(report.nullness.diagnostics).toHaveLength(1);
         expect(report.resourceAnalysis.resourceLeaks).toHaveLength(1);
+        expect(report.resourceAnalysis.engine).toBe('legacy');
         expect(report.duration).toEqual({ total: 155 });
         expect(report).not.toHaveProperty('settings');
         expect(report).not.toHaveProperty('abilities');
@@ -247,6 +250,39 @@ describe('ReportGenerator', () => {
         expect(report).not.toHaveProperty('navigations');
         expect(report).not.toHaveProperty('dummyMain');
     });
+
+    it.each(['json', 'text', 'markdown', 'html'] as const)(
+        'shows a failed new resource engine in %s instead of a clean result', format => {
+            const failed: ProjectAnalysisResult = {
+                ...result,
+                status: 'failed',
+                settings: { ...result.settings, resourceEngine: 'new' },
+                summary: { ...result.summary, resourceLeaks: 0 },
+                resourceAnalysis: {
+                    ...result.resourceAnalysis,
+                    enabled: false,
+                    resourceLeaks: [],
+                    methodLocal: { leaks: [], analyzedMethods: 0, sourceCount: 0, sinkCount: 0 },
+                },
+                newResourceAnalysis: {
+                    status: 'not-implemented', success: false,
+                    entryMethod: 'DummyMain.main()', diagnostics: [],
+                    error: '新资源分析尚未实现',
+                },
+                errors: ['新资源分析尚未实现'],
+            };
+            const report = new ReportGenerator().generate(failed, { format });
+            expect(report).toContain('新资源分析尚未实现');
+            if (format === 'json') {
+                expect(JSON.parse(report).newResourceAnalysis).toMatchObject({
+                    status: 'not-implemented', success: false, error: '新资源分析尚未实现',
+                });
+            } else {
+                expect(report).toContain('失败');
+                expect(report).not.toContain('未检出资源泄漏候选问题');
+            }
+        }
+    );
 
     it('writes lifecycle modeling details as a separate report', () => {
         const report = JSON.parse(new LifecycleReportGenerator().generate(result));
