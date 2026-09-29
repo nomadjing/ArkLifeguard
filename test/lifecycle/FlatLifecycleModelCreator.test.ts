@@ -94,6 +94,49 @@ describe('interchangeable lifecycle model entry', () => {
         expect(hasCycle(blocks)).toBe(false);
     });
 
+    it.each([1, 2, 3])(
+        'bounds optimized-flat paths to at most %i callback invocations',
+        maxCallbackIterations => {
+            const creator = createLifecycleModelCreator(
+                buildLifecycleScene('simple'),
+                'bounded-opt-flat',
+                { bounds: { maxCallbackIterations } as any }
+            );
+            creator.create();
+
+            const cfg = creator.getDummyMain().getCfg()!;
+            const blocks = [...cfg.getBlocks()];
+            expect(hasCycle(blocks)).toBe(false);
+            const callbackCalls = blocks.flatMap(invokedNames).filter(name =>
+                ['onForeground', 'onBackground', 'build', 'handleClick'].includes(name)
+            );
+            expect(callbackCalls.filter(name => name === 'handleClick')).toHaveLength(
+                maxCallbackIterations
+            );
+        }
+    );
+
+    it('preserves optimized-flat callback kinds in every bounded layer', () => {
+        const create = (mode: 'opt-flat' | 'bounded-opt-flat', k = 1) => {
+            const creator = createLifecycleModelCreator(
+                buildLifecycleScene('simple'),
+                mode,
+                { bounds: { maxCallbackIterations: k } as any }
+            );
+            creator.create();
+            return [...creator.getDummyMain().getCfg()!.getBlocks()]
+                .flatMap(invokedNames);
+        };
+        const unboundedKinds = new Set(create('opt-flat'));
+        const boundedCalls = create('bounded-opt-flat', 2);
+        const boundedKinds = new Set(boundedCalls);
+
+        expect(boundedKinds).toEqual(unboundedKinds);
+        for (const name of ['onForeground', 'onBackground', 'build', 'handleClick']) {
+            expect(boundedCalls.filter(candidate => candidate === name)).toHaveLength(2);
+        }
+    });
+
     it('keeps the hierarchical model cyclic for unbounded legal repetition', () => {
         const creator = createLifecycleModelCreator(
             buildLifecycleScene('simple'),

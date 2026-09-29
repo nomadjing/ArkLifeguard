@@ -326,8 +326,7 @@ export interface BoundsConfig {
    * - 1 = bounded-unroll 中每个回调只执行一次，DummyMain CFG 为 DAG
    * - 2+ = 允许重复，覆盖更多路径但分析代价更高
    *
-   * 仅兼容的 LifecycleModelCreator（bounded-unroll）消费此参数；
-   * Flat/Hierarchical 循环模型忽略它。
+   * `bounded-unroll` 与 `bounded-opt-flat` 消费此参数；其余循环模型忽略它。
    */
   maxCallbackIterations: number;
 

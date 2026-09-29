@@ -361,7 +361,7 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
       if (appear) this.addMethodInvocation(entryBlock, instance, appear);
     }
 
-    const dispatcher = this.createGlobalDispatcher(cfg, entryBlock);
+    const invocationFactories: Array<() => BasicBlock> = [];
     for (const ability of this.abilities) {
       const instance = this.getOrCreateClassInstance(ability.arkClass);
       const emitted = new Set<string>();
@@ -373,7 +373,9 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
         const signature = method?.getSignature().toString();
         if (!method || !signature || emitted.has(signature)) continue;
         emitted.add(signature);
-        this.addGlobalInvocation(cfg, dispatcher, [[instance, method]]);
+        invocationFactories.push(() =>
+          this.createMethodInvocationBlock(cfg, [[instance, method]])
+        );
       }
     }
 
@@ -381,7 +383,11 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
       const instance = this.getOrCreateClassInstance(component.arkClass);
       for (const stage of COMPONENT_LOOP_STAGES) {
         const method = component.lifecycleMethods.get(stage);
-        if (method) this.addGlobalInvocation(cfg, dispatcher, [[instance, method]]);
+        if (method) {
+          invocationFactories.push(() =>
+            this.createMethodInvocationBlock(cfg, [[instance, method]])
+          );
+        }
       }
       const reusePair: Array<[Local, ArkMethod]> = [];
       const recycle = component.lifecycleMethods.get(
@@ -392,14 +398,20 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
       );
       if (recycle) reusePair.push([instance, recycle]);
       if (reuse) reusePair.push([instance, reuse]);
-      this.addGlobalInvocation(cfg, dispatcher, reusePair);
+      if (reusePair.length > 0) {
+        invocationFactories.push(() =>
+          this.createMethodInvocationBlock(cfg, reusePair)
+        );
+      }
 
       if (this.config.enableFineGrainedUICallbacks) {
         for (const callback of component.uiCallbacks) {
-          const callbackBlock = new BasicBlock();
-          this.addUICallbackInvocation(callbackBlock, instance, callback);
-          cfg.addBlock(callbackBlock);
-          this.linkGlobal(cfg, dispatcher, callbackBlock);
+          invocationFactories.push(() => {
+            const callbackBlock = new BasicBlock();
+            this.addUICallbackInvocation(callbackBlock, instance, callback);
+            cfg.addBlock(callbackBlock);
+            return callbackBlock;
+          });
         }
       }
     }
@@ -427,7 +439,29 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
     }
     returnBlock.addStmt(new ArkReturnVoidStmt());
     cfg.addBlock(returnBlock);
-    this.linkBlocks(dispatcher, returnBlock);
+
+    const maxInvocations = this.maxCallbackInvocations();
+    if (maxInvocations === null) {
+      const dispatcher = this.createGlobalDispatcher(cfg, [entryBlock]);
+      for (const createInvocation of invocationFactories) {
+        this.linkGlobal(cfg, dispatcher, createInvocation(), dispatcher);
+      }
+      this.linkBlocks(dispatcher, returnBlock);
+    } else {
+      let predecessors = [entryBlock];
+      for (let invocationIndex = 0; invocationIndex < maxInvocations; invocationIndex++) {
+        const dispatcher = this.createGlobalDispatcher(cfg, predecessors);
+        const invocationBlocks = invocationFactories.map(createInvocation => {
+          const invocation = createInvocation();
+          this.linkGlobal(cfg, dispatcher, invocation);
+          return invocation;
+        });
+        predecessors = [dispatcher, ...invocationBlocks];
+      }
+      for (const predecessor of predecessors) {
+        this.linkBlocks(predecessor, returnBlock);
+      }
+    }
 
     this.dummyMain.setBody(
       new ArkBody(new Set(this.classInstanceMap.values()), cfg),
@@ -435,38 +469,42 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
     this.linkStmtsToCfg(cfg);
   }
 
-  private addGlobalInvocation(
+  /** Null means the callback dispatcher is cyclic and therefore unbounded. */
+  protected maxCallbackInvocations(): number | null {
+    return null;
+  }
+
+  private createMethodInvocationBlock(
     cfg: Cfg,
-    dispatcher: BasicBlock,
     invocations: Array<[Local, ArkMethod]>,
-  ): void {
-    if (invocations.length === 0) return;
+  ): BasicBlock {
     const block = new BasicBlock();
     for (const [instance, method] of invocations) {
       this.addMethodInvocation(block, instance, method);
     }
     cfg.addBlock(block);
-    this.linkGlobal(cfg, dispatcher, block);
+    return block;
   }
 
   private linkGlobal(
     cfg: Cfg,
     dispatcher: BasicBlock,
     invocation: BasicBlock,
+    continuation?: BasicBlock,
   ): void {
     if (this.config.optimizations.compactDispatcher) {
       this.linkBlocks(dispatcher, invocation);
     } else {
-      const condition = this.createGlobalDispatcher(cfg, dispatcher);
+      const condition = this.createGlobalDispatcher(cfg, [dispatcher]);
       this.linkBlocks(condition, invocation);
       this.linkBlocks(condition, dispatcher);
     }
-    this.linkBlocks(invocation, dispatcher);
+    if (continuation) this.linkBlocks(invocation, continuation);
   }
 
   private createGlobalDispatcher(
     cfg: Cfg,
-    predecessor: BasicBlock,
+    predecessors: BasicBlock[],
   ): BasicBlock {
     const block = new BasicBlock();
     block.addStmt(new ArkIfStmt(new ArkConditionExpr(
@@ -475,7 +513,9 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
       RelationalBinaryOperator.InEquality,
     )));
     cfg.addBlock(block);
-    this.linkBlocks(predecessor, block);
+    for (const predecessor of predecessors) {
+      this.linkBlocks(predecessor, block);
+    }
     return block;
   }
 
@@ -492,5 +532,20 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
   private linkBlocks(from: BasicBlock, to: BasicBlock): void {
     from.addSuccessorBlock(to);
     to.addPredecessorBlock(from);
+  }
+}
+
+/**
+ * Finite expansion of the optimized-flat callback dispatcher.
+ *
+ * Each layer nondeterministically executes zero or one callback invocation,
+ * then continues to the next layer. Consequently K bounds the number of
+ * callback invocations on every DummyMain path while preserving opt-flat's
+ * callback set, Ability pruning, initialization and teardown behavior.
+ */
+export class BoundedOptimizedFlatLifecycleModelCreator
+  extends OptimizedFlatLifecycleModelCreator {
+  protected override maxCallbackInvocations(): number {
+    return this.config.bounds.maxCallbackIterations;
   }
 }

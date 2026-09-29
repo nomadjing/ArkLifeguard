@@ -16,27 +16,17 @@ Ability owner 是外层边界，Page owner 是内层 callback scope。唯一归�
 
 ## Next Experiment
 
-### Non-empty two-Page diagnostics oracle
-
-当前 controlled fixture 没有 nullness source，`opt-flat` 与 `hierarchical`
-都返回空 diagnostics。这只证明该 fixture 上没有额外报警，不能证明
-Page constraint 减少了 false positive，也不能证明合法污点路径未丢失。
-
-下一步在现有 Home/Details fixture 中加入三类有明确 oracle 的路径：
-
-1. Home 同 Page source → sink：两个模型都必须报警；
-2. Home source → Details sink、且无 route：`opt-flat` 报警，`hierarchical`
-   必须删除这个非法直连路径；
-3. Home route source → Details sink：两个模型都必须保留报警。
-
-验证时同时锁定 callback 集合、穷举 callback ordered pairs 和 diagnostics
-source/sink key。只有三类 oracle 都通过，才能回答 Current Question 1。
+暂无。K-bound screening 已完成并停止该方向；下一项实验需根据 Current Questions 重新选择。
 
 ## Latest Finding
 
+- [K-bound screening](uncategorized/k-bound-screening.md)：四项目 16 次运行全部成功，
+  K=1 的 `processedEdges` / `propagationAttempts` 仅下降 1.65% / 2.43%，且两个
+  项目完全不降；K=2/3 因复制 CFG 反而使 workload 显著高于 K=∞。所有 K 的
+  diagnostics exact set 与基线一致。本方向停止。
 - `hierarchical` 是唯一 canonical 生命周期结构模型；它在同一实现中融合 Ability ownership、Page scope 和 compact dispatcher。未知归属与动态目标继续走保守 fallback。
 - controlled Page fixture 保留全部 4 个 callback；16 个候选有序 callback 对保留 11、删除 5，并保留显式 Home → Details route。
-- 当前 fixture 的 diagnostics 仍为空，因此尚未建立非空 precision/recall oracle；Next Experiment 保持不变。
+- 当前 fixture 的 diagnostics 仍为空，因此非空 precision/recall oracle 仍是尚未完成的问题。
 - 四个真实项目的 Page-local opportunity profiling 中，foreign Page synthetic invocation 只占 lifecycle processed edges 的 0.1614%、propagation attempts 的 0.1179%。该方向已停止，profiling instrumentation 已删除，结论归档。
 - compact dispatcher 仍是归因最明确的结构优化；Page-local fact bypass 不再是当前优化候选。
 

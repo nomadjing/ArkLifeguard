@@ -73,7 +73,13 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
             'checks to run: all, nullness, resource, or a comma-separated list'
         ).argParser(parseChecks).default(['nullness', 'resource'] as AnalysisCheck[], 'all'))
         .addOption(new Option('--lifecycle-model <mode>', 'DummyMain lifecycle model')
-            .choices(['flat', 'opt-flat', 'hierarchical', 'bounded-unroll']).default('flat'))
+            .choices([
+                'flat',
+                'opt-flat',
+                'bounded-opt-flat',
+                'hierarchical',
+                'bounded-unroll',
+            ]).default('flat'))
         .option('--no-compact-lifecycle-dispatcher', 'disable compact lifecycle dispatch (RQ1.5 ablation)')
         .option('--no-prune-unreachable-abilities', 'retain unreachable Abilities (RQ1.5 ablation)')
         .option('--max-callback-iterations <n>', 'bounded lifecycle expansion rounds', positiveInteger, 1)

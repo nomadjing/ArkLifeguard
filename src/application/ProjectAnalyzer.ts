@@ -300,7 +300,9 @@ export class ProjectAnalyzer {
 
         const lifecycleStart = Date.now();
         const creator = this.withLifecycleConsole(() => {
-            const boundedUnrollConfig = this.options.lifecycleModel === 'bounded-unroll'
+            const boundedUnrollConfig =
+                this.options.lifecycleModel === 'bounded-unroll' ||
+                this.options.lifecycleModel === 'bounded-opt-flat'
                 ? {
                     bounds: {
                         maxCallbackIterations: this.options.maxCallbackIterations,
@@ -467,7 +469,9 @@ export class ProjectAnalyzer {
                     maxPropagationDepth: this.options.maxPropagationDepth,
                 },
                 boundEnforcement: {
-                    maxCallbackIterations: this.options.lifecycleModel === 'bounded-unroll'
+                    maxCallbackIterations:
+                        this.options.lifecycleModel === 'bounded-unroll' ||
+                        this.options.lifecycleModel === 'bounded-opt-flat'
                         ? 'enforced'
                         : 'inactive-with-cyclic-model',
                     maxAbilitiesPerFlow: this.options.runResourceAnalysis

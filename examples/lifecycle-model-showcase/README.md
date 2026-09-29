@@ -39,6 +39,9 @@ npm run inspect:dummymain -- \
 
 也可以将 `--model hierarchical` 换成 `flat` 或 `opt-flat`，比较不同 DummyMain 的 scope 与 CFG。
 
+本项目上 flat 与 hierarchical 两种模型的完整对比（CFG 形态、剪枝统计、特点与适用场景）见
+[生命周期建模对比：Flat 与 Hierarchical](../../docs/lifecycle-model-comparison.md)。
+
 ## 设计边界
 
 - 只保留能够说明建模关系的核心回调，不追求覆盖全部 HarmonyOS API。

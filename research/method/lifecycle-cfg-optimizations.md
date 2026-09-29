@@ -14,6 +14,46 @@
 
 一个 scope head 直接连接所有可调用 invocation block；每个 invocation 执行后回到同一个 head。它替代“每个 callback 一个条件节点并串联”的表达，保留非确定选择语义，但显著减少 block、edge 和中间传播状态。
 
+以两个 callback 为例，关闭 compact dispatcher 时，每个 callback 前都需要一个只用于表达“执行或跳过”的合成条件块：
+
+```mermaid
+flowchart LR
+    D{"Dispatcher"}
+    C1{"condition A"}
+    C2{"condition B"}
+    A["callback A"]
+    B["callback B"]
+    E["Exit"]
+
+    D --> C1
+    D --> C2
+    D --> E
+    C1 -->|execute| A
+    C1 -->|skip| D
+    A --> D
+    C2 -->|execute| B
+    C2 -->|skip| D
+    B --> D
+```
+
+开启 compact dispatcher 后，scope head 直接表达非确定选择：
+
+```mermaid
+flowchart LR
+    D{"Dispatcher"}
+    A["callback A"]
+    B["callback B"]
+    E["Exit"]
+
+    D -->|choose A| A
+    D -->|choose B| B
+    D -->|stop| E
+    A --> D
+    B --> D
+```
+
+两种 CFG 接受的 callback 序列都是 `(A | B)* -> Exit`。因此该优化不删除 callback，也不限制调用次数；它只删除没有领域语义的中间条件块。对于有 `N` 个可选 invocation 的单个 dispatcher，主要结构从 `1 + 2N` 个 block、`4N + 1` 条 edge 降为 `1 + N` 个 block、`2N + 1` 条 edge。
+
 ### Conservative Ability pruning
 
 从 entry Ability 出发，只保留静态 `startAbility` 可达闭包。出现以下任一情况时关闭裁剪并保守保留：
@@ -21,6 +61,50 @@
 - 缺少 entry Ability；
 - `startAbility` 目标无法解析；
 - 含 `startAbility` 的 Component 没有可解析 owner。
+
+下图中，`AbilityB` 由 entry 可达，必须保留；`AbilityC` 在所有目标都能静态解析时可被删除。一旦存在未解析目标或 owner，则不执行这个删除，而是退化到全部保留。
+
+```mermaid
+flowchart LR
+    Audit["Analyze startAbility graph"]
+    Entry["Entry Ability"]
+    B["AbilityB"]
+    C["AbilityC"]
+    U{"unresolved target / owner?"}
+    Keep["Conservative fallback:<br/>keep all Abilities"]
+    Prune["Pruned as unreachable"]
+
+    Audit --> U
+    Entry -->|resolved startAbility| B
+    U -->|yes| Keep
+    U -->|no| Entry
+    C -. no path from Entry .-> Prune
+```
+
+Hierarchical 模型在更细的 Page scope 上使用同样的“有证据才剪枝”原则：普通 callback 回到当前 Page，只有静态解析的导航 callback 才可进入目标 Page；Page owner 或 route 不确定时进入 fallback。
+
+```mermaid
+flowchart LR
+    H{"Home Page"}
+    HC["ordinary Home callback"]
+    Nav["navigateToDetails"]
+    D{"Details Page"}
+    DC["Details callback"]
+    F{"Fallback"}
+    U["unknown-owner callback"]
+
+    H --> HC --> H
+    H --> Nav
+    Nav -->|local continuation| H
+    Nav -->|resolved route| D
+    D --> DC --> D
+    H -. no direct transition .-> DC
+    H --> F
+    D --> F
+    F --> U --> F
+    F --> H
+    F --> D
+```
 
 `ohosTest` 和 `src/test` Ability 在公共收集阶段统一过滤，Flat 与 Hierarchical 使用相同规则；它不是 M1 的专属收益来源。
 
@@ -59,6 +143,8 @@
 ## 为什么效果较好
 
 IFDS 的成本不仅取决于业务方法数量，也取决于事实需要穿过多少合成控制流节点。compact dispatcher 直接删掉大量只用于表达非确定选择的中间节点，所以在不减少事件的情况下，同时降低 reached statements、path edge 和 propagation attempts；这比仅提升 ownership 覆盖更直接。
+
+具体地说，如果某个 dispatcher 到达了 `F` 个带上下文的 IFDS 事实，那么 `N` 个合成条件块带来的额外工作不是常数级的 `N`，而是近似 `F * N`。这些节点还会继续放大 PathEdge 传播、去重查询和 successor flow-function 调用。因此 compact dispatcher 的收益本质上是“减少每个事实要穿过的合成结构”，而不是“少分析一些 callback”。
 
 ## 已知限制
 
