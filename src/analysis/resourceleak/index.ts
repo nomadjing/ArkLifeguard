@@ -1,6 +1,7 @@
 export { ResourceProblem } from './ResourceProblem';
 export { ResourceRunner } from './ResourceRunner';
-export type { ResourceFact, ResourceState } from './ResourceFact';
+export { ResourceFact } from './ResourceFact';
+export type { ResourceState, ResourceEvent } from './ResourceFact';
 export type {
     ResourceAnalysisResult,
     ResourceDiagnostic,

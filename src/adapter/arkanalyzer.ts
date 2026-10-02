@@ -34,6 +34,7 @@ export {
   ArkArrayRef,
   ArkCaughtExceptionRef,
   ArkInstanceFieldRef,
+  ArkStaticFieldRef,
   ArkParameterRef,
   ArkThisRef,
   ClosureFieldRef,

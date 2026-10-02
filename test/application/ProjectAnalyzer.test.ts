@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ProjectAnalyzer } from '../../src/application';
-import { fixturePath } from '../helpers/buildScene';
+import { buildResourceScene, fixturePath } from '../helpers/buildScene';
 
 describe('ProjectAnalyzer end-to-end application service', () => {
     it('runs Scene, bounded lifecycle, resource analysis, nullness and result assembly in one chain', async () => {
@@ -84,9 +84,45 @@ describe('ProjectAnalyzer end-to-end application service', () => {
         expect(result.newResourceAnalysis).toMatchObject({
             status: 'not-implemented', success: false, diagnostics: [],
         });
-        expect(result.newResourceAnalysis?.error).toContain('尚未实现');
+        expect(result.newResourceAnalysis?.error).toContain('尚未配置规则');
         expect(result.resourceAnalysis.methodLocal.leaks).toEqual([]);
         expect(result.summary.resourceLeaks).toBe(0);
         expect(result.errors).toContain(result.newResourceAnalysis?.error);
+    });
+
+    it('runs injected new-engine rules without adding legacy diagnostics', async () => {
+        const scene = buildResourceScene('source-sink');
+        const signature = (name: string) => {
+            for (const method of scene.getMethods()) {
+                for (const stmt of method.getCfg()?.getStmts() ?? []) {
+                    const invoked = stmt.getInvokeExpr()?.getMethodSignature();
+                    if (invoked?.getDeclaringClassSignature().getClassName() === 'AVPlayer' &&
+                        invoked.getMethodSubSignature().getMethodName() === name) {
+                        return invoked.toString();
+                    }
+                }
+            }
+            throw new Error(`missing AVPlayer.${name}`);
+        };
+        const result = await new ProjectAnalyzer({
+            sdkPaths: [fixturePath('sdk')],
+            runNullness: false,
+            resourceEngine: 'new',
+            resourceRules: [{
+                id: 'AVPlayerNotReleased', scope: 'resource',
+                allocators: [{ methodSignature: signature('createAVPlayer'),
+                    handleLocation: { kind: 'return' } }],
+                releasers: [{ methodSignature: signature('release'),
+                    handleLocation: { kind: 'base' } }],
+            }],
+        }).analyze(fixturePath('resource', 'source-sink'));
+
+        expect(result.status).toBe('success');
+        expect(result.resourceAnalysis.enabled).toBe(false);
+        expect(result.resourceAnalysis.resourceLeaks).toEqual([]);
+        expect(result.newResourceAnalysis?.success).toBe(true);
+        expect(result.newResourceAnalysis?.diagnostics).toMatchObject([{
+            ruleId: 'AVPlayerNotReleased', reason: 'unreleased',
+        }]);
     });
 });

@@ -284,6 +284,29 @@ describe('ReportGenerator', () => {
         }
     );
 
+    it.each(['json', 'text', 'markdown', 'html'] as const)(
+        'renders new resource diagnostics in %s', format => {
+            const withNew: ProjectAnalysisResult = {
+                ...result,
+                settings: { ...result.settings, resourceEngine: 'new' },
+                resourceAnalysis: { ...result.resourceAnalysis, enabled: false, resourceLeaks: [] },
+                newResourceAnalysis: {
+                    status: 'success', success: true, entryMethod: 'DummyMain.main()',
+                    diagnostics: [{
+                        ruleId: 'HandleNotReleased', reason: 'unreleased', confidence: 'high',
+                        allocation: { filePath: '/project/Index.ets', line: 20, col: 5 },
+                        boundary: { filePath: '/project/Index.ets', line: 30, col: 1 },
+                        evidence: [],
+                    }],
+                },
+            };
+            const report = new ReportGenerator().generate(withNew, { format });
+            expect(report).toContain('HandleNotReleased');
+            expect(report).toContain('unreleased');
+            expect(report).toContain('/project/Index.ets');
+        }
+    );
+
     it('writes lifecycle modeling details as a separate report', () => {
         const report = JSON.parse(new LifecycleReportGenerator().generate(result));
         expect(report.reportKind).toBe('lifecycle-modeling-details');

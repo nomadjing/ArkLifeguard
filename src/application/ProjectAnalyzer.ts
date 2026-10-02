@@ -28,7 +28,7 @@ import {
     TaintAnalysisRunner,
 } from '../analysis/resource';
 import { ResourceRunner } from '../analysis/resourceleak';
-import type { ResourceAnalysisResult } from '../analysis/resourceleak';
+import type { ResourceAnalysisResult, ResourceRule } from '../analysis/resourceleak';
 import type { IFDSSolverStatistics } from '../ifds';
 
 export type ResourceEngine = 'legacy' | 'new';
@@ -42,6 +42,7 @@ export interface ProjectAnalysisOptions {
     runNullness?: boolean;
     runResourceAnalysis?: boolean;
     resourceEngine?: ResourceEngine;
+    resourceRules?: readonly ResourceRule[];
     lifecycleModel?: LifecycleModelMode;
     compactLifecycleDispatcher?: boolean;
     pruneUnreachableAbilities?: boolean;
@@ -261,7 +262,7 @@ export interface LifecycleAmplificationRecord {
     edgesPerStatement: number | null;
 }
 
-const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths'>> = {
+const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules'>> = {
     inferTypes: true,
     extractUICallbacks: true,
     analyzeNavigation: true,
@@ -283,8 +284,8 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
 
 /** Complete CLI-facing application service for lifecycle, resource and nullness analysis. */
 export class ProjectAnalyzer {
-    private readonly options: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths'>> &
-        Pick<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths'>;
+    private readonly options: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules'>> &
+        Pick<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules'>;
     private readonly warnings: string[] = [];
 
     constructor(options: ProjectAnalysisOptions = {}) {
@@ -368,7 +369,8 @@ export class ProjectAnalyzer {
                     methodLocalLeaks = methodLocalDetector.detect();
                     scannedLocations = new SourceSinkLocationScanner(scene).scan();
                 } else {
-                    newResourceResult = new ResourceRunner(scene).runWithDummyMain(dummyMain);
+                    newResourceResult = new ResourceRunner(scene, this.options.resourceRules)
+                        .runWithDummyMain(dummyMain);
                     if (!newResourceResult.success) {
                         resourceError = newResourceResult.error ?? '新资源分析失败，未生成诊断。';
                     }

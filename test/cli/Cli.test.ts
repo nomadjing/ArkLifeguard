@@ -71,7 +71,7 @@ describe('ArkLifeguard CLI', () => {
             expect(report.newResourceAnalysis).toMatchObject({
                 status: 'not-implemented', success: false, diagnostics: [],
             });
-            expect(report.newResourceAnalysis.error).toContain('尚未实现');
+            expect(report.newResourceAnalysis.error).toContain('尚未配置规则');
         } finally {
             output.mockRestore();
         }

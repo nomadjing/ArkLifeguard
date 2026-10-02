@@ -27,6 +27,9 @@ export interface ResourceAnalysisResult {
     readonly status: ResourceEngineStatus;
     readonly success: boolean;
     readonly entryMethod: string;
+    readonly ruleIds?: readonly string[];
     readonly diagnostics: readonly ResourceDiagnostic[];
+    readonly reachedStatements?: number;
+    readonly reachedFacts?: number;
     readonly error?: string;
 }

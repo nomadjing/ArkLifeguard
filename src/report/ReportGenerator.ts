@@ -92,9 +92,20 @@ export class ReportGenerator {
             lines.push(`  新资源分析: ${result.newResourceAnalysis.success
                 ? result.newResourceAnalysis.diagnostics.length : '失败'}`);
             lines.push('', '【新资源泄漏诊断】');
-            lines.push(result.newResourceAnalysis.success
-                ? '  新资源分析已完成。'
-                : `  分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
+            if (!result.newResourceAnalysis.success) {
+                lines.push(`  分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
+            } else if (result.newResourceAnalysis.diagnostics.length === 0) {
+                lines.push('  未检出新资源泄漏候选问题。');
+            } else {
+                result.newResourceAnalysis.diagnostics.forEach((diagnostic, index) => {
+                    lines.push(`  ${index + 1}. ${diagnostic.ruleId}：${diagnostic.reason}（${diagnostic.confidence}）`);
+                    lines.push(`     创建: ${this.locationText(diagnostic.allocation)}`);
+                    lines.push(`     边界: ${this.locationText(diagnostic.boundary)}`);
+                    for (const event of diagnostic.evidence.slice(1, -1)) {
+                        lines.push(`     关键节点: ${this.locationText(event)}`);
+                    }
+                });
+            }
         }
         lines.push('', '【资源泄漏诊断】');
         if (!result.resourceAnalysis.enabled) {
@@ -167,9 +178,21 @@ export class ReportGenerator {
             `| 总耗时(ms) | ${result.duration.total} |`,
         ];
         if (result.newResourceAnalysis) {
-            lines.push('', '## 新资源泄漏诊断', '', result.newResourceAnalysis.success
-                ? '新资源分析已完成。'
-                : `分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
+            lines.push('', '## 新资源泄漏诊断', '');
+            if (!result.newResourceAnalysis.success) {
+                lines.push(`分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
+            } else if (result.newResourceAnalysis.diagnostics.length === 0) {
+                lines.push('未检出新资源泄漏候选问题。');
+            } else {
+                for (const diagnostic of result.newResourceAnalysis.diagnostics) {
+                    lines.push(`- **${diagnostic.ruleId}** ${diagnostic.reason}（${diagnostic.confidence}）`);
+                    lines.push(`  - 创建：\`${this.locationText(diagnostic.allocation)}\``);
+                    lines.push(`  - 边界：\`${this.locationText(diagnostic.boundary)}\``);
+                    for (const event of diagnostic.evidence.slice(1, -1)) {
+                        lines.push(`  - 关键节点：\`${this.locationText(event)}\``);
+                    }
+                }
+            }
         }
         lines.push('', '## 资源泄漏诊断', '');
         if (!result.resourceAnalysis.enabled) {
@@ -261,6 +284,19 @@ export class ReportGenerator {
                 <div><code>${this.escape(`${leak.filePath}:${leak.lineNumber}`)}</code></div>
                 <div>期望释放: <code>${this.escape(leak.expectedSink)}</code></div>
             </li>`).join('')}</ol>`;
+        const newResourceLeaks = result.newResourceAnalysis
+            ? !result.newResourceAnalysis.success
+                ? `<p>分析失败：${this.escape(result.newResourceAnalysis.error ?? '未知错误')}</p>`
+                : result.newResourceAnalysis.diagnostics.length === 0
+                    ? '<p>未检出新资源泄漏候选问题。</p>'
+                    : `<ol>${result.newResourceAnalysis.diagnostics.map(item => `<li>
+                        <strong>${this.escape(item.ruleId)}</strong> ${this.escape(item.reason)}
+                        (${this.escape(item.confidence)})
+                        <div>创建: <code>${this.escape(this.locationText(item.allocation))}</code></div>
+                        <div>边界: <code>${this.escape(this.locationText(item.boundary))}</code></div>
+                        ${item.evidence.slice(1, -1).map(event => `<div>关键节点: <code>${this.escape(this.locationText(event))}</code></div>`).join('')}
+                    </li>`).join('')}</ol>`
+            : '';
         return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font:14px/1.6 system-ui,sans-serif;max-width:1100px;margin:32px auto;padding:0 20px;color:#202124}h1,h2{color:#16324f}table{border-collapse:collapse;width:100%;margin:12px 0 24px}th,td{border:1px solid #ccd3da;padding:8px;text-align:left}th{background:#f3f6f8}code{background:#f3f6f8;padding:2px 5px}.failed{color:#b42318}.success{color:#067647}</style>
@@ -268,11 +304,7 @@ export class ReportGenerator {
 <p>项目: <code>${this.escape(result.project.path)}</code></p>
 <p>状态: <strong class="${result.status}">${result.status}</strong></p>
 <h2>结果摘要</h2><table>${summaryRows}</table>
-${result.newResourceAnalysis
-    ? `<h2>新资源泄漏诊断</h2><p>${result.newResourceAnalysis.success
-        ? '新资源分析已完成。'
-        : `分析失败：${this.escape(result.newResourceAnalysis.error ?? '未知错误')}`}</p>`
-    : ''}
+${result.newResourceAnalysis ? `<h2>新资源泄漏诊断</h2>${newResourceLeaks}` : ''}
 <h2>资源泄漏诊断</h2>${resourceLeaks}
 <h2>方法内资源泄漏诊断</h2>${methodLocalLeaks}
 <h2>空指针诊断</h2>${diagnostics}
@@ -294,8 +326,8 @@ ${result.newResourceAnalysis
         }
     }
 
-    private locationText(location: { relativePath: string; line: number; col: number }): string {
-        return `${location.relativePath}:${location.line}:${location.col}`;
+    private locationText(location: { relativePath?: string; filePath?: string; line: number; col: number }): string {
+        return `${location.relativePath ?? location.filePath ?? 'unknown'}:${location.line}:${location.col}`;
     }
 
     private escape(value: unknown): string {
