@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import {
     ProjectAnalyzer,
     type DummyMainRecord,
@@ -21,7 +22,7 @@ import {
 import type { IFDSSolverStatistics } from '../src/ifds';
 import type { LifecycleModelMode } from '../src/lifecycle';
 import type { LifecycleModelStatistics } from '../src/lifecycle';
-import type { ResourceAnalysisResult } from '../src/analysis/resourceleak';
+import { HARMONY_RESOURCE_DEFINITIONS, type ResourceAnalysisResult } from '../src/analysis/resourceleak';
 
 type ProjectStatus = 'success' | 'failed' | 'timeout';
 type ResourceEngine = 'legacy' | 'new';
@@ -29,6 +30,7 @@ type ResourceEngine = 'legacy' | 'new';
 interface ProjectMetadata {
     name: string;
     path: string;
+    resolvedCommit?: string;
 }
 
 interface MetadataFile {
@@ -83,6 +85,12 @@ interface ProjectResult {
     taintLeaks: TaintLeakRecord[];
     methodLocalLeaks: MethodLocalResourceLeakRecord[];
     newResourceAnalysis?: ResourceAnalysisResult;
+    newDiagnosticCount: number;
+    newHighConfidenceCount: number;
+    newUnknownOwnershipCount: number;
+    matchedAllocatorCalls: number;
+    reachedAllocatorCalls: number;
+    input?: { metadataCommit?: string; sourceSha256: string; files: number };
 }
 
 interface RealAppsReport {
@@ -114,6 +122,11 @@ interface RealAppsReport {
         resourceLeakCount: number;
         taintLeakCount: number;
         methodLocalLeakCount: number;
+        newDiagnosticCount: number;
+        newHighConfidenceCount: number;
+        newUnknownOwnershipCount: number;
+        matchedAllocatorCalls: number;
+        reachedAllocatorCalls: number;
         averageTotalTimeMs: number;
         averageSceneBuildingTimeMs: number;
         averageLifecycleModelingTimeMs: number;
@@ -138,6 +151,12 @@ interface RealAppsReport {
         };
     };
     projects: ProjectResult[];
+    provenance: {
+        implementationSha256: string;
+        arkanalyzerVersion: string;
+        nodeVersion: string;
+        sdkRuleFiles: readonly { path: string; sha256: string }[];
+    };
 }
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -145,6 +164,44 @@ const scriptDir = path.dirname(scriptPath);
 const repositoryRoot = path.resolve(scriptDir, '..');
 const defaultRealAppsRoot = path.join(repositoryRoot, 'HarmonyRealApps');
 const viteNodePath = path.join(repositoryRoot, 'node_modules/vite-node/vite-node.mjs');
+
+/** Hash the local source snapshot, rather than treating a metadata commit as current contents. */
+function sourceSnapshot(root: string): { sourceSha256: string; files: number } {
+    const files: string[] = [];
+    const walk = (directory: string): void => {
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            if (['.git', 'node_modules', 'build', '.hvigor'].includes(entry.name)) continue;
+            const filename = path.join(directory, entry.name);
+            if (entry.isDirectory()) walk(filename);
+            else if (/\.(?:ts|ets|json|json5)$/.test(entry.name)) files.push(filename);
+        }
+    };
+    walk(root);
+    const hash = createHash('sha256');
+    for (const file of files.sort()) {
+        hash.update(path.relative(root, file)).update('\0').update(fs.readFileSync(file)).update('\0');
+    }
+    return { sourceSha256: hash.digest('hex'), files: files.length };
+}
+
+function provenance(options: Options): RealAppsReport['provenance'] {
+    const modules = new Set(HARMONY_RESOURCE_DEFINITIONS.flatMap(rule =>
+        [...rule.allocators, ...rule.releasers].map(api => api.module)));
+    const sdkRuleFiles = [...modules].sort().flatMap(module => {
+        const filename = path.join(options.sdkRoot, 'openharmony/ets/api', `${module}.d.ts`);
+        return fs.existsSync(filename) ? [{ path: filename,
+            sha256: createHash('sha256').update(fs.readFileSync(filename)).digest('hex') }] : [];
+    });
+    return {
+        implementationSha256: createHash('sha256')
+            .update(sourceSnapshot(path.join(repositoryRoot, 'src')).sourceSha256)
+            .update(fs.readFileSync(scriptPath)).digest('hex'),
+        arkanalyzerVersion: (JSON.parse(fs.readFileSync(
+            path.join(repositoryRoot, 'node_modules/arkanalyzer/package.json'), 'utf8')) as { version: string }).version,
+        nodeVersion: process.version,
+        sdkRuleFiles,
+    };
+}
 
 function help(): void {
     console.log([
@@ -373,6 +430,11 @@ function emptyProjectResult(metadata: ProjectMetadata): ProjectResult {
         resourceLeaks: [],
         taintLeaks: [],
         methodLocalLeaks: [],
+        newDiagnosticCount: 0,
+        newHighConfidenceCount: 0,
+        newUnknownOwnershipCount: 0,
+        matchedAllocatorCalls: 0,
+        reachedAllocatorCalls: 0,
     };
 }
 
@@ -381,6 +443,7 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
     const projectPath = path.resolve(options.realAppsRoot, metadata.path);
     const start = Date.now();
     try {
+        record.input = { metadataCommit: metadata.resolvedCommit, ...sourceSnapshot(projectPath) };
         const result = await new ProjectAnalyzer({
             sdkRoot: options.sdkRoot,
             runNullness: false,
@@ -400,6 +463,13 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         record.methods = result.summary.methods;
         record.resourceLeaks = result.resourceAnalysis.resourceLeaks;
         record.newResourceAnalysis = result.newResourceAnalysis;
+        const diagnostics = result.newResourceAnalysis?.diagnostics ?? [];
+        record.newDiagnosticCount = diagnostics.length;
+        record.newHighConfidenceCount = diagnostics.filter(item => item.confidence === 'high').length;
+        record.newUnknownOwnershipCount = diagnostics.filter(item => item.confidence === 'low').length;
+        const coverage = result.newResourceAnalysis?.coverage ?? [];
+        record.matchedAllocatorCalls = coverage.reduce((sum, item) => sum + item.allocatorCalls, 0);
+        record.reachedAllocatorCalls = coverage.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0);
         record.taintLeaks = result.resourceAnalysis.taintLeaks;
         record.methodLocalLeaks = result.resourceAnalysis.methodLocal.leaks;
         record.resourceLeakCount = record.resourceLeaks.length;
@@ -408,12 +478,12 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         record.sourceCount = result.summary.sources;
         record.sinkCount = result.summary.sinks;
         record.analyzedMethods = result.resourceAnalysis.analyzedMethods;
-        record.reachedStatements = result.resourceAnalysis.reachedStatements;
-        record.reachedFacts = result.resourceAnalysis.reachedFacts;
+        record.reachedStatements = result.newResourceAnalysis?.reachedStatements ?? result.resourceAnalysis.reachedStatements;
+        record.reachedFacts = result.newResourceAnalysis?.reachedFacts ?? result.resourceAnalysis.reachedFacts;
         record.resourceAnalysisTimeMs = result.duration.resourceAnalysis;
         record.sceneBuildingTimeMs = result.duration.sceneBuilding;
         record.lifecycleModelingTimeMs = result.duration.lifecycleModeling;
-        record.solverStatistics = result.resourceAnalysis.solverStatistics;
+        record.solverStatistics = result.newResourceAnalysis?.solverStatistics ?? result.resourceAnalysis.solverStatistics;
         record.lifecycleStatistics = result.lifecycleStatistics;
         record.dummyMain = result.dummyMain;
         record.amplification = result.resourceAnalysis.amplification;
@@ -452,6 +522,11 @@ function emptySummary(selectedProjects: number): RealAppsReport['summary'] {
         resourceLeakCount: 0,
         taintLeakCount: 0,
         methodLocalLeakCount: 0,
+        newDiagnosticCount: 0,
+        newHighConfidenceCount: 0,
+        newUnknownOwnershipCount: 0,
+        matchedAllocatorCalls: 0,
+        reachedAllocatorCalls: 0,
         averageTotalTimeMs: 0,
         averageSceneBuildingTimeMs: 0,
         averageLifecycleModelingTimeMs: 0,
@@ -475,11 +550,16 @@ function updateSummary(report: RealAppsReport): void {
         failedProjects: report.projects.filter(item => item.status === 'failed').length,
         timedOutProjects: report.projects.filter(item => item.status === 'timeout').length,
         projectsWithLeaks: successful.filter(item =>
-            item.resourceLeakCount + item.taintLeakCount + item.methodLocalLeakCount > 0
+            item.resourceLeakCount + item.taintLeakCount + item.methodLocalLeakCount + item.newHighConfidenceCount > 0
         ).length,
         resourceLeakCount: successful.reduce((sum, item) => sum + item.resourceLeakCount, 0),
         taintLeakCount: successful.reduce((sum, item) => sum + item.taintLeakCount, 0),
         methodLocalLeakCount: successful.reduce((sum, item) => sum + item.methodLocalLeakCount, 0),
+        newDiagnosticCount: successful.reduce((sum, item) => sum + item.newDiagnosticCount, 0),
+        newHighConfidenceCount: successful.reduce((sum, item) => sum + item.newHighConfidenceCount, 0),
+        newUnknownOwnershipCount: successful.reduce((sum, item) => sum + item.newUnknownOwnershipCount, 0),
+        matchedAllocatorCalls: successful.reduce((sum, item) => sum + item.matchedAllocatorCalls, 0),
+        reachedAllocatorCalls: successful.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0),
         averageTotalTimeMs: average(successful.map(item => item.totalTimeMs)),
         averageSceneBuildingTimeMs: average(
             successful.map(item => item.sceneBuildingTimeMs)
@@ -572,6 +652,7 @@ async function main(): Promise<void> {
             },
         },
         summary: emptySummary(selected.length),
+        provenance: provenance(options),
         projects: [],
     };
     console.log(
@@ -631,7 +712,9 @@ async function main(): Promise<void> {
         updateSummary(report);
         if (options.outputPath) writeJsonAtomic(options.outputPath, report);
         console.log(
-            `  ${record.status.toUpperCase()} leaks=${record.resourceLeakCount} ` +
+            `  ${record.status.toUpperCase()} new=${record.newDiagnosticCount} ` +
+            `high=${record.newHighConfidenceCount} unknown=${record.newUnknownOwnershipCount} ` +
+            `allocators=${record.reachedAllocatorCalls}/${record.matchedAllocatorCalls} legacy=${record.resourceLeakCount} ` +
             `local=${record.methodLocalLeakCount} time=${record.totalTimeMs}ms ` +
             `lifecycle=${record.lifecycleModelingTimeMs}ms ` +
             `resource=${record.resourceAnalysisTimeMs}ms ` +

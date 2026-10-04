@@ -1,5 +1,6 @@
 import {
     ArkAssignStmt,
+    ArkAwaitExpr,
     ArkArrayRef,
     ArkCastExpr,
     ArkInstanceFieldRef,
@@ -193,9 +194,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
             for (const rule of this.rules) {
                 for (const allocator of rule.allocators) {
                     if (!this.matchesApi(stmt, allocator)) continue;
-                    result.add(ResourceFact.allocate(
-                        rule.id, stmt, this.handleAt(stmt, allocator.handleLocation)
-                    ));
+                    const allocated = ResourceFact.allocate(rule.id, stmt,
+                        allocator.acquisition === 'callback' ? undefined
+                            : this.handleAt(stmt, allocator.handleLocation));
+                    result.add(allocator.acquisition === 'promise' && allocated.handles.length
+                        ? allocated.derive({ state: 'pending' }) : allocated);
                 }
             }
             return result;
@@ -205,7 +208,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         for (const releaser of rule.releasers) {
             if (!this.matchesApi(stmt, releaser)) continue;
             const handle = this.handleAt(stmt, releaser.handleLocation);
-            if (handle && hasResourceHandle(fact.handles, handle)) {
+            if (handle && this.matchesHandle(fact.handles, handle, rule)) {
                 return new Set([fact.derive({ state: 'released', eventSite: stmt })]);
             }
         }
@@ -221,6 +224,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         }
         if (stmt instanceof ArkAssignStmt && !stmt.getInvokeExpr()) {
             const left = stmt.getLeftOp();
+            const expression = stmt.getRightOp();
             const right = this.unwrap(stmt.getRightOp());
             // Parameter/this bindings are synthetic CFG entry statements. The
             // call flow already mapped the incoming handle onto their locals.
@@ -228,7 +232,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 return new Set([fact]);
             }
             const wasHandle = hasResourceHandle(fact.handles, left);
-            const copied = hasResourceHandle(fact.handles, right);
+            const copied = this.matchesHandle(fact.handles, right, rule);
+            if (copied && expression instanceof ArkAwaitExpr && fact.state === 'pending') {
+                // The Promise is not the resource. Track only the fulfilled handle after await.
+                return new Set([fact.derive({ handles: [left], state: 'allocated' })]);
+            }
             if (rule.releaseByNullify && wasHandle &&
                 (right instanceof NullConstant || right instanceof UndefinedConstant)) {
                 return new Set([fact.derive({ state: 'released', eventSite: stmt })]);
@@ -297,7 +305,15 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
     }
 
     private unwrap(value: Value): Value {
-        return value instanceof ArkCastExpr ? value.getOp() : value;
+        if (value instanceof ArkCastExpr) return this.unwrap(value.getOp());
+        if (value instanceof ArkAwaitExpr) return this.unwrap(value.getPromise());
+        return value;
+    }
+
+    private matchesHandle(handles: readonly Value[], value: Value, rule: ResourceRule): boolean {
+        return hasResourceHandle(handles, value) || (value instanceof ArkInstanceFieldRef &&
+            !!rule.handleProperties?.includes(value.getFieldSignature().getFieldName()) &&
+            hasResourceHandle(handles, value.getBase()));
     }
 
     private isDirectCallee(stmt: Stmt, method: ArkMethod): boolean {

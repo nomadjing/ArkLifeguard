@@ -21,6 +21,7 @@
  */
 
 import { SourceDefinition, SinkDefinition, TaintCategory } from './TaintFact';
+import { legacyRuleOwnership } from '../shared/RuleOwnership';
 
 // ============================================================================
 // 方法匹配器接口
@@ -71,7 +72,7 @@ export class SourceSinkManager {
     /** 是否已加载默认规则 */
     private defaultRulesLoaded: boolean = false;
     
-    constructor() {
+    constructor(private readonly includeDeprecatedRules = false) {
         // 默认加载 HarmonyOS 资源规则
         this.loadDefaultRules();
     }
@@ -264,8 +265,13 @@ export class SourceSinkManager {
     loadDefaultRules(): void {
         if (this.defaultRulesLoaded) return;
         
-        this.registerSources(HARMONYOS_SOURCES);
-        this.registerSinks(HARMONYOS_SINKS);
+        const sources = this.includeDeprecatedRules ? HARMONYOS_SOURCES : HARMONYOS_SOURCES
+            .filter(source => legacyRuleOwnership(source).domain === 'resource')
+            .map(source => ({ ...source, category: 'resource' as const }));
+        const sinkIds = new Set(sources.map(source => source.pairedSinkId));
+        this.registerSources(sources);
+        this.registerSinks(this.includeDeprecatedRules ? HARMONYOS_SINKS : HARMONYOS_SINKS
+            .filter(sink => sinkIds.has(sink.id)).map(sink => ({ ...sink, category: 'resource_release' as const })));
         
         this.defaultRulesLoaded = true;
     }

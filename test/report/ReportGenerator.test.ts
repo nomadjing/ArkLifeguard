@@ -10,7 +10,7 @@ import {
 } from '../../src/report';
 
 const result: ProjectAnalysisResult = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     analysisKind: 'lifecycle-nullness',
     status: 'success',
     project: { path: '/project', name: 'project', analyzedAt: '2026-08-24T00:00:00.000Z' },
@@ -177,6 +177,46 @@ const result: ProjectAnalysisResult = {
 };
 
 describe('ReportGenerator', () => {
+    it.each(['json', 'text', 'markdown', 'html'] as const)('renders independent retention evidence and failure in %s', format => {
+        const location = { filePath: '/project/Index.ets', line: 10, col: 1 };
+        const withRetention: ProjectAnalysisResult = { ...result, status: 'failed',
+            closureAnalysis: { enabled: true, success: true, registrationLeaks: [],
+                closureRetentionLeaks: [{ registrationId: 'registration:1', ruleId: 'EmitterRegistration',
+                    registration: location, boundary: location, lifecycleEnd: location, reason: 'unregistered',
+                    confidence: 'high', registrars: ['system:emitter'], events: ['1'], callbacks: ['callback:1'],
+                    capturedObject: 'owner:1', root: 'registration-root:1',
+                    retentionPath: [{ from: 'callback:1', to: 'owner:1', via: 'capture:<script>', location }] }],
+                unresolvedRuleIds: ['WindowRegistration'], unsupportedLegacyRuleIds: ['sensor.on'], limitations: [] },
+            memoryAnalysis: { enabled: true, success: false, memoryRetentionCandidates: [],
+                registrationRetentions: [], limitations: ['state-budget-exceeded'], error: 'Memory budget exceeded' } };
+        const report = new ReportGenerator().generate(withRetention, { format });
+        expect(report).toContain('EmitterRegistration');
+        expect(report).toContain('Memory budget exceeded');
+        expect(report).toContain('sensor.on');
+        if (format === 'json') {
+            const json = JSON.parse(report);
+            expect(json.closureAnalysis.closureRetentionLeaks[0].retentionPath).toHaveLength(1);
+            expect(json.memoryAnalysis.success).toBe(false);
+            expect(json.summary).toMatchObject({ closureRetentionLeaks: 1, memoryRetentionCandidates: 0 });
+        } else {
+            expect(report).toContain('分析未完成');
+            expect(report).toContain('/project/Index.ets:10:1');
+            expect(report).toContain('callback:1');
+        }
+        if (format === 'html') {
+            expect(report).toContain('&lt;script&gt;');
+            expect(report).not.toContain('capture:<script>');
+        }
+    });
+    it.each(['text', 'markdown', 'html'] as const)('marks disabled retention checks in %s', format => {
+        const disabled: ProjectAnalysisResult = { ...result,
+            closureAnalysis: { enabled: false, success: true, registrationLeaks: [], closureRetentionLeaks: [], unresolvedRuleIds: [], limitations: [] },
+            memoryAnalysis: { enabled: false, success: true, memoryRetentionCandidates: [], registrationRetentions: [], limitations: [] } };
+        const report = new ReportGenerator().generate(disabled, { format });
+        expect(report).toContain('未启用。');
+        expect(report).toContain('内存保留检测');
+        expect(report).toContain('闭包与注册检测');
+    });
     it.each(['json', 'text', 'markdown', 'html'] as const)('generates %s reports', format => {
         const report = new ReportGenerator().generate(result, { format });
         expect(report).toContain('project');

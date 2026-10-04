@@ -1,5 +1,6 @@
 export {
   Scene,
+  ts,
   ArkClass,
   ArkMethod,
   ArkFile,
@@ -27,6 +28,8 @@ export {
   ArkNormalBinopExpr,
   ArkUnopExpr,
   ArkNewExpr,
+  ArkNewArrayExpr,
+  ArkDeleteExpr,
   ArkStaticInvokeExpr,
   NormalBinaryOperator,
   RelationalBinaryOperator,
@@ -54,6 +57,7 @@ export {
   ArrayType,
   GenericType,
   LexicalEnvType,
+  ClosureType,
   NullType,
   Type,
   UndefinedType,

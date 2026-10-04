@@ -30,14 +30,14 @@ describe('resource analysis integration', () => {
         const detector = new ResourceLeakDetector(scene);
         const leaks = detector.detect().filter(leak => leak.resourceType === 'AVPlayer');
 
-        expect(detector.getSourceCount()).toBeGreaterThanOrEqual(4);
+        expect(detector.getSourceCount()).toBeGreaterThanOrEqual(3);
         expect(detector.getSinkCount()).toBeGreaterThanOrEqual(1);
         expect(leaks).toHaveLength(1);
         expect(leaks[0]?.methodName).toBe('onCreate');
     });
 
-    it('preserves the migrated one-shot timer and file-close suppressors', () => {
-        const manager = new SourceSinkManager();
+    it('preserves archived timer suppressors only with explicit deprecated rules', () => {
+        const manager = new SourceSinkManager(true);
         const findSourceStmt = (methodName: string) => {
             for (const method of scene.getMethods()) {
                 for (const stmt of method.getCfg()?.getStmts() ?? []) {

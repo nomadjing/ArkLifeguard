@@ -30,6 +30,9 @@ import {
 import { ResourceRunner } from '../analysis/resourceleak';
 import type { ResourceAnalysisResult, ResourceRule } from '../analysis/resourceleak';
 import type { IFDSSolverStatistics } from '../ifds';
+import { ClosureRunner, type ClosureAnalysisResult, type RegistrationRule } from '../analysis/closure';
+import { MemoryRunner, type MemoryAnalysisResult } from '../analysis/memory';
+import type { LifetimeBoundary } from '../analysis/shared/HeapFlow';
 
 export type ResourceEngine = 'legacy' | 'new';
 
@@ -43,6 +46,11 @@ export interface ProjectAnalysisOptions {
     runResourceAnalysis?: boolean;
     resourceEngine?: ResourceEngine;
     resourceRules?: readonly ResourceRule[];
+    runClosureAnalysis?: boolean;
+    runMemoryAnalysis?: boolean;
+    closureRules?: readonly RegistrationRule[];
+    maxRetentionStates?: number;
+    maxRetentionCallDepth?: number;
     lifecycleModel?: LifecycleModelMode;
     compactLifecycleDispatcher?: boolean;
     pruneUnreachableAbilities?: boolean;
@@ -109,7 +117,7 @@ export interface MethodLocalResourceLeakRecord {
 }
 
 export interface ProjectAnalysisResult {
-    schemaVersion: 1;
+    schemaVersion: 2;
     /** 保留既有值以兼容已接入的报告消费者；启用模块以 settings 字段为准。 */
     analysisKind: 'lifecycle-nullness';
     status: 'success' | 'failed';
@@ -126,6 +134,9 @@ export interface ProjectAnalysisResult {
         runNullness: boolean;
         runResourceAnalysis: boolean;
         resourceEngine: ResourceEngine;
+        runClosureAnalysis?: boolean;
+        runMemoryAnalysis?: boolean;
+        retentionBounds?: { maxStates: number; maxCallDepth: number };
         lifecycleModel: LifecycleModelMode;
         lifecycleOptimizations: {
             compactDispatcher: boolean;
@@ -161,6 +172,9 @@ export interface ProjectAnalysisResult {
         nullDereferences: number;
         resourceLeaks: number;
         taintLeaks: number;
+        registrationLeaks?: number;
+        closureRetentionLeaks?: number;
+        memoryRetentionCandidates?: number;
         sources: number;
         sinks: number;
         reachedStatements: number;
@@ -203,12 +217,16 @@ export interface ProjectAnalysisResult {
         error?: string;
     };
     newResourceAnalysis?: ResourceAnalysisResult;
+    closureAnalysis?: ClosureAnalysisResult;
+    memoryAnalysis?: MemoryAnalysisResult;
     duration: {
         sceneBuilding: number;
         lifecycleModeling: number;
         navigationAnalysis: number;
         nullnessAnalysis: number;
         resourceAnalysis: number;
+        closureAnalysis?: number;
+        memoryAnalysis?: number;
         total: number;
     };
     warnings: string[];
@@ -262,13 +280,17 @@ export interface LifecycleAmplificationRecord {
     edgesPerStatement: number | null;
 }
 
-const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules'>> = {
+const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'closureRules'>> = {
     inferTypes: true,
     extractUICallbacks: true,
     analyzeNavigation: true,
     runNullness: true,
     runResourceAnalysis: true,
     resourceEngine: 'legacy',
+    runClosureAnalysis: false,
+    runMemoryAnalysis: false,
+    maxRetentionStates: 20000,
+    maxRetentionCallDepth: 4,
     lifecycleModel: DEFAULT_LIFECYCLE_MODEL_MODE,
     compactLifecycleDispatcher: DEFAULT_LIFECYCLE_CONFIG.optimizations.compactDispatcher,
     pruneUnreachableAbilities: DEFAULT_LIFECYCLE_CONFIG.optimizations.pruneUnreachableAbilities,
@@ -284,8 +306,8 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
 
 /** Complete CLI-facing application service for lifecycle, resource and nullness analysis. */
 export class ProjectAnalyzer {
-    private readonly options: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules'>> &
-        Pick<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules'>;
+    private readonly options: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'closureRules'>> &
+        Pick<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'closureRules'>;
     private readonly warnings: string[] = [];
 
     constructor(options: ProjectAnalysisOptions = {}) {
@@ -369,7 +391,8 @@ export class ProjectAnalyzer {
                     methodLocalLeaks = methodLocalDetector.detect();
                     scannedLocations = new SourceSinkLocationScanner(scene).scan();
                 } else {
-                    newResourceResult = new ResourceRunner(scene, this.options.resourceRules)
+                    newResourceResult = new ResourceRunner(scene, this.options.resourceRules,
+                        this.options.collectSolverStatistics)
                         .runWithDummyMain(dummyMain);
                     if (!newResourceResult.success) {
                         resourceError = newResourceResult.error ?? '新资源分析失败，未生成诊断。';
@@ -389,6 +412,27 @@ export class ProjectAnalyzer {
             }
         }
         const resourceAnalysis = Date.now() - resourceStart;
+
+        const lifetimes: LifetimeBoundary[] = [...new Set([...abilities.map(item => item.arkClass),
+            ...components.map(item => item.arkClass)])].map(arkClass => ({
+                classSignature: arkClass.getSignature().toString(),
+                endMethodSignatures: arkClass.getMethods().filter(method =>
+                    ['onDestroy', 'aboutToDisappear'].includes(method.getName()))
+                    .map(method => method.getSignature().toString()),
+            }));
+        const retentionOptions = { lifetimes, maxStates: this.options.maxRetentionStates,
+            maxCallDepth: this.options.maxRetentionCallDepth };
+        const closureStart = Date.now();
+        const closureResult: ClosureAnalysisResult = this.options.runClosureAnalysis
+            ? new ClosureRunner(scene, this.options.closureRules, retentionOptions).runWithDummyMain(dummyMain)
+            : { enabled: false, success: true, registrationLeaks: [], closureRetentionLeaks: [],
+                unresolvedRuleIds: [], limitations: [] };
+        const closureAnalysis = Date.now() - closureStart;
+        const memoryStart = Date.now();
+        const memoryResult: MemoryAnalysisResult = this.options.runMemoryAnalysis
+            ? new MemoryRunner(scene, retentionOptions, this.options.closureRules).runWithDummyMain(dummyMain)
+            : { enabled: false, success: true, memoryRetentionCandidates: [], registrationRetentions: [], limitations: [] };
+        const memoryAnalysis = Date.now() - memoryStart;
 
         const nullnessStart = Date.now();
         const nullnessResult = this.options.runNullness
@@ -422,6 +466,8 @@ export class ProjectAnalyzer {
                 ? resourceResult?.success === true && resourceError === undefined
                 : newResourceResult?.success === true && resourceError === undefined);
         const errors = [
+            ...(!closureResult.success ? [closureResult.error ?? '闭包分析未完成'] : []),
+            ...(!memoryResult.success ? [memoryResult.error ?? '内存分析未完成'] : []),
             ...(!nullnessSuccess && nullnessResult?.error ? [nullnessResult.error] : []),
             ...(!resourceSuccess && resourceResult?.error ? [resourceResult.error] : []),
             ...(!resourceSuccess && resourceError ? [resourceError] : []),
@@ -473,7 +519,7 @@ export class ProjectAnalyzer {
         }).length;
 
         return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             analysisKind: 'lifecycle-nullness',
             status: errors.length === 0 ? 'success' : 'failed',
             project: {
@@ -489,6 +535,9 @@ export class ProjectAnalyzer {
                 runNullness: this.options.runNullness,
                 runResourceAnalysis: this.options.runResourceAnalysis,
                 resourceEngine: this.options.resourceEngine,
+                runClosureAnalysis: this.options.runClosureAnalysis,
+                runMemoryAnalysis: this.options.runMemoryAnalysis,
+                retentionBounds: { maxStates: this.options.maxRetentionStates, maxCallDepth: this.options.maxRetentionCallDepth },
                 lifecycleModel: this.options.lifecycleModel,
                 lifecycleOptimizations: {
                     compactDispatcher: this.options.compactLifecycleDispatcher,
@@ -533,6 +582,9 @@ export class ProjectAnalyzer {
                 nullDereferences: diagnostics.length,
                 resourceLeaks: resourceLeaks.length,
                 taintLeaks: taintLeaks.length,
+                registrationLeaks: closureResult.registrationLeaks.length,
+                closureRetentionLeaks: closureResult.closureRetentionLeaks.length,
+                memoryRetentionCandidates: memoryResult.memoryRetentionCandidates.length,
                 sources: sourceLocations.length,
                 sinks: sinkLocations.length,
                 reachedStatements,
@@ -583,12 +635,16 @@ export class ProjectAnalyzer {
                     : {}),
             },
             ...(newResourceResult ? { newResourceAnalysis: newResourceResult } : {}),
+            closureAnalysis: closureResult,
+            memoryAnalysis: memoryResult,
             duration: {
                 sceneBuilding,
                 lifecycleModeling,
                 navigationAnalysis,
                 nullnessAnalysis,
                 resourceAnalysis,
+                closureAnalysis,
+                memoryAnalysis,
                 total: Date.now() - totalStart,
             },
             warnings: [...this.warnings],
@@ -805,6 +861,8 @@ export class ProjectAnalyzer {
             ['maxCallbackIterations', this.options.maxCallbackIterations],
             ['maxAccessPathLength', this.options.maxAccessPathLength],
             ['maxPropagationDepth', this.options.maxPropagationDepth],
+            ['maxRetentionStates', this.options.maxRetentionStates],
+            ['maxRetentionCallDepth', this.options.maxRetentionCallDepth],
         ] as const) {
             if (!Number.isInteger(value) || value < 1) {
                 throw new Error(`${name} must be a positive integer: ${value}`);

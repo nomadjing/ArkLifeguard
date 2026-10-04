@@ -1,220 +1,128 @@
-# ArkLifeguard 快速使用指南
+# 使用指南
 
-本文说明如何使用 ArkLifeguard 分析一个真实 HarmonyOS/OpenHarmony ArkTS 源码工程，并生成可审计的静态分析报告。
+## 环境与 SDK
 
-## 1. 准备环境
-
-需要准备：
-
-- Node.js 18 或更高版本；
-- npm；
-- HarmonyOS/OpenHarmony ETS SDK；
-- 待分析应用的完整源码工程。
-
-应用目录应能够被 ArkAnalyzer 读取，通常包含 `build-profile.json5`、模块级 `module.json5` 以及 `.ets`/`.ts` 源文件。ArkLifeguard 不直接分析 `.hap` 或 `.app` 安装包。
-
-在 ArkLifeguard 根目录安装依赖：
+安装依赖后可直接从源码运行 CLI：
 
 ```bash
 npm ci
+npm run cli -- analyze --help
 ```
 
-## 2. 配置 ETS SDK
+需要 Node.js 18、20 或 22 及以上版本和可读的 ArkTS 源码工程。项目通常包含 `build-profile.json5`、模块 `module.json5`、`.ets` / `.ts` 文件。完整模块配置有助于识别入口 Ability 和页面。
 
-### 使用默认 SDK 目录
+SDK 选择按以下顺序：
 
-工具默认从以下位置发现 SDK：
+1. 显式 `--sdk <ETS目录>`，可重复指定；提供后不再从 SDK root 发现。
+2. `--sdk-root <目录>` 下的 `openharmony/ets` 和 `hms/ets`。
+3. 仓库的 `sdk/default/openharmony/ets`、`sdk/default/hms/ets`。
 
-```text
-sdk/default/
-├── openharmony/ets/
-└── hms/ets/
-```
+至少需要一个有效 SDK 目录，且类型推断须能解析使用的 API。目录存在不表示每条规则都已解析，应检查 `unresolvedRuleIds`。
 
-至少提供其中一个目录。如果仓库中已经包含可用 SDK，无需额外传参。
-
-### 使用本机 SDK
-
-`--sdk-root` 应指向同时包含 `openharmony/ets` 或 `hms/ets` 的上级目录：
+## 选择检查与引擎
 
 ```bash
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --sdk-root "/absolute/path/to/sdk-root" \
-  --format json \
-  --output out/report.json
+npm run cli -- analyze "/path/to/HarmonyOSApp" \
+  --sdk "/path/to/openharmony/ets" \
+  --checks nullness,resource,closure,memory \
+  --resource-engine new \
+  --lifecycle-model flat \
+  --format json --output out/report.json
 ```
 
-也可以直接指定一个或多个 ETS SDK 目录：
+`--checks` 支持 `all`、四个单项和逗号分隔组合。CLI 默认 `all`；未知名称是参数错误。工程路径包含空格或中文时保留引号。
+
+资源引擎的选择独立于检查开关：
+
+| 选择 | 实际执行 | 结果 |
+| --- | --- | --- |
+| `--checks resource --resource-engine legacy` | Source/Sink IFDS、方法内扫描、位置扫描 | `resourceAnalysis` |
+| `--checks resource --resource-engine new` | 完整 SDK 签名与资源句柄事实 IFDS | `newResourceAnalysis`；旧资源模块标为关闭 |
+| `--checks closure,memory` | 两个独立堆解释器 | `closureAnalysis`、`memoryAnalysis`；不执行资源引擎 |
+
+**资源引擎的当前默认值仍是 `legacy`。** 新规则应接入独立引擎；两者覆盖范围并不等价，见[资源模块](docs/analysis/resource.md)。
+
+## 参数及作用范围
+
+| 参数 | 默认值 | 实际作用 |
+| --- | ---: | --- |
+| `--lifecycle-model` | `flat` | 可选 `flat`、`opt-flat`、`bounded-opt-flat`、`hierarchical`、`bounded-unroll` |
+| `--max-callback-iterations` | 1 | 仅两种 bounded 模型限制回调展开；其他模型不使用 |
+| `--max-abilities-per-flow` | 0 | 旧资源流经过的 Ability 数上限；0 关闭，不限制独立资源引擎 |
+| `--max-navigation-hops` | 0 | 旧资源流的导航跳数上限；0 关闭，不限制独立资源引擎 |
+| `--max-access-path-length` | 5 | 空指针访问路径长度 |
+| `--max-propagation-depth` | 40 | 空指针及旧资源事实传播深度；不传给独立资源引擎 |
+| `--max-retention-states` | 20000 | 每个闭包/内存 Runner 的状态上限 |
+| `--max-retention-call-depth` | 4 | 闭包/内存的调用深度上限 |
+| `--resource-engine` | `legacy` | `legacy` 或 `new` |
+| `--format` | `text` | `json`、`text`、`markdown`、`html` |
+
+独立资源引擎内部调用事实深度固定为 4，超界转为未知所有权，CLI 的传播深度参数不改变它。完整 API 的 `settings.boundEnforcement` 保留旧字段，不能据此推断这些约束已应用到独立引擎。
+
+`--no-infer-types`、`--no-ui-callbacks`、`--no-navigation` 分别关闭类型推断、UI 回调提取、附加导航收集，可能降低覆盖。`--no-navigation` 不保证删除所有生命周期内部的路由/owner 推断。`--report-unresolved-returns` 开启未解析返回值的低置信度空指针候选。`--verbose` 显示建模日志。
+
+`--no-compact-lifecycle-dispatcher` 与 `--no-prune-unreachable-abilities` 用于关闭对应建模优化；是否使用 compact dispatcher 取决于模型，详见[生命周期模块](docs/analysis/lifecycle.md)。
+
+## 报告与退出码
 
 ```bash
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --sdk "/absolute/path/to/openharmony/ets" \
-  --sdk "/absolute/path/to/hms/ets" \
-  --format json \
-  --output out/report.json
+npm run cli -- analyze "/path/to/HarmonyOSApp" \
+  --sdk-root "/path/to/sdk-root" --checks all --resource-engine new \
+  --format json --output out/report.json \
+  --lifecycle-report out/lifecycle.json \
+  --ifds-stats out/ifds.json
 ```
 
-指定 `--sdk` 后，工具优先使用这些显式路径，不再从 `--sdk-root` 发现 SDK。
+`--output` 自动创建上级目录；省略时输出到标准输出。生命周期报告单独包含模型配置、Ability、Component、导航和 DummyMain，不进入主报告。
 
-## 3. 运行完整分析
+当前 `--ifds-stats` 旁路文件只序列化旧 `resourceAnalysis` 统计；选择独立引擎时，该旁路资源统计为空。独立引擎的统计位于主 JSON 的 `newResourceAnalysis.solverStatistics`。闭包/内存统计位于各自 `statistics`，不是 IFDS 统计。不要用空旁路文件判断独立引擎没有工作。
 
-```bash
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --format json \
-  --output out/report.json
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 选中的分析执行完成并生成报告；发现候选不导致非零退出 |
+| 1 | 参数、工程/SDK、构建 Scene 或其他顶层执行错误 |
+| 2 | 已生成报告，但一个或多个分析模块失败 |
+
+主 JSON 为 `schemaVersion: 2`，保留 `analysisKind: "lifecycle-nullness"` 字面值。它不是实际启用检查清单。完整 API 的 `settings` 记录开关；CLI 结果应根据各模块 `enabled` / `success` 解释。独立资源结果没有 `enabled` 字段：未选择时不存在，选择后查看 `status` / `success`。
+
+旧 `summary.resourceLeaks` 和 `summary.methodLocalResourceLeaks` 只统计旧引擎；独立引擎数量取 `newResourceAnalysis.diagnostics.length`。`summary` 的注册、闭包、内存数量各自分列，不合并注册关联证据。
+
+`high` 表示当前模型下证据较强，不代表人工确认缺陷。`low`、`unknown-ownership`、`limitations`、未支持或未解析规则均应连同源码审查。`success` 只表示运行完成，不表示全语言或全平台覆盖。
+
+## TypeScript API
+
+```typescript
+import { ProjectAnalyzer } from './src';
+
+const result = await new ProjectAnalyzer({
+    sdkPaths: ['/path/to/openharmony/ets'],
+    runNullness: true,
+    runResourceAnalysis: true,
+    resourceEngine: 'new',
+    runClosureAnalysis: true,
+    runMemoryAnalysis: true,
+    lifecycleModel: 'flat',
+    maxRetentionStates: 20000,
+    maxRetentionCallDepth: 4,
+}).analyze('/path/to/HarmonyOSApp');
 ```
 
-工程路径包含空格或中文时应保留引号。`out/` 不存在时会自动创建。
+在仓库根目录使用该导入；构建后可从 `./dist` 导入。API 默认 `runNullness=true`、`runResourceAnalysis=true`、`resourceEngine='legacy'`、`runClosureAnalysis=false`、`runMemoryAnalysis=false`。
 
-为了便于复现实验，建议在正式分析中显式记录有界参数：
+API 可注入 `resourceRules` 和 `closureRules`，替代 SDK 默认规则。显式空资源/闭包规则会使对应检查失败；内存可使用空注册摘要，仍检查静态/全局根。`closureRules` 同时供内存解析注册根，与是否开启闭包模块无关。CLI 当前不提供规则文件参数。
 
-```bash
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --format json \
-  --output out/report.json \
-  --max-callback-iterations 1 \
-  --max-abilities-per-flow 3 \
-  --max-navigation-hops 5 \
-  --max-access-path-length 5 \
-  --max-propagation-depth 40
-```
+直接运行某个 Runner 时，调用方负责构建 Scene、推断类型、准备入口，并为闭包/内存提供生命周期合同。详细签名见[架构](docs/architecture.md)。
 
-| 参数 | 默认值 | 影响范围 |
-|---|---:|---|
-| `--max-callback-iterations` | 1 | DummyMain 中生命周期和 UI 回调序列的展开规模。 |
-| `--max-abilities-per-flow` | 3 | 单条资源流允许访问的 Ability 数量。 |
-| `--max-navigation-hops` | 5 | 单条资源流允许经过的导航跳数。 |
-| `--max-access-path-length` | 5 | 空指针字段、数组等访问路径长度。 |
-| `--max-propagation-depth` | 40 | 资源和空指针 Fact 的传播深度。 |
-
-## 4. 选择分析模式
-
-使用 `--checks` 选择检查类型。默认值为 `all`，即同时运行资源泄漏和空指针检查：
-
-```bash
-# 只运行空指针分析
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --checks nullness \
-  --format json \
-  --output out/nullness-report.json
-
-# 只运行资源分析
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --checks resource \
-  --format json \
-  --output out/resource-report.json
-
-# 显式运行全部检查
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --checks all \
-  --format json \
-  --output out/report.json
-```
-
-也可以写成 `--checks nullness,resource`。未知检查名会作为参数错误处理。分析器选择统一使用 `--checks`，能够直接表达本次要运行的检查，并方便后续增加新的检查类型。
-
-正式分析通常不建议关闭类型推断、UI 回调或导航建模。以下选项主要用于定位兼容性或性能问题：
-
-- `--no-infer-types`：跳过类型推断；
-- `--no-ui-callbacks`：不提取 ViewTree UI 回调；
-- `--no-navigation`：不收集导航关系；
-- `--report-unresolved-returns`：输出未解析返回值形成的低置信度空指针候选；
-- `--verbose`：显示生命周期建模日志。
-
-## 5. 选择报告格式
-
-`--format` 支持 `json`、`text`、`markdown` 和 `html`：
-
-```bash
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --format html \
-  --output out/report.html
-```
-
-未指定 `--output` 时，报告输出到标准输出。自动化处理和真实项目统计建议使用 JSON；人工审阅可使用 Markdown 或 HTML。
-
-四种格式都只输出用户通常需要的内容：项目状态、空指针诊断、跨过程资源泄漏诊断、方法内资源泄漏诊断、核心数量、总耗时以及警告/错误。主报告不再提供详细模式。
-
-需要审计生命周期建模过程时，显式指定独立 JSON 报告路径：
-
-```bash
-npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --format json \
-  --output out/report.json \
-  --lifecycle-report out/lifecycle-modeling.json
-```
-
-生命周期报告包含建模配置、Ability、Component、UI 回调、导航、DummyMain 和建模分阶段耗时。如需 IFDS 队列与传播统计，另行使用 `--ifds-stats out/solver-statistics.json`。两个参数都不改变分析语义或诊断结果。
-
-## 6. 解读 JSON 报告
-
-默认 JSON 报告优先保留以下字段：
-
-| 字段 | 含义 |
-|---|---|
-| `status` | 完整链路是否成功；`failed` 时继续查看 `errors`。 |
-| `summary.nullDereferences` | 空指针候选数量。 |
-| `summary.resourceLeaks` | 跨生命周期 IFDS 资源泄漏数量。 |
-| `summary.methodLocalResourceLeaks` | 方法内资源泄漏候选数量。 |
-| `nullness.diagnostics` | 空值来源、访问路径、解引用位置和置信度。 |
-| `resourceAnalysis.resourceLeaks` | 资源类型、申请位置和期望释放方法。 |
-| `resourceAnalysis.methodLocal.leaks` | 方法内资源检测候选。 |
-| `warnings` / `errors` | 降级建模、兼容性告警和失败原因。 |
-| `duration.total` | 分析总耗时。 |
-
-`abilities`、`components`、`navigations` 和 `dummyMain` 只出现在 `--lifecycle-report` 指定的独立报告中，不会进入用户诊断报告。
-
-可用 Node.js 快速提取关键结果：
-
-```bash
-node -e "const r=require('./out/report.json'); console.log({status:r.status,nullness:r.summary.nullDereferences,resourceLeaks:r.summary.resourceLeaks,methodLocal:r.summary.methodLocalResourceLeaks})"
-```
-
-方法内资源候选和 IFDS 资源泄漏采用不同分析粒度，数量不要求一致。正式结论应优先结合 `resourceAnalysis.resourceLeaks`、传播上下文和源码人工审核。
-
-## 7. 构建并运行发布产物
+## 构建与问题定位
 
 ```bash
 npm run build
-node dist/cli/main.js analyze "/absolute/path/to/HarmonyOSApp" \
-  --format json \
-  --output out/report.json
+node dist/cli/main.js analyze "/path/to/HarmonyOSApp" \
+  --sdk "/path/to/openharmony/ets" --checks closure,memory
 ```
 
-查看所有参数：
+构建会复制空指针 SDK 摘要 JSON，不能只运行裸 `tsc` 后假定发布产物完整。
 
-```bash
-node dist/cli/main.js analyze --help
-```
+没有候选时，依次检查：模块是否启用、运行是否完成、规则是否解析、生命周期边界是否到达、创建调用是否实际可达。独立资源的 `coverage` 提供全部/可达创建与释放调用；保留分析的 `no-observed-lifecycle-end` 表示未观测到寿命终点。
 
-## 8. 大型工程与常见问题
-
-### Node.js 内存不足
-
-大型工程可提高堆内存上限：
-
-```bash
-NODE_OPTIONS=--max-old-space-size=4096 npm run cli -- analyze "/absolute/path/to/HarmonyOSApp" \
-  --format json \
-  --output out/report.json
-```
-
-如果事实规模仍然过大，应使用 `--ifds-stats` 检查传播数量和队列峰值，并使用 `--lifecycle-report` 检查建模耗时，再逐步降低 `maxPropagationDepth`、`maxCallbackIterations` 或资源流边界；修改边界会影响覆盖范围，复现实验时应保留实际命令行参数。
-
-### ViewTree 无法完整构建
-
-日志或报告出现 `Skipping ViewTree` 时，工具会跳过对应 Component 的 UI 回调并继续分析。这属于局部降级，可能减少回调路径覆盖。
-
-### 报告数量为零
-
-零报告只表示在当前 IR、规则、生命周期模型和边界内未发现候选问题，不代表应用已经被证明不存在空指针或资源泄漏风险。
-
-## 9. 退出码
-
-| 退出码 | 含义 |
-|---:|---|
-| `0` | 完整链路及所有启用的分析模块执行成功。 |
-| `1` | 参数、工程路径、SDK 或 Scene/生命周期构建失败。 |
-| `2` | 报告已经生成，但至少一个启用的分析模块返回失败状态。 |
-
-检出候选问题本身不会让 CLI 返回非零退出码。
+SDK 找不到时显式传 `--sdk`；大项目遇到内存不足可为 Node 设置堆上限。调试 IR 和最小测试命令见[测试与调试](docs/testing.md)。

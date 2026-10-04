@@ -27,10 +27,10 @@ export function buildLifecycleScene(projectName: string): Scene {
     return scene;
 }
 
-export function buildResourceScene(projectName: string): Scene {
+export function buildResourceScene(projectName: string, sdkDirectory = SDK_DIR): Scene {
     const projectPath = fixturePath('resource', projectName);
     const config = new SceneConfig();
-    config.buildConfig(projectPath, projectPath, [sdk]);
+    config.buildConfig(projectPath, projectPath, [{ ...sdk, path: sdkDirectory }]);
     config.buildFromProjectDir(projectPath);
 
     const scene = new Scene();

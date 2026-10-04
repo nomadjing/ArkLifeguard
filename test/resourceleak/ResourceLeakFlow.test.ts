@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ArkMethod, Scene } from '../../src/adapter/arkanalyzer';
 import { ResourceRunner } from '../../src/analysis/resourceleak';
+import { resourceValueKey } from '../../src/analysis/resourceleak/ResourceFact';
 import type { ResourceRule } from '../../src/analysis/resourceleak';
 import { createLifecycleModelCreator } from '../../src/lifecycle';
 import { buildResourceScene } from '../helpers/buildScene';
@@ -92,6 +93,14 @@ describe('new resource-leak IFDS flow', () => {
         const result = run('oneOfTwo');
         expect(result.diagnostics).toHaveLength(1);
         expect(result.diagnostics[0].reason).toBe('unreleased');
+    });
+
+    it('keeps same-named locals in different method scopes distinct', () => {
+        const first = method('releaseAlias').getBody()?.getLocals().get('handle');
+        const second = method('wrongRelease').getBody()?.getLocals().get('handle');
+        expect(first).toBeDefined();
+        expect(second).toBeDefined();
+        expect(resourceValueKey(first!)).not.toBe(resourceValueKey(second!));
     });
 
     it('carries a receiver field through a second method', () => {

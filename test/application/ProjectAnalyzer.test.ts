@@ -3,6 +3,38 @@ import { ProjectAnalyzer } from '../../src/application';
 import { buildResourceScene, fixturePath } from '../helpers/buildScene';
 
 describe('ProjectAnalyzer end-to-end application service', () => {
+    it('keeps standalone and combined retention checks identical on the lifecycle entry', async () => {
+        const options = { sdkPaths: [fixturePath('resource', 'platform-sdk')], runNullness: false, runResourceAnalysis: false };
+        const project = fixturePath('resource', 'retention-app');
+        const closure = await new ProjectAnalyzer({ ...options, runClosureAnalysis: true }).analyze(project);
+        const memory = await new ProjectAnalyzer({ ...options, runMemoryAnalysis: true }).analyze(project);
+        const combined = await new ProjectAnalyzer({ ...options, runClosureAnalysis: true, runMemoryAnalysis: true, runResourceAnalysis: true }).analyze(project);
+        expect(combined.status, combined.errors.join(', ')).toBe('success');
+        expect(combined.schemaVersion).toBe(2);
+        expect(combined.closureAnalysis?.closureRetentionLeaks).toHaveLength(1);
+        expect(combined.memoryAnalysis?.memoryRetentionCandidates).toHaveLength(1);
+        expect(closure.closureAnalysis).toEqual(combined.closureAnalysis);
+        expect(memory.memoryAnalysis).toEqual(combined.memoryAnalysis);
+        expect(closure.memoryAnalysis).toMatchObject({ enabled: false, success: true, memoryRetentionCandidates: [] });
+        expect(memory.closureAnalysis).toMatchObject({ enabled: false, success: true, closureRetentionLeaks: [] });
+        expect(combined.resourceAnalysis.resourceLeaks).toEqual([]);
+        expect(combined.resourceAnalysis.methodLocal.leaks).toEqual([]);
+        expect(combined.summary).toMatchObject({ registrationLeaks: 0, closureRetentionLeaks: 1, memoryRetentionCandidates: 1 });
+    });
+    it('preserves other results when closure configuration fails', async () => {
+        const result = await new ProjectAnalyzer({ sdkPaths: [fixturePath('resource', 'platform-sdk')],
+            runNullness: false, runResourceAnalysis: false, runClosureAnalysis: true, runMemoryAnalysis: true,
+            closureRules: [] }).analyze(fixturePath('resource', 'retention-app'));
+        expect(result.status).toBe('failed');
+        expect(result.closureAnalysis?.success).toBe(false);
+        expect(result.memoryAnalysis?.success).toBe(true);
+        expect(result.memoryAnalysis?.memoryRetentionCandidates).toHaveLength(1);
+        expect(result.errors).toContain(result.closureAnalysis?.error);
+    });
+    it('validates retention exploration bounds before building a Scene', () => {
+        expect(() => new ProjectAnalyzer({ maxRetentionStates: 0 })).toThrow('maxRetentionStates');
+        expect(() => new ProjectAnalyzer({ maxRetentionCallDepth: 0 })).toThrow('maxRetentionCallDepth');
+    });
     it('runs Scene, bounded lifecycle, resource analysis, nullness and result assembly in one chain', async () => {
         const result = await new ProjectAnalyzer({
             sdkPaths: [fixturePath('sdk')],
@@ -54,8 +86,8 @@ describe('ProjectAnalyzer end-to-end application service', () => {
         expect(result.settings.boundEnforcement.maxAbilitiesPerFlow).toBe('disabled');
         expect(result.settings.boundEnforcement.maxNavigationHops).toBe('disabled');
         expect(result.summary.resourceLeaks).toBe(1);
-        expect(result.summary.sources).toBeGreaterThanOrEqual(4);
-        expect(result.summary.sinks).toBeGreaterThanOrEqual(2);
+        expect(result.summary.sources).toBeGreaterThanOrEqual(3);
+        expect(result.summary.sinks).toBeGreaterThanOrEqual(1);
         expect(result.resourceAnalysis.methodLocal.leaks.some(
             leak => leak.resourceType === 'AVPlayer' && leak.methodName === 'onCreate'
         )).toBe(true);
@@ -65,11 +97,12 @@ describe('ProjectAnalyzer end-to-end application service', () => {
         });
     });
 
-    it('keeps the new engine separate and reports its missing implementation as failure', async () => {
+    it('keeps the new engine separate and fails for an explicitly empty rule set', async () => {
         const result = await new ProjectAnalyzer({
             sdkPaths: [fixturePath('sdk')],
             runNullness: false,
             resourceEngine: 'new',
+            resourceRules: [],
         }).analyze(fixturePath('resource', 'source-sink'));
 
         expect(result.status).toBe('failed');

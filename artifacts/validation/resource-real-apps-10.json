@@ -1,0 +1,4476 @@
+{
+  "schemaVersion": 1,
+  "analysisKind": "resource-leak",
+  "updatedAt": "2026-10-04T08:23:32.717Z",
+  "completed": true,
+  "settings": {
+    "sdkRoot": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default",
+    "engine": "new",
+    "timeoutMs": 30000,
+    "maxAbilitiesPerFlow": 0,
+    "maxNavigationHops": 0,
+    "maxPropagationDepth": 40,
+    "collectSolverStatistics": true,
+    "lifecycleModel": "opt-flat",
+    "lifecycleOptimizations": {
+      "compactDispatcher": true,
+      "pruneUnreachableAbilities": true
+    }
+  },
+  "summary": {
+    "selectedProjects": 10,
+    "completedProjects": 10,
+    "successfulProjects": 10,
+    "failedProjects": 0,
+    "timedOutProjects": 0,
+    "projectsWithLeaks": 8,
+    "resourceLeakCount": 0,
+    "taintLeakCount": 0,
+    "methodLocalLeakCount": 0,
+    "newDiagnosticCount": 52,
+    "newHighConfidenceCount": 39,
+    "newUnknownOwnershipCount": 13,
+    "matchedAllocatorCalls": 83,
+    "reachedAllocatorCalls": 56,
+    "averageTotalTimeMs": 4428,
+    "averageSceneBuildingTimeMs": 2826,
+    "averageLifecycleModelingTimeMs": 222,
+    "averageResourceAnalysisTimeMs": 1365,
+    "averagePeakRssMB": 360,
+    "maxPeakRssMB": 585.5,
+    "solverStatistics": {
+      "solveTimeMs": 11304,
+      "propagationAttempts": 316037,
+      "deferredPropagationAttempts": 223297,
+      "uniqueEdgesEnqueued": 287147,
+      "duplicateEdgesSkipped": 28890,
+      "deferredDuplicateEdgesSkipped": 4881,
+      "deduplicationLookups": 316037,
+      "deduplicationCandidateChecks": 28890,
+      "maxDeduplicationCandidates": 1,
+      "factEqualityChecks": 57780,
+      "processedEdges": 287147,
+      "maxCombinedQueueSize": 1379,
+      "maxLaterEdgesSize": 0,
+      "finalLaterEdgesSize": 0
+    }
+  },
+  "provenance": {
+    "implementationSha256": "b09d8d79c016bdd10a1ecbd24550ffee94a0bfd62358bf40e5d9c42136f6e982",
+    "arkanalyzerVersion": "1.0.90",
+    "nodeVersion": "v22.19.0",
+    "sdkRuleFiles": [
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.data.relationalStore.d.ts",
+        "sha256": "62daa20c7f7bcb08a1499b88a0eacfc03c39ad7a97ab80bdb4ec7095ee8f6208"
+      },
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.file.fs.d.ts",
+        "sha256": "e590e9774c9245221ea24cf0df858215a4c824ac70c8c2a4a446613651862a71"
+      },
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.fileio.d.ts",
+        "sha256": "4af31f61bae43d2bd807b5962b9d54397aeb83ea434e3f233aedd88a0f750299"
+      },
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.multimedia.audio.d.ts",
+        "sha256": "7cb0044dc7bed3086b88261774eda7dc336b81fa56c96f6c3e28b0195929cc13"
+      },
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.multimedia.image.d.ts",
+        "sha256": "08bbe5ac23b6fb60fedcb1270198aea69920a296a407d2bbeaed1513f0eae9e9"
+      },
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.multimedia.media.d.ts",
+        "sha256": "9aff1a7b5a2248430320647774b0e3738863d401c671389243b28387157e9768"
+      },
+      {
+        "path": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/sdk/default/openharmony/ets/api/@ohos.net.http.d.ts",
+        "sha256": "13163477ffcd7e1e21f8e027bdca2c1c5e0ffbef4b5441ba21a62f13fa3f0919"
+      }
+    ]
+  },
+  "projects": [
+    {
+      "name": "Aigis",
+      "status": "success",
+      "projectFiles": 35,
+      "classes": 710,
+      "methods": 1860,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 11758,
+      "reachedFacts": 12603,
+      "totalTimeMs": 3831,
+      "sceneBuildingTimeMs": 3016,
+      "lifecycleModelingTimeMs": 123,
+      "resourceAnalysisTimeMs": 655,
+      "peakRssMB": 353.98,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 6,
+      "newHighConfidenceCount": 3,
+      "newUnknownOwnershipCount": 3,
+      "matchedAllocatorCalls": 8,
+      "reachedAllocatorCalls": 8,
+      "input": {
+        "metadataCommit": "585de9128882d868484438d32832ca9b9b50442d",
+        "sourceSha256": "4868e62d24f6c37b5d9e9ea877e220f9be44fb3b7629945d3bfef96644602176",
+        "files": 67
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@Aigis/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/common/icons.ets",
+              "line": 38,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+              "line": 478,
+              "col": 17
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/common/icons.ets",
+                "line": 38,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 478,
+                "col": 17
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/common/icons.ets",
+              "line": 38,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+              "line": 478,
+              "col": 17
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/common/icons.ets",
+                "line": 38,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 478,
+                "col": 17
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+              "line": 433,
+              "col": 13
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+              "line": 436,
+              "col": 17
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 433,
+                "col": 13
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 435,
+                "col": 13
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 436,
+                "col": 17
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+              "line": 861,
+              "col": 13
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+              "line": 864,
+              "col": 44
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 861,
+                "col": 13
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 863,
+                "col": 17
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 864,
+                "col": 44
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/CardSwiperPage.ets",
+              "line": 111,
+              "col": 13
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/CardSwiperPage.ets",
+              "line": 112,
+              "col": 13
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/CardSwiperPage.ets",
+                "line": 111,
+                "col": 13
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/CardSwiperPage.ets",
+                "line": 112,
+                "col": 22
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/CardSwiperPage.ets",
+                "line": 112,
+                "col": 13
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/ItemEditPage.ets",
+              "line": 191,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/ItemEditPage.ets",
+              "line": 212,
+              "col": 17
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/ItemEditPage.ets",
+                "line": 191,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/ItemEditPage.ets",
+                "line": 212,
+                "col": 17
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 11758,
+        "reachedFacts": 12603,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 373,
+          "propagationAttempts": 15212,
+          "deferredPropagationAttempts": 10267,
+          "uniqueEdgesEnqueued": 12603,
+          "duplicateEdgesSkipped": 2609,
+          "deferredDuplicateEdgesSkipped": 473,
+          "deduplicationLookups": 15212,
+          "deduplicationCandidateChecks": 2609,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 5218,
+          "processedEdges": 12603,
+          "immediateEnqueued": 2809,
+          "deferredEnqueued": 9794,
+          "maxImmediateQueueSize": 16,
+          "maxDeferredQueueSize": 251,
+          "maxCombinedQueueSize": 251,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 12603
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 8,
+            "reachedAllocatorCalls": 8,
+            "releaserCalls": 5,
+            "reachedReleaserCalls": 5,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/common/icons.ets",
+                "line": 38,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/common/icons.ets",
+                "line": 38,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 433,
+                "col": 13,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 444,
+                "col": 13,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 833,
+                "col": 17,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/entryability/EntryAbility.ets",
+                "line": 861,
+                "col": 13,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/CardSwiperPage.ets",
+                "line": 111,
+                "col": 13,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Aigis/entry/src/main/ets/pages/ItemEditPage.ets",
+                "line": 191,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 373,
+        "propagationAttempts": 15212,
+        "deferredPropagationAttempts": 10267,
+        "uniqueEdgesEnqueued": 12603,
+        "duplicateEdgesSkipped": 2609,
+        "deferredDuplicateEdgesSkipped": 473,
+        "deduplicationLookups": 15212,
+        "deduplicationCandidateChecks": 2609,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 5218,
+        "processedEdges": 12603,
+        "immediateEnqueued": 2809,
+        "deferredEnqueued": 9794,
+        "maxImmediateQueueSize": 16,
+        "maxDeferredQueueSize": 251,
+        "maxCombinedQueueSize": 251,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 12603
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 2,
+          "reachable": 1,
+          "pruned": 1
+        },
+        "pages": {
+          "owned": 1,
+          "unknown": 2
+        },
+        "components": {
+          "owned": 23,
+          "reachable": 35,
+          "fallback": 12
+        },
+        "callbacks": {
+          "bound": 69,
+          "fallback": 24
+        },
+        "ownership": {
+          "directPageRoots": 1,
+          "viewTreeComponentEdges": 22,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 8649,
+          "retainedCallbackTransitions": 8649,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 3888
+        },
+        "pageTransitions": {
+          "discoveredPages": 1,
+          "boundCallbacks": 69,
+          "fallbackCallbacks": 24,
+          "candidateCallbackTransitions": 8649,
+          "retainedCallbackTransitions": 8649,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 3888,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@Aigis/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 135,
+        "edges": 266,
+        "statements": 279,
+        "lifecycleCalls": 49,
+        "uiCallbackCalls": 93
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "ccplayer",
+      "status": "success",
+      "projectFiles": 58,
+      "classes": 301,
+      "methods": 1511,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 7841,
+      "reachedFacts": 7842,
+      "totalTimeMs": 3415,
+      "sceneBuildingTimeMs": 2779,
+      "lifecycleModelingTimeMs": 180,
+      "resourceAnalysisTimeMs": 444,
+      "peakRssMB": 335.83,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 1,
+      "newHighConfidenceCount": 0,
+      "newUnknownOwnershipCount": 1,
+      "matchedAllocatorCalls": 3,
+      "reachedAllocatorCalls": 1,
+      "input": {
+        "metadataCommit": "92a09a15668548588a6198d2dbb559ab3081f4e7",
+        "sourceSha256": "bc9b80092842fe95caad1cb97c113922717ec3e25f684072f3ac7a8d72a7d59a",
+        "files": 83
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@ccplayer/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/core/impl/AvPlayerImpl.ets",
+              "line": 44,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/core/impl/AvPlayerImpl.ets",
+              "line": 44,
+              "col": 9
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/core/impl/AvPlayerImpl.ets",
+                "line": 44,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/core/impl/AvPlayerImpl.ets",
+                "line": 44,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/core/impl/AvPlayerImpl.ets",
+                "line": 44,
+                "col": 9
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 7841,
+        "reachedFacts": 7842,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 215,
+          "propagationAttempts": 10171,
+          "deferredPropagationAttempts": 5950,
+          "uniqueEdgesEnqueued": 7842,
+          "duplicateEdgesSkipped": 2329,
+          "deferredDuplicateEdgesSkipped": 186,
+          "deduplicationLookups": 10171,
+          "deduplicationCandidateChecks": 2329,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 4658,
+          "processedEdges": 7842,
+          "immediateEnqueued": 2078,
+          "deferredEnqueued": 5764,
+          "maxImmediateQueueSize": 6,
+          "maxDeferredQueueSize": 152,
+          "maxCombinedQueueSize": 153,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 7842
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 2,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 3,
+            "reachedReleaserCalls": 1,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_base/src/main/ets/base/source/MediaSourceFactory.ets",
+                "line": 25,
+                "col": 9,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/CcPlayer.ets",
+                "line": 431,
+                "col": 13,
+                "reached": false
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 1,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 1,
+            "reachedReleaserCalls": 1,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ccplayer/lib_core/src/main/ets/core/impl/AvPlayerImpl.ets",
+                "line": 44,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 215,
+        "propagationAttempts": 10171,
+        "deferredPropagationAttempts": 5950,
+        "uniqueEdgesEnqueued": 7842,
+        "duplicateEdgesSkipped": 2329,
+        "deferredDuplicateEdgesSkipped": 186,
+        "deduplicationLookups": 10171,
+        "deduplicationCandidateChecks": 2329,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 4658,
+        "processedEdges": 7842,
+        "immediateEnqueued": 2078,
+        "deferredEnqueued": 5764,
+        "maxImmediateQueueSize": 6,
+        "maxDeferredQueueSize": 152,
+        "maxCombinedQueueSize": 153,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 7842
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 1,
+          "reachable": 1,
+          "pruned": 0
+        },
+        "pages": {
+          "owned": 2,
+          "unknown": 0
+        },
+        "components": {
+          "owned": 13,
+          "reachable": 14,
+          "fallback": 1
+        },
+        "callbacks": {
+          "bound": 28,
+          "fallback": 2
+        },
+        "ownership": {
+          "directPageRoots": 2,
+          "viewTreeComponentEdges": 11,
+          "navigationPageEdges": 1,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 900,
+          "retainedCallbackTransitions": 900,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 116
+        },
+        "pageTransitions": {
+          "discoveredPages": 2,
+          "boundCallbacks": 28,
+          "fallbackCallbacks": 2,
+          "candidateCallbackTransitions": 900,
+          "retainedCallbackTransitions": 900,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 116,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@ccplayer/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 47,
+        "edges": 90,
+        "statements": 184,
+        "lifecycleCalls": 38,
+        "uiCallbackCalls": 30
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "cloud-foundation-kit_-codelab_-arkts",
+      "status": "success",
+      "projectFiles": 10,
+      "classes": 84,
+      "methods": 226,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 1625,
+      "reachedFacts": 1986,
+      "totalTimeMs": 2850,
+      "sceneBuildingTimeMs": 2534,
+      "lifecycleModelingTimeMs": 28,
+      "resourceAnalysisTimeMs": 278,
+      "peakRssMB": 296.68,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 5,
+      "newHighConfidenceCount": 5,
+      "newUnknownOwnershipCount": 0,
+      "matchedAllocatorCalls": 5,
+      "reachedAllocatorCalls": 5,
+      "input": {
+        "metadataCommit": "e303aefba7d9c83b26b266d40be2c580e81627f8",
+        "sourceSha256": "7bffe64cd3a5e47f8462d452266392db56f46a5fe518b7f15945957688ab1b95",
+        "files": 28
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@cloud-foundation-kit_-codelab_-arkts/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 103,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 110,
+              "col": 7
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 103,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 110,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 104,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 110,
+              "col": 7
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 104,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 110,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 144,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 155,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 144,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 155,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 145,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 155,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 145,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 155,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 150,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+              "line": 72,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 150,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 72,
+                "col": 9
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 1625,
+        "reachedFacts": 1986,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 90,
+          "propagationAttempts": 2354,
+          "deferredPropagationAttempts": 1630,
+          "uniqueEdgesEnqueued": 1986,
+          "duplicateEdgesSkipped": 368,
+          "deferredDuplicateEdgesSkipped": 79,
+          "deduplicationLookups": 2354,
+          "deduplicationCandidateChecks": 368,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 736,
+          "processedEdges": 1986,
+          "immediateEnqueued": 435,
+          "deferredEnqueued": 1551,
+          "maxImmediateQueueSize": 3,
+          "maxDeferredQueueSize": 54,
+          "maxCombinedQueueSize": 54,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 1986
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 3,
+            "reachedAllocatorCalls": 3,
+            "releaserCalls": 2,
+            "reachedReleaserCalls": 2,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 103,
+                "col": 7,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 104,
+                "col": 7,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 144,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 1,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 145,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 1,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/cloud-foundation-kit_-codelab_-arkts/entry/src/main/ets/pages/StoragePage.ets",
+                "line": 150,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 90,
+        "propagationAttempts": 2354,
+        "deferredPropagationAttempts": 1630,
+        "uniqueEdgesEnqueued": 1986,
+        "duplicateEdgesSkipped": 368,
+        "deferredDuplicateEdgesSkipped": 79,
+        "deduplicationLookups": 2354,
+        "deduplicationCandidateChecks": 368,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 736,
+        "processedEdges": 1986,
+        "immediateEnqueued": 435,
+        "deferredEnqueued": 1551,
+        "maxImmediateQueueSize": 3,
+        "maxDeferredQueueSize": 54,
+        "maxCombinedQueueSize": 54,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 1986
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 1,
+          "reachable": 1,
+          "pruned": 0
+        },
+        "pages": {
+          "owned": 5,
+          "unknown": 0
+        },
+        "components": {
+          "owned": 5,
+          "reachable": 5,
+          "fallback": 0
+        },
+        "callbacks": {
+          "bound": 11,
+          "fallback": 0
+        },
+        "ownership": {
+          "directPageRoots": 5,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 4,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 121,
+          "retainedCallbackTransitions": 121,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 0
+        },
+        "pageTransitions": {
+          "discoveredPages": 5,
+          "boundCallbacks": 11,
+          "fallbackCallbacks": 0,
+          "candidateCallbackTransitions": 121,
+          "retainedCallbackTransitions": 121,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 0,
+          "legalNavigationTransitions": 10
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@cloud-foundation-kit_-codelab_-arkts/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 21,
+        "edges": 38,
+        "statements": 50,
+        "lifecycleCalls": 13,
+        "uiCallbackCalls": 11
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "ColdStartPerformanceIssue",
+      "status": "success",
+      "projectFiles": 64,
+      "classes": 239,
+      "methods": 679,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 4584,
+      "reachedFacts": 4676,
+      "totalTimeMs": 3170,
+      "sceneBuildingTimeMs": 2758,
+      "lifecycleModelingTimeMs": 51,
+      "resourceAnalysisTimeMs": 347,
+      "peakRssMB": 313.37,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 2,
+      "newHighConfidenceCount": 2,
+      "newUnknownOwnershipCount": 0,
+      "matchedAllocatorCalls": 2,
+      "reachedAllocatorCalls": 2,
+      "input": {
+        "metadataCommit": "af37f55660eb7991b62075a75af30d9b0b1a09bb",
+        "sourceSha256": "b61e8b9ac4777a88a66c1071877e58f06fcb9af028ab77c44c83e450f48d0307",
+        "files": 114
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@ColdStartPerformanceIssue/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+              "line": 39,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+              "line": 52,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+                "line": 39,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+                "line": 52,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+              "line": 39,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+              "line": 52,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+                "line": 39,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+                "line": 52,
+                "col": 9
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 4584,
+        "reachedFacts": 4676,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 142,
+          "propagationAttempts": 5702,
+          "deferredPropagationAttempts": 3643,
+          "uniqueEdgesEnqueued": 4676,
+          "duplicateEdgesSkipped": 1026,
+          "deferredDuplicateEdgesSkipped": 122,
+          "deduplicationLookups": 5702,
+          "deduplicationCandidateChecks": 1026,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 2052,
+          "processedEdges": 4676,
+          "immediateEnqueued": 1155,
+          "deferredEnqueued": 3521,
+          "maxImmediateQueueSize": 3,
+          "maxDeferredQueueSize": 149,
+          "maxCombinedQueueSize": 149,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 4676
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 2,
+            "reachedAllocatorCalls": 2,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+                "line": 39,
+                "col": 7,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/ColdStartPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/NetworkUtil.ets",
+                "line": 39,
+                "col": 7,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 142,
+        "propagationAttempts": 5702,
+        "deferredPropagationAttempts": 3643,
+        "uniqueEdgesEnqueued": 4676,
+        "duplicateEdgesSkipped": 1026,
+        "deferredDuplicateEdgesSkipped": 122,
+        "deduplicationLookups": 5702,
+        "deduplicationCandidateChecks": 1026,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 2052,
+        "processedEdges": 4676,
+        "immediateEnqueued": 1155,
+        "deferredEnqueued": 3521,
+        "maxImmediateQueueSize": 3,
+        "maxDeferredQueueSize": 149,
+        "maxCombinedQueueSize": 149,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 4676
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 4,
+          "reachable": 2,
+          "pruned": 2
+        },
+        "pages": {
+          "owned": 0,
+          "unknown": 4
+        },
+        "components": {
+          "owned": 0,
+          "reachable": 20,
+          "fallback": 20
+        },
+        "callbacks": {
+          "bound": 0,
+          "fallback": 28
+        },
+        "ownership": {
+          "directPageRoots": 0,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 784,
+          "retainedCallbackTransitions": 784,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 784
+        },
+        "pageTransitions": {
+          "discoveredPages": 0,
+          "boundCallbacks": 0,
+          "fallbackCallbacks": 28,
+          "candidateCallbackTransitions": 784,
+          "retainedCallbackTransitions": 784,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 784,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@ColdStartPerformanceIssue/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 57,
+        "edges": 110,
+        "statements": 177,
+        "lifecycleCalls": 45,
+        "uiCallbackCalls": 28
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "Gramony",
+      "status": "success",
+      "projectFiles": 74,
+      "classes": 570,
+      "methods": 1620,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 12288,
+      "reachedFacts": 13572,
+      "totalTimeMs": 4020,
+      "sceneBuildingTimeMs": 3125,
+      "lifecycleModelingTimeMs": 132,
+      "resourceAnalysisTimeMs": 748,
+      "peakRssMB": 417.98,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 4,
+      "newHighConfidenceCount": 4,
+      "newUnknownOwnershipCount": 0,
+      "matchedAllocatorCalls": 14,
+      "reachedAllocatorCalls": 6,
+      "input": {
+        "metadataCommit": "0a1ee4b026b6736671f0030ba9859aceaa962298",
+        "sourceSha256": "76a734557c3a408a2d51269d05034351fd56eedfb2a49b36067cb18f8b34ee63",
+        "files": 116
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@Gramony/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+              "line": 910,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+              "line": 925,
+              "col": 7
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+                "line": 910,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+                "line": 925,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils/push.ets",
+              "line": 179,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils/push.ets",
+              "line": 205,
+              "col": 5
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils/push.ets",
+                "line": 179,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils/push.ets",
+                "line": 205,
+                "col": 5
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+              "line": 128,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+              "line": 132,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+                "line": 128,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+                "line": 132,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+              "line": 129,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "[synthetic] @Gramony/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+              "line": 0,
+              "col": 0
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+                "line": 129,
+                "col": 9
+              },
+              {
+                "filePath": "[synthetic] @Gramony/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+                "line": 0,
+                "col": 0
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 12288,
+        "reachedFacts": 13572,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 449,
+          "propagationAttempts": 17010,
+          "deferredPropagationAttempts": 11298,
+          "uniqueEdgesEnqueued": 13572,
+          "duplicateEdgesSkipped": 3438,
+          "deferredDuplicateEdgesSkipped": 341,
+          "deduplicationLookups": 17010,
+          "deduplicationCandidateChecks": 3438,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 6876,
+          "processedEdges": 13572,
+          "immediateEnqueued": 2615,
+          "deferredEnqueued": 10957,
+          "maxImmediateQueueSize": 3,
+          "maxDeferredQueueSize": 415,
+          "maxCombinedQueueSize": 416,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 13572
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 1,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 1,
+            "reachedReleaserCalls": 1,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils/push.ets",
+                "line": 179,
+                "col": 7,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 3,
+            "reachedAllocatorCalls": 3,
+            "releaserCalls": 3,
+            "reachedReleaserCalls": 3,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+                "line": 796,
+                "col": 17,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+                "line": 855,
+                "col": 15,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Message/MessageBubble.ets",
+                "line": 910,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 3,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils.ets",
+                "line": 61,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/viewmodel/Chat/ChatPhotoNodeController.ets",
+                "line": 35,
+                "col": 3,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+                "line": 128,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 3,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/utils.ets",
+                "line": 61,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/viewmodel/Chat/ChatPhotoNodeController.ets",
+                "line": 43,
+                "col": 3,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/features/home/src/main/ets/views/Chat/ParticipantItem.ets",
+                "line": 129,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 4,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 3,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/common/base/src/main/ets/utils/Database/Database.ets",
+                "line": 117,
+                "col": 9,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/common/base/src/main/ets/utils/Database/Database.ets",
+                "line": 134,
+                "col": 9,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/common/base/src/main/ets/utils/Database/Database.ets",
+                "line": 152,
+                "col": 9,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Gramony/common/base/src/main/ets/utils/Database/Database.ets",
+                "line": 172,
+                "col": 9,
+                "reached": false
+              }
+            ]
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 449,
+        "propagationAttempts": 17010,
+        "deferredPropagationAttempts": 11298,
+        "uniqueEdgesEnqueued": 13572,
+        "duplicateEdgesSkipped": 3438,
+        "deferredDuplicateEdgesSkipped": 341,
+        "deduplicationLookups": 17010,
+        "deduplicationCandidateChecks": 3438,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 6876,
+        "processedEdges": 13572,
+        "immediateEnqueued": 2615,
+        "deferredEnqueued": 10957,
+        "maxImmediateQueueSize": 3,
+        "maxDeferredQueueSize": 415,
+        "maxCombinedQueueSize": 416,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 13572
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 1,
+          "reachable": 1,
+          "pruned": 0
+        },
+        "pages": {
+          "owned": 0,
+          "unknown": 6
+        },
+        "components": {
+          "owned": 0,
+          "reachable": 31,
+          "fallback": 31
+        },
+        "callbacks": {
+          "bound": 0,
+          "fallback": 229
+        },
+        "ownership": {
+          "directPageRoots": 0,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 52441,
+          "retainedCallbackTransitions": 52441,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 52441
+        },
+        "pageTransitions": {
+          "discoveredPages": 0,
+          "boundCallbacks": 0,
+          "fallbackCallbacks": 229,
+          "candidateCallbackTransitions": 52441,
+          "retainedCallbackTransitions": 52441,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 52441,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@Gramony/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 266,
+        "edges": 528,
+        "statements": 456,
+        "lifecycleCalls": 48,
+        "uiCallbackCalls": 229
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "Harflix",
+      "status": "success",
+      "projectFiles": 39,
+      "classes": 410,
+      "methods": 1326,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 9691,
+      "reachedFacts": 9716,
+      "totalTimeMs": 5018,
+      "sceneBuildingTimeMs": 2925,
+      "lifecycleModelingTimeMs": 1552,
+      "resourceAnalysisTimeMs": 529,
+      "peakRssMB": 356.3,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 4,
+      "newHighConfidenceCount": 1,
+      "newUnknownOwnershipCount": 3,
+      "matchedAllocatorCalls": 5,
+      "reachedAllocatorCalls": 4,
+      "input": {
+        "metadataCommit": "10a7f6dde740c938307a73dd6363b5ca6a2b825f",
+        "sourceSha256": "1e10e7b9d3b4bdfe1c9043dbe2514b89a1422bc1f6803c00bd17e618df612c08",
+        "files": 64
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@Harflix/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 105,
+              "col": 3
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 108,
+              "col": 3
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 105,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 108,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 108,
+                "col": 3
+              }
+            ]
+          },
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 17,
+              "col": 3
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 19,
+              "col": 3
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 17,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 19,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 19,
+                "col": 3
+              }
+            ]
+          },
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 198,
+              "col": 3
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 201,
+              "col": 3
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 198,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 201,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 201,
+                "col": 3
+              }
+            ]
+          },
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+              "line": 61,
+              "col": 3
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/view/MediaLibrary.ets",
+              "line": 147,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 61,
+                "col": 3
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/view/MediaLibrary.ets",
+                "line": 147,
+                "col": 7
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 9691,
+        "reachedFacts": 9716,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 272,
+          "propagationAttempts": 11581,
+          "deferredPropagationAttempts": 7553,
+          "uniqueEdgesEnqueued": 9716,
+          "duplicateEdgesSkipped": 1865,
+          "deferredDuplicateEdgesSkipped": 135,
+          "deduplicationLookups": 11581,
+          "deduplicationCandidateChecks": 1865,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 3730,
+          "processedEdges": 9716,
+          "immediateEnqueued": 2298,
+          "deferredEnqueued": 7418,
+          "maxImmediateQueueSize": 3,
+          "maxDeferredQueueSize": 215,
+          "maxCombinedQueueSize": 215,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 9716
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 5,
+            "reachedAllocatorCalls": 4,
+            "releaserCalls": 10,
+            "reachedReleaserCalls": 8,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 17,
+                "col": 3,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 61,
+                "col": 3,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 105,
+                "col": 3,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 154,
+                "col": 3,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Harflix/entry/src/main/ets/utils/HttpUtil.ets",
+                "line": 198,
+                "col": 3,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 272,
+        "propagationAttempts": 11581,
+        "deferredPropagationAttempts": 7553,
+        "uniqueEdgesEnqueued": 9716,
+        "duplicateEdgesSkipped": 1865,
+        "deferredDuplicateEdgesSkipped": 135,
+        "deduplicationLookups": 11581,
+        "deduplicationCandidateChecks": 1865,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 3730,
+        "processedEdges": 9716,
+        "immediateEnqueued": 2298,
+        "deferredEnqueued": 7418,
+        "maxImmediateQueueSize": 3,
+        "maxDeferredQueueSize": 215,
+        "maxCombinedQueueSize": 215,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 9716
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 2,
+          "reachable": 1,
+          "pruned": 1
+        },
+        "pages": {
+          "owned": 12,
+          "unknown": 0
+        },
+        "components": {
+          "owned": 16,
+          "reachable": 16,
+          "fallback": 0
+        },
+        "callbacks": {
+          "bound": 80,
+          "fallback": 0
+        },
+        "ownership": {
+          "directPageRoots": 12,
+          "viewTreeComponentEdges": 4,
+          "navigationPageEdges": 9,
+          "viewTreeFailures": 1
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 6400,
+          "retainedCallbackTransitions": 6400,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 0
+        },
+        "pageTransitions": {
+          "discoveredPages": 12,
+          "boundCallbacks": 80,
+          "fallbackCallbacks": 0,
+          "candidateCallbackTransitions": 6400,
+          "retainedCallbackTransitions": 6400,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 0,
+          "legalNavigationTransitions": 153
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@Harflix/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 103,
+        "edges": 202,
+        "statements": 217,
+        "lifecycleCalls": 42,
+        "uiCallbackCalls": 80
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "HarmonyUtilCode",
+      "status": "success",
+      "projectFiles": 113,
+      "classes": 375,
+      "methods": 1336,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 5465,
+      "reachedFacts": 7245,
+      "totalTimeMs": 3520,
+      "sceneBuildingTimeMs": 2893,
+      "lifecycleModelingTimeMs": 35,
+      "resourceAnalysisTimeMs": 577,
+      "peakRssMB": 332.73,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 13,
+      "newHighConfidenceCount": 11,
+      "newUnknownOwnershipCount": 2,
+      "matchedAllocatorCalls": 22,
+      "reachedAllocatorCalls": 13,
+      "input": {
+        "metadataCommit": "9751d1af45ed7c847e636f760f9c38168f1e479a",
+        "sourceSha256": "91b5c496d8d1124db750cd5f85fc43637f9af9c1487ccb30373db0677aeecd15",
+        "files": 150
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@HarmonyUtilCode/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/FileUtils.ets",
+              "line": 409,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/FileUtils.ets",
+                "line": 409,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 351,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 359,
+              "col": 5
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 351,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 359,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 359,
+                "col": 5
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 375,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 191,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 375,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 191,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 315,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 315,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 317,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 317,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 321,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 321,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 323,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 323,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 327,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 327,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 329,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 329,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 333,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 333,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 335,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+              "line": 547,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 335,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 547,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 107,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 120,
+              "col": 9
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 107,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 107,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 120,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+              "line": 667,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/pages/ImageFragment.ets",
+              "line": 45,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 667,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/pages/ImageFragment.ets",
+                "line": 45,
+                "col": 7
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 5465,
+        "reachedFacts": 7245,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 346,
+          "propagationAttempts": 9173,
+          "deferredPropagationAttempts": 5593,
+          "uniqueEdgesEnqueued": 7245,
+          "duplicateEdgesSkipped": 1928,
+          "deferredDuplicateEdgesSkipped": 287,
+          "deduplicationLookups": 9173,
+          "deduplicationCandidateChecks": 1928,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 3856,
+          "processedEdges": 7245,
+          "immediateEnqueued": 1939,
+          "deferredEnqueued": 5306,
+          "maxImmediateQueueSize": 9,
+          "maxDeferredQueueSize": 223,
+          "maxCombinedQueueSize": 223,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 7245
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 4,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 2,
+            "reachedReleaserCalls": 1,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 41,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/example/src/main/ets/components/CameraCreateCore.ets",
+                "line": 42,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/FileUtils.ets",
+                "line": 399,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/FileUtils.ets",
+                "line": 409,
+                "col": 5,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 9,
+            "reachedAllocatorCalls": 8,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 159,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 315,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 317,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 321,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 323,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 327,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 329,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 333,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 335,
+                "col": 9,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 5,
+            "reachedAllocatorCalls": 2,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 107,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 162,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 429,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 446,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 667,
+                "col": 5,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 4,
+            "reachedAllocatorCalls": 2,
+            "releaserCalls": 4,
+            "reachedReleaserCalls": 2,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 351,
+                "col": 5,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 375,
+                "col": 5,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 394,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/HarmonyUtilCode/utilcode/src/main/ets/image/ImageUtils.ets",
+                "line": 413,
+                "col": 5,
+                "reached": false
+              }
+            ]
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 346,
+        "propagationAttempts": 9173,
+        "deferredPropagationAttempts": 5593,
+        "uniqueEdgesEnqueued": 7245,
+        "duplicateEdgesSkipped": 1928,
+        "deferredDuplicateEdgesSkipped": 287,
+        "deduplicationLookups": 9173,
+        "deduplicationCandidateChecks": 1928,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 3856,
+        "processedEdges": 7245,
+        "immediateEnqueued": 1939,
+        "deferredEnqueued": 5306,
+        "maxImmediateQueueSize": 9,
+        "maxDeferredQueueSize": 223,
+        "maxCombinedQueueSize": 223,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 7245
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 1,
+          "reachable": 1,
+          "pruned": 0
+        },
+        "pages": {
+          "owned": 8,
+          "unknown": 5
+        },
+        "components": {
+          "owned": 12,
+          "reachable": 18,
+          "fallback": 6
+        },
+        "callbacks": {
+          "bound": 31,
+          "fallback": 3
+        },
+        "ownership": {
+          "directPageRoots": 8,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 1156,
+          "retainedCallbackTransitions": 1156,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 195
+        },
+        "pageTransitions": {
+          "discoveredPages": 8,
+          "boundCallbacks": 31,
+          "fallbackCallbacks": 3,
+          "candidateCallbackTransitions": 1156,
+          "retainedCallbackTransitions": 1156,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 195,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@HarmonyUtilCode/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 57,
+        "edges": 110,
+        "statements": 230,
+        "lifecycleCalls": 37,
+        "uiCallbackCalls": 34
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "rdbStore",
+      "status": "success",
+      "projectFiles": 55,
+      "classes": 170,
+      "methods": 663,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 379,
+      "reachedFacts": 379,
+      "totalTimeMs": 3004,
+      "sceneBuildingTimeMs": 2729,
+      "lifecycleModelingTimeMs": 10,
+      "resourceAnalysisTimeMs": 254,
+      "peakRssMB": 304.44,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 0,
+      "newHighConfidenceCount": 0,
+      "newUnknownOwnershipCount": 0,
+      "matchedAllocatorCalls": 7,
+      "reachedAllocatorCalls": 0,
+      "input": {
+        "metadataCommit": "11e6ab91862f10482d9ca0acf57c07f48d0cef76",
+        "sourceSha256": "9c80a62a5d027438f8c1b5ac7d002d0add5a89530c9aea6ddf2786ca9827800c",
+        "files": 85
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@rdbStore/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [],
+        "reachedStatements": 379,
+        "reachedFacts": 379,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 41,
+          "propagationAttempts": 475,
+          "deferredPropagationAttempts": 198,
+          "uniqueEdgesEnqueued": 379,
+          "duplicateEdgesSkipped": 96,
+          "deferredDuplicateEdgesSkipped": 0,
+          "deduplicationLookups": 475,
+          "deduplicationCandidateChecks": 96,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 192,
+          "processedEdges": 379,
+          "immediateEnqueued": 181,
+          "deferredEnqueued": 198,
+          "maxImmediateQueueSize": 2,
+          "maxDeferredQueueSize": 82,
+          "maxCombinedQueueSize": 82,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 379
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 7,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 1,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/RdbWrapper.ets",
+                "line": 114,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/RdbWrapper.ets",
+                "line": 120,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/RdbWrapper.ets",
+                "line": 125,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/RdbWrapper.ets",
+                "line": 132,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/auto/DiffUtil.ets",
+                "line": 172,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/auto/DiffUtil.ets",
+                "line": 191,
+                "col": 5,
+                "reached": false
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/rdbStore/rdbstore/src/main/ets/database/auto/DiffUtil.ets",
+                "line": 210,
+                "col": 5,
+                "reached": false
+              }
+            ]
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 41,
+        "propagationAttempts": 475,
+        "deferredPropagationAttempts": 198,
+        "uniqueEdgesEnqueued": 379,
+        "duplicateEdgesSkipped": 96,
+        "deferredDuplicateEdgesSkipped": 0,
+        "deduplicationLookups": 475,
+        "deduplicationCandidateChecks": 96,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 192,
+        "processedEdges": 379,
+        "immediateEnqueued": 181,
+        "deferredEnqueued": 198,
+        "maxImmediateQueueSize": 2,
+        "maxDeferredQueueSize": 82,
+        "maxCombinedQueueSize": 82,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 379
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 2,
+          "reachable": 1,
+          "pruned": 1
+        },
+        "pages": {
+          "owned": 0,
+          "unknown": 2
+        },
+        "components": {
+          "owned": 0,
+          "reachable": 2,
+          "fallback": 2
+        },
+        "callbacks": {
+          "bound": 0,
+          "fallback": 0
+        },
+        "ownership": {
+          "directPageRoots": 0,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 0,
+          "retainedCallbackTransitions": 0,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 0
+        },
+        "pageTransitions": {
+          "discoveredPages": 1,
+          "boundCallbacks": 0,
+          "fallbackCallbacks": 0,
+          "candidateCallbackTransitions": 0,
+          "retainedCallbackTransitions": 0,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 0,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@rdbStore/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 7,
+        "edges": 10,
+        "statements": 90,
+        "lifecycleCalls": 8,
+        "uiCallbackCalls": 0
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "TransitionPerformanceIssue",
+      "status": "success",
+      "projectFiles": 35,
+      "classes": 178,
+      "methods": 480,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 3076,
+      "reachedFacts": 3235,
+      "totalTimeMs": 3149,
+      "sceneBuildingTimeMs": 2778,
+      "lifecycleModelingTimeMs": 37,
+      "resourceAnalysisTimeMs": 321,
+      "peakRssMB": 308.15,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 12,
+      "newHighConfidenceCount": 8,
+      "newUnknownOwnershipCount": 4,
+      "matchedAllocatorCalls": 12,
+      "reachedAllocatorCalls": 12,
+      "input": {
+        "metadataCommit": "9b4dd39041982ee9e5a77a65912996a495d36ef2",
+        "sourceSha256": "297cdf05f82621d5f58d463f23ebe32f50200c0fc49a4e5fe69b57024d1bc3c7",
+        "files": 75
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@TransitionPerformanceIssue/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 186,
+              "col": 13
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 194,
+              "col": 13
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 186,
+                "col": 13
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 194,
+                "col": 13
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 166,
+              "col": 13
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 173,
+              "col": 13
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 166,
+                "col": 13
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 173,
+                "col": 13
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 176,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 165,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 176,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 165,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 156,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 144,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 156,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 144,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 149,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 165,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 149,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 165,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 59,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 72,
+              "col": 3
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 59,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 72,
+                "col": 3
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 130,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 144,
+              "col": 9
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 130,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 144,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 59,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 72,
+              "col": 3
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 59,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 72,
+                "col": 3
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 151,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 165,
+              "col": 9
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 151,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 151,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 165,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 67,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 72,
+              "col": 3
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 67,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 72,
+                "col": 3
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 132,
+              "col": 9
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+              "line": 144,
+              "col": 9
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 132,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 132,
+                "col": 9
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 144,
+                "col": 9
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 67,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+              "line": 72,
+              "col": 3
+            },
+            "reason": "unknown-ownership",
+            "confidence": "low",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 67,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 72,
+                "col": 3
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 3076,
+        "reachedFacts": 3235,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 131,
+          "propagationAttempts": 3769,
+          "deferredPropagationAttempts": 2542,
+          "uniqueEdgesEnqueued": 3235,
+          "duplicateEdgesSkipped": 534,
+          "deferredDuplicateEdgesSkipped": 90,
+          "deduplicationLookups": 3769,
+          "deduplicationCandidateChecks": 534,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 1068,
+          "processedEdges": 3235,
+          "immediateEnqueued": 783,
+          "deferredEnqueued": 2452,
+          "maxImmediateQueueSize": 3,
+          "maxDeferredQueueSize": 88,
+          "maxCombinedQueueSize": 88,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 3235
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 2,
+            "reachedAllocatorCalls": 2,
+            "releaserCalls": 2,
+            "reachedReleaserCalls": 2,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 186,
+                "col": 13,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 166,
+                "col": 13,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 4,
+            "reachedAllocatorCalls": 4,
+            "releaserCalls": 2,
+            "reachedReleaserCalls": 2,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 149,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 59,
+                "col": 5,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 130,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 59,
+                "col": 5,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 4,
+            "reachedAllocatorCalls": 4,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 151,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 67,
+                "col": 5,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 132,
+                "col": 9,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/utils/ImageUtil.ets",
+                "line": 67,
+                "col": 5,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 2,
+            "reachedAllocatorCalls": 2,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/AfterOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 176,
+                "col": 7,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/TransitionPerformanceIssue/BeforeOptimization/entry/src/main/ets/pages/BottomTabPage.ets",
+                "line": 156,
+                "col": 7,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 131,
+        "propagationAttempts": 3769,
+        "deferredPropagationAttempts": 2542,
+        "uniqueEdgesEnqueued": 3235,
+        "duplicateEdgesSkipped": 534,
+        "deferredDuplicateEdgesSkipped": 90,
+        "deduplicationLookups": 3769,
+        "deduplicationCandidateChecks": 534,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 1068,
+        "processedEdges": 3235,
+        "immediateEnqueued": 783,
+        "deferredEnqueued": 2452,
+        "maxImmediateQueueSize": 3,
+        "maxDeferredQueueSize": 88,
+        "maxCombinedQueueSize": 88,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 3235
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 4,
+          "reachable": 2,
+          "pruned": 2
+        },
+        "pages": {
+          "owned": 0,
+          "unknown": 4
+        },
+        "components": {
+          "owned": 0,
+          "reachable": 12,
+          "fallback": 12
+        },
+        "callbacks": {
+          "bound": 0,
+          "fallback": 6
+        },
+        "ownership": {
+          "directPageRoots": 0,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 36,
+          "retainedCallbackTransitions": 36,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 36
+        },
+        "pageTransitions": {
+          "discoveredPages": 0,
+          "boundCallbacks": 0,
+          "fallbackCallbacks": 6,
+          "candidateCallbackTransitions": 36,
+          "retainedCallbackTransitions": 36,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 36,
+          "legalNavigationTransitions": 0
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@TransitionPerformanceIssue/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 25,
+        "edges": 46,
+        "statements": 106,
+        "lifecycleCalls": 32,
+        "uiCallbackCalls": 6
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    },
+    {
+      "name": "Wechat_HarmonyOS",
+      "status": "success",
+      "projectFiles": 36,
+      "classes": 372,
+      "methods": 886,
+      "resourceLeakCount": 0,
+      "taintLeakCount": 0,
+      "methodLocalLeakCount": 0,
+      "sourceCount": 0,
+      "sinkCount": 0,
+      "analyzedMethods": 0,
+      "reachedStatements": 5426,
+      "reachedFacts": 225893,
+      "totalTimeMs": 12305,
+      "sceneBuildingTimeMs": 2727,
+      "lifecycleModelingTimeMs": 76,
+      "resourceAnalysisTimeMs": 9493,
+      "peakRssMB": 585.5,
+      "resourceLeaks": [],
+      "taintLeaks": [],
+      "methodLocalLeaks": [],
+      "newDiagnosticCount": 5,
+      "newHighConfidenceCount": 5,
+      "newUnknownOwnershipCount": 0,
+      "matchedAllocatorCalls": 5,
+      "reachedAllocatorCalls": 5,
+      "input": {
+        "metadataCommit": "38a1671c76d889e79701a601c00f05e9112db6f7",
+        "sourceSha256": "45b1a421c381ab5da5adb641cd4162e5988de60a688b3b68ce3567ec78dd9b92",
+        "files": 56
+      },
+      "newResourceAnalysis": {
+        "status": "success",
+        "success": true,
+        "entryMethod": "@Wechat_HarmonyOS/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "ruleIds": [
+          "HttpRequestNotDestroyed",
+          "FileNotClosed",
+          "FileIONotClosed",
+          "ImageSourceNotReleased",
+          "PixelMapNotReleased",
+          "ImagePackerNotReleased",
+          "AVPlayerNotReleased",
+          "AudioRendererNotReleased",
+          "AudioCapturerNotReleased",
+          "ResultSetNotClosed"
+        ],
+        "diagnostics": [
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+              "line": 50,
+              "col": 5
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/pages/chat/ChatPage.ets",
+              "line": 276,
+              "col": 5
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+                "line": 50,
+                "col": 5
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/pages/chat/ChatPage.ets",
+                "line": 276,
+                "col": 5
+              }
+            ]
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+              "line": 63,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+              "line": 66,
+              "col": 7
+            },
+            "reason": "partially-released",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+                "line": 63,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+                "line": 66,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+              "line": 79,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+              "line": 104,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+                "line": 79,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+                "line": 104,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+              "line": 46,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+              "line": 66,
+              "col": 7
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+                "line": 46,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+                "line": 66,
+                "col": 7
+              }
+            ]
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocation": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/PhotoPickerUtils.ets",
+              "line": 137,
+              "col": 7
+            },
+            "boundary": {
+              "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/PhotoPickerUtils.ets",
+              "line": 143,
+              "col": 5
+            },
+            "reason": "unreleased",
+            "confidence": "high",
+            "evidence": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/PhotoPickerUtils.ets",
+                "line": 137,
+                "col": 7
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/PhotoPickerUtils.ets",
+                "line": 143,
+                "col": 5
+              }
+            ]
+          }
+        ],
+        "reachedStatements": 5426,
+        "reachedFacts": 225893,
+        "unresolvedRuleIds": [],
+        "solverStatistics": {
+          "scheduling": "two-tier-control-flow",
+          "solveTimeMs": 9245,
+          "propagationAttempts": 240590,
+          "deferredPropagationAttempts": 174623,
+          "uniqueEdgesEnqueued": 225893,
+          "duplicateEdgesSkipped": 14697,
+          "deferredDuplicateEdgesSkipped": 3168,
+          "deduplicationLookups": 240590,
+          "deduplicationCandidateChecks": 14697,
+          "maxDeduplicationCandidates": 1,
+          "factEqualityChecks": 29394,
+          "processedEdges": 225893,
+          "immediateEnqueued": 54438,
+          "deferredEnqueued": 171455,
+          "maxImmediateQueueSize": 3,
+          "maxDeferredQueueSize": 1379,
+          "maxCombinedQueueSize": 1379,
+          "maxLaterEdgesSize": 0,
+          "finalLaterEdgesSize": 0,
+          "finalPathEdgeCount": 225893
+        },
+        "coverage": [
+          {
+            "ruleId": "HttpRequestNotDestroyed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "FileNotClosed",
+            "allocatorCalls": 3,
+            "reachedAllocatorCalls": 3,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+                "line": 79,
+                "col": 7,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+                "line": 46,
+                "col": 7,
+                "reached": true
+              },
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/PhotoPickerUtils.ets",
+                "line": 137,
+                "col": 7,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "FileIONotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImageSourceNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "PixelMapNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "ImagePackerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AVPlayerNotReleased",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          },
+          {
+            "ruleId": "AudioRendererNotReleased",
+            "allocatorCalls": 1,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 1,
+            "reachedReleaserCalls": 1,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioRendererManager.ets",
+                "line": 63,
+                "col": 7,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "AudioCapturerNotReleased",
+            "allocatorCalls": 1,
+            "reachedAllocatorCalls": 1,
+            "releaserCalls": 1,
+            "reachedReleaserCalls": 1,
+            "allocations": [
+              {
+                "filePath": "/home/nomad/Documents/静态分析/鸿蒙静态分析/ArkLifeguard/HarmonyRealApps/projects/Wechat_HarmonyOS/entry/src/main/ets/utils/AudioCapturerManager.ets",
+                "line": 50,
+                "col": 5,
+                "reached": true
+              }
+            ]
+          },
+          {
+            "ruleId": "ResultSetNotClosed",
+            "allocatorCalls": 0,
+            "reachedAllocatorCalls": 0,
+            "releaserCalls": 0,
+            "reachedReleaserCalls": 0,
+            "allocations": []
+          }
+        ]
+      },
+      "solverStatistics": {
+        "scheduling": "two-tier-control-flow",
+        "solveTimeMs": 9245,
+        "propagationAttempts": 240590,
+        "deferredPropagationAttempts": 174623,
+        "uniqueEdgesEnqueued": 225893,
+        "duplicateEdgesSkipped": 14697,
+        "deferredDuplicateEdgesSkipped": 3168,
+        "deduplicationLookups": 240590,
+        "deduplicationCandidateChecks": 14697,
+        "maxDeduplicationCandidates": 1,
+        "factEqualityChecks": 29394,
+        "processedEdges": 225893,
+        "immediateEnqueued": 54438,
+        "deferredEnqueued": 171455,
+        "maxImmediateQueueSize": 3,
+        "maxDeferredQueueSize": 1379,
+        "maxCombinedQueueSize": 1379,
+        "maxLaterEdgesSize": 0,
+        "finalLaterEdgesSize": 0,
+        "finalPathEdgeCount": 225893
+      },
+      "lifecycleStatistics": {
+        "abilities": {
+          "collected": 1,
+          "reachable": 1,
+          "pruned": 0
+        },
+        "pages": {
+          "owned": 4,
+          "unknown": 3
+        },
+        "components": {
+          "owned": 9,
+          "reachable": 20,
+          "fallback": 11
+        },
+        "callbacks": {
+          "bound": 26,
+          "fallback": 36
+        },
+        "ownership": {
+          "directPageRoots": 4,
+          "viewTreeComponentEdges": 0,
+          "navigationPageEdges": 0,
+          "viewTreeFailures": 0
+        },
+        "transitions": {
+          "candidateCallbackTransitions": 3844,
+          "retainedCallbackTransitions": 3844,
+          "prunedCrossAbilityTransitions": 0,
+          "conservativeFallbackTransitions": 3168
+        },
+        "pageTransitions": {
+          "discoveredPages": 5,
+          "boundCallbacks": 27,
+          "fallbackCallbacks": 35,
+          "candidateCallbackTransitions": 3844,
+          "retainedCallbackTransitions": 3844,
+          "prunedCrossPageTransitions": 0,
+          "conservativeFallbackTransitions": 3115,
+          "legalNavigationTransitions": 114
+        }
+      },
+      "dummyMain": {
+        "methodSignature": "@Wechat_HarmonyOS/@extendedDummyFile: @extendedDummyClass.@extendedDummyMain()",
+        "blocks": 90,
+        "edges": 176,
+        "statements": 183,
+        "lifecycleCalls": 34,
+        "uiCallbackCalls": 62
+      },
+      "amplification": {
+        "reachedFacts": 0,
+        "reachedStatements": 0,
+        "processedEdges": null,
+        "propagationAttempts": null,
+        "ifdsTimeMs": null,
+        "factsPerStatement": null,
+        "edgesPerStatement": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+export interface File { fd: number; } export function openSync(path: string): File; export function open(path: string): Promise<File>; export function closeSync(file: number | File): void; export function close(file: number | File): Promise<void>;

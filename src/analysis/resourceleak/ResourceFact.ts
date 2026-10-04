@@ -7,7 +7,7 @@ import {
     Value,
 } from '../../adapter/arkanalyzer';
 
-export type ResourceState = 'allocated' | 'released' | 'escaped' | 'unknown';
+export type ResourceState = 'allocated' | 'pending' | 'released' | 'escaped' | 'unknown';
 export type ResourceEvent = 'overwritten' | 'wrong-release' | 'unknown-ownership';
 
 /** Caller aliases are restored after a direct call, while callee locals stay local. */
@@ -65,7 +65,11 @@ export class ResourceFact {
 
 /** ArkAnalyzer may materialize equivalent field refs as distinct Value objects. */
 export function resourceValueKey(value: Value): string {
-    if (value instanceof Local) return `local:${value.getName()}`;
+    if (value instanceof Local) {
+        const method = value.getDeclaringStmt()?.getCfg()?.getDeclaringMethod();
+        const scope = method?.getSignature().toString() ?? value.getSignature()?.toString() ?? '';
+        return `local:${scope}:${value.getName()}`;
+    }
     if (value instanceof ArkInstanceFieldRef) {
         return `field:${resourceValueKey(value.getBase())}:${value.getFieldSignature().toString()}`;
     }

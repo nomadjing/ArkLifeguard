@@ -7,9 +7,11 @@ export interface ResourceApi {
     /** Fully resolved method identity, including its declaring module and class. */
     readonly methodSignature: string;
     readonly handleLocation: ResourceHandleLocation;
+    /** Promise handles become owned resources after await; callback results stay uncertain. */
+    readonly acquisition?: 'promise' | 'callback';
 }
 
-/** Rule contract for the new resource analysis; no rules are active in §3.1. */
+/** Exact SDK API identities and the ownership contract for one resource family. */
 export interface ResourceRule {
     readonly id: string;
     readonly scope: 'resource' | 'compatibility';
@@ -17,4 +19,6 @@ export interface ResourceRule {
     readonly releasers: readonly ResourceApi[];
     /** Only rules that explicitly permit nullification may use it as release. */
     readonly releaseByNullify?: boolean;
+    /** Explicit handle projections, e.g. fs.File.fd. Never applies to arbitrary fields. */
+    readonly handleProperties?: readonly string[];
 }

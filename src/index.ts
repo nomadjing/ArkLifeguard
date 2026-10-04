@@ -4,4 +4,7 @@ export * from './cli';
 export * from './lifecycle';
 export * from './analysis/nullness';
 export * from './analysis/resource';
+export * from './analysis/resourceleak';
+export * from './analysis/closure';
+export * from './analysis/memory';
 export * from './ifds';

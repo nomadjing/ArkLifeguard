@@ -17,6 +17,7 @@ import type {
     ResourceLocation,
 } from './ResourceResult';
 import type { ResourceRule } from './rules/ResourceRule';
+import { resolveHarmonyResourceRules } from './rules/HarmonyResourceRules';
 
 class ResourceSolver extends DataflowSolver<ResourceFact> {}
 
@@ -25,12 +26,19 @@ interface ExitFact {
     readonly exit: Stmt;
 }
 
-/** Independent resource-leak engine; rules are injected until the HomeFlow rule matrix lands. */
+/** Independent resource-leak engine with SDK defaults or explicitly injected rules. */
 export class ResourceRunner {
+    private readonly rules: readonly ResourceRule[];
+    private readonly unresolvedRuleIds: readonly string[];
     constructor(
         private readonly scene: Scene,
-        private readonly rules: readonly ResourceRule[] = [],
-    ) {}
+        rules?: readonly ResourceRule[],
+        private readonly collectStatistics = false,
+    ) {
+        const resolved = rules === undefined ? resolveHarmonyResourceRules(scene) : undefined;
+        this.rules = rules ?? resolved!.rules;
+        this.unresolvedRuleIds = resolved?.unresolvedRuleIds ?? [];
+    }
 
     runWithDummyMain(dummyMain: ArkMethod): ResourceAnalysisResult {
         const entryMethod = dummyMain.getSignature().toString();
@@ -41,6 +49,7 @@ export class ResourceRunner {
                 entryMethod,
                 ruleIds: [],
                 diagnostics: [],
+                unresolvedRuleIds: this.unresolvedRuleIds,
                 error: '新资源分析尚未配置规则；请选择 legacy 引擎。',
             };
         }
@@ -49,7 +58,7 @@ export class ResourceRunner {
             const entry = cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
             if (!entry) throw new Error('资源分析入口没有 CFG 语句');
             const problem = new ResourceProblem(entry, dummyMain, this.rules);
-            const solver = new ResourceSolver(problem, this.scene);
+            const solver = new ResourceSolver(problem, this.scene, { collectStatistics: this.collectStatistics });
             solver.solve();
             const byStatement = new Map<Stmt, ResourceFact[]>();
             for (const edge of solver.getPathEdgeSet()) {
@@ -66,6 +75,31 @@ export class ResourceRunner {
                 diagnostics: this.collectDiagnostics(byStatement, dummyMain),
                 reachedStatements: byStatement.size,
                 reachedFacts: [...byStatement.values()].reduce((sum, facts) => sum + facts.length, 0),
+                unresolvedRuleIds: this.unresolvedRuleIds,
+                solverStatistics: solver.getStatistics(),
+                coverage: this.rules.map(rule => {
+                    const allocators = new Set(rule.allocators.map(api => api.methodSignature));
+                    const releasers = new Set(rule.releasers.map(api => api.methodSignature));
+                    const allocations = [];
+                    let releaserCalls = 0;
+                    let reachedReleaserCalls = 0;
+                    for (const method of this.scene.getMethods()) {
+                        for (const stmt of method.getCfg()?.getStmts() ?? []) {
+                            const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
+                            if (!signature) continue;
+                            if (allocators.has(signature)) allocations.push({
+                                ...this.location(stmt), reached: byStatement.has(stmt),
+                            });
+                            if (releasers.has(signature)) {
+                                releaserCalls++;
+                                if (byStatement.has(stmt)) reachedReleaserCalls++;
+                            }
+                        }
+                    }
+                    return { ruleId: rule.id, allocatorCalls: allocations.length,
+                        reachedAllocatorCalls: allocations.filter(site => site.reached).length,
+                        releaserCalls, reachedReleaserCalls, allocations };
+                }),
             };
         } catch (error) {
             return {
@@ -101,7 +135,8 @@ export class ResourceRunner {
             for (const fact of facts) {
                 if (fact.isZero() || !fact.allocationSite || fact.frames.length > 0) continue;
                 if (this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
-                const key = `${fact.ruleId}|${siteId(fact.allocationSite)}|${method.getSignature()}`;
+                // Multiple lifecycle exits are evidence for one allocation, not independent leaks.
+                const key = `${fact.ruleId}|${siteId(fact.allocationSite)}`;
                 const group = groups.get(key) ?? [];
                 group.push({ fact, exit });
                 groups.set(key, group);
@@ -110,15 +145,19 @@ export class ResourceRunner {
         const diagnostics: ResourceDiagnostic[] = [];
         for (const group of groups.values()) {
             const leaks = group.filter(item => item.fact.state === 'allocated');
-            const unknowns = group.filter(item => item.fact.state === 'unknown');
+            const unknowns = group.filter(item => item.fact.state === 'unknown' || item.fact.state === 'pending');
             if (leaks.length === 0 && unknowns.length === 0) continue;
-            const chosen = leaks[0] ?? unknowns[0];
+            // Prefer the allocating method's exit over a distant lifecycle continuation.
+            const preferred = (items: ExitFact[]): ExitFact | undefined => items.find(item =>
+                item.exit.getCfg()?.getDeclaringMethod() ===
+                item.fact.allocationSite?.getCfg()?.getDeclaringMethod()) ?? items[0];
+            const chosen = (preferred(leaks) ?? preferred(unknowns))!;
             const { fact, exit } = chosen;
             const partiallyReleased = leaks.length > 0 &&
                 group.some(item => item.fact.state === 'released');
             const reason: ResourceLeakReason = partiallyReleased
                 ? 'partially-released'
-                : fact.state === 'unknown'
+                : fact.state === 'unknown' || fact.state === 'pending'
                     ? 'unknown-ownership'
                     : fact.event === 'overwritten'
                         ? 'overwritten'
@@ -161,7 +200,8 @@ export class ResourceRunner {
             candidate.getOriginPositionInfo()?.getLineNo() > 0).at(-1)
             ?.getOriginPositionInfo();
         return {
-            filePath: method?.getDeclaringArkFile()?.getFilePath() ?? 'unknown',
+            filePath: method?.getDeclaringArkFile()?.getFilePath() ||
+                `[synthetic] ${method?.getSignature().toString() ?? 'unknown'}`,
             line: position?.getLineNo() && position.getLineNo() > 0
                 ? position.getLineNo() : fallback?.getLineNo() ?? 0,
             col: position?.getColNo() && position.getColNo() > 0

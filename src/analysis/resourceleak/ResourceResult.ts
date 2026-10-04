@@ -32,4 +32,16 @@ export interface ResourceAnalysisResult {
     readonly reachedStatements?: number;
     readonly reachedFacts?: number;
     readonly error?: string;
+    readonly unresolvedRuleIds?: readonly string[];
+    readonly solverStatistics?: Readonly<import('../../ifds').IFDSSolverStatistics>;
+    readonly coverage?: readonly ResourceRuleCoverage[];
+}
+
+export interface ResourceRuleCoverage {
+    readonly ruleId: string;
+    readonly allocatorCalls: number;
+    readonly reachedAllocatorCalls: number;
+    readonly releaserCalls: number;
+    readonly reachedReleaserCalls: number;
+    readonly allocations: readonly (ResourceLocation & { readonly reached: boolean })[];
 }

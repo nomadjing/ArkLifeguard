@@ -52,7 +52,7 @@ describe('ArkLifeguard CLI', () => {
         output.mockRestore();
     });
 
-    it('returns failure for the unfinished new resource engine', async () => {
+    it('runs SDK defaults for the new resource engine without mixing legacy results', async () => {
         const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         try {
             const code = await runCLI([
@@ -60,24 +60,25 @@ describe('ArkLifeguard CLI', () => {
                 '--sdk', fixturePath('sdk'), '--checks', 'resource',
                 '--resource-engine', 'new', '--format', 'json',
             ]);
-            expect(code).toBe(2);
+            expect(code).toBe(0);
             const json = output.mock.calls.map(call => call.join(' '))
                 .find(value => value.startsWith('{'));
             const report = JSON.parse(json ?? '{}');
-            expect(report.status).toBe('failed');
+            expect(report.status).toBe('success');
             expect(report.resourceAnalysis).toMatchObject({
                 engine: 'legacy', enabled: false, resourceLeaks: [],
             });
             expect(report.newResourceAnalysis).toMatchObject({
-                status: 'not-implemented', success: false, diagnostics: [],
+                status: 'success', success: true,
             });
-            expect(report.newResourceAnalysis.error).toContain('尚未配置规则');
+            expect(report.newResourceAnalysis.ruleIds).toContain('AVPlayerNotReleased');
+            expect(report.newResourceAnalysis.coverage).toBeDefined();
         } finally {
             output.mockRestore();
         }
     });
 
-    it('runs both core checks by default', async () => {
+    it('runs all four checks by default', async () => {
         const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         const code = await runCLI([
             'node',
@@ -96,7 +97,27 @@ describe('ArkLifeguard CLI', () => {
         const report = JSON.parse(json ?? '{}');
         expect(report.nullness.enabled).toBe(true);
         expect(report.resourceAnalysis.enabled).toBe(true);
+        expect(report.closureAnalysis.enabled).toBe(true);
+        expect(report.memoryAnalysis.enabled).toBe(true);
         output.mockRestore();
+    });
+
+    it.each(['closure', 'memory', 'closure,memory'])('selects independent checks with --checks %s', async checks => {
+        const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        try {
+            const code = await runCLI(['node', 'arklifeguard', 'analyze', fixturePath('resource', 'retention-app'),
+                '--sdk', fixturePath('resource', 'platform-sdk'), '--checks', checks, '--format', 'json']);
+            expect(code).toBe(0);
+            const json = output.mock.calls.map(call => call.join(' ')).find(value => value.startsWith('{'));
+            const report = JSON.parse(json ?? '{}');
+            expect(report.schemaVersion).toBe(2);
+            expect(report.nullness.enabled).toBe(false);
+            expect(report.resourceAnalysis.enabled).toBe(false);
+            expect(report.closureAnalysis.enabled).toBe(checks.includes('closure'));
+            expect(report.memoryAnalysis.enabled).toBe(checks.includes('memory'));
+            if (checks.includes('closure')) expect(report.closureAnalysis.closureRetentionLeaks).toHaveLength(1);
+            if (checks.includes('memory')) expect(report.memoryAnalysis.memoryRetentionCandidates).toHaveLength(1);
+        } finally { output.mockRestore(); }
     });
 
     it('writes IFDS statistics only when an output path is requested', async () => {

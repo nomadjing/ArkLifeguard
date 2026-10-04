@@ -1,0 +1,1 @@
+declare namespace audio { interface AudioRenderer { release(): Promise<void>; } interface AudioCapturer { release(): Promise<void>; } function createAudioRenderer(): Promise<AudioRenderer>; function createAudioCapturer(): Promise<AudioCapturer>; } export default audio;
