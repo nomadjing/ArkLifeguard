@@ -5,8 +5,7 @@ import { RegistrationModel } from './RegistrationModel';
 import { RegistrationState, type Registration } from './RegistrationState';
 import { resolveRegistrationRules, type RegistrationRule } from './RegistrationRules';
 import type { ClosureAnalysisResult, ClosureRetentionDiagnostic, RegistrationDiagnostic } from './ClosureResult';
-import { HARMONYOS_SOURCES } from '../resource/SourceSinkManager';
-import { legacyRuleMigration } from '../shared/RuleOwnership';
+import { UNSUPPORTED_REGISTRATION_API_FAMILIES } from './RegistrationCapabilities';
 
 export class ClosureRunner {
     constructor(private readonly scene: Scene, private readonly rules?: readonly RegistrationRule[],
@@ -14,8 +13,7 @@ export class ClosureRunner {
     runWithDummyMain(entry: ArkMethod): ClosureAnalysisResult {
         const base = { enabled: true, registrationLeaks: [], closureRetentionLeaks: [],
             unresolvedRuleIds: [] as readonly string[], limitations: [] as readonly string[],
-            unsupportedLegacyRuleIds: legacyRuleMigration(HARMONYOS_SOURCES)
-                .filter(rule => rule.status === 'unsupported-registration').map(rule => rule.legacyId) };
+            unsupportedApiFamilies: UNSUPPORTED_REGISTRATION_API_FAMILIES };
         try {
             const resolution = this.rules === undefined ? resolveRegistrationRules(this.scene)
                 : { rules: this.rules, unresolvedRuleIds: [] };

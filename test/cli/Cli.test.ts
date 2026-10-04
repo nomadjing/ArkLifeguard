@@ -30,9 +30,9 @@ describe('ArkLifeguard CLI', () => {
             'node',
             'arklifeguard',
             'analyze',
-            fixturePath('resource', 'source-sink'),
+            fixturePath('resource', 'sdk-app'),
             '--sdk',
-            fixturePath('sdk'),
+            fixturePath('resource', 'platform-sdk'),
             '--checks',
             'resource',
             '--format',
@@ -45,38 +45,20 @@ describe('ArkLifeguard CLI', () => {
         expect(json).toBeDefined();
         expect(JSON.parse(json ?? '{}').resourceAnalysis).toMatchObject({
             enabled: true,
-            engine: 'legacy',
             success: true,
         });
+        expect(JSON.parse(json ?? '{}').resourceAnalysis.ruleIds).toContain('HttpRequestNotDestroyed');
+        expect(JSON.parse(json ?? '{}').summary.resourceLeaks).toBe(1);
+        expect(JSON.parse(json ?? '{}').resourceAnalysis.diagnostics).toHaveLength(1);
+        expect(JSON.parse(json ?? '{}')).not.toHaveProperty('newResourceAnalysis');
         expect(JSON.parse(json ?? '{}').nullness).toMatchObject({ enabled: false });
         output.mockRestore();
     });
 
-    it('runs SDK defaults for the new resource engine without mixing legacy results', async () => {
-        const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        try {
-            const code = await runCLI([
-                'node', 'arklifeguard', 'analyze', fixturePath('resource', 'source-sink'),
-                '--sdk', fixturePath('sdk'), '--checks', 'resource',
-                '--resource-engine', 'new', '--format', 'json',
-            ]);
-            expect(code).toBe(0);
-            const json = output.mock.calls.map(call => call.join(' '))
-                .find(value => value.startsWith('{'));
-            const report = JSON.parse(json ?? '{}');
-            expect(report.status).toBe('success');
-            expect(report.resourceAnalysis).toMatchObject({
-                engine: 'legacy', enabled: false, resourceLeaks: [],
-            });
-            expect(report.newResourceAnalysis).toMatchObject({
-                status: 'success', success: true,
-            });
-            expect(report.newResourceAnalysis.ruleIds).toContain('AVPlayerNotReleased');
-            expect(report.newResourceAnalysis.coverage).toBeDefined();
-        } finally {
-            output.mockRestore();
-        }
-    });
+    it.each(['--resource-engine', '--max-abilities-per-flow', '--max-navigation-hops'])(
+        'rejects the retired option %s instead of silently accepting it', async option => {
+            expect(await runCLI(['node', 'arklifeguard', 'analyze', '/not/analyzed', option, 'new'])).toBe(1);
+        });
 
     it('runs all four checks by default', async () => {
         const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -110,7 +92,7 @@ describe('ArkLifeguard CLI', () => {
             expect(code).toBe(0);
             const json = output.mock.calls.map(call => call.join(' ')).find(value => value.startsWith('{'));
             const report = JSON.parse(json ?? '{}');
-            expect(report.schemaVersion).toBe(2);
+            expect(report.schemaVersion).toBe(3);
             expect(report.nullness.enabled).toBe(false);
             expect(report.resourceAnalysis.enabled).toBe(false);
             expect(report.closureAnalysis.enabled).toBe(checks.includes('closure'));
@@ -145,8 +127,9 @@ describe('ArkLifeguard CLI', () => {
         expect(report.resourceAnalysis.statistics.scheduling)
             .toBe('two-tier-control-flow');
         expect(report.resourceAnalysis.statistics.processedEdges).toBeGreaterThan(0);
-        expect(report.resourceAnalysis.amplification.edgesPerStatement)
-            .toBeGreaterThan(0);
+        expect(report.schemaVersion).toBe(2);
+        expect(report.resourceAnalysis.status).toBe('success');
+        expect(report.resourceAnalysis).not.toHaveProperty('amplification');
         expect(report).not.toHaveProperty('abilities');
         fs.rmSync(directory, { recursive: true, force: true });
         output.mockRestore();

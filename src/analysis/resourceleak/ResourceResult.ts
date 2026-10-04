@@ -1,4 +1,4 @@
-export type ResourceEngineStatus = 'not-implemented' | 'success' | 'failed';
+export type ResourceAnalysisStatus = 'disabled' | 'success' | 'failed';
 
 export interface ResourceLocation {
     readonly filePath: string;
@@ -22,9 +22,10 @@ export interface ResourceDiagnostic {
     readonly evidence: readonly ResourceLocation[];
 }
 
-/** New-engine result. A missing implementation must never be reported as zero leaks. */
+/** Explicit module state; a failed or disabled analysis is not a clean result. */
 export interface ResourceAnalysisResult {
-    readonly status: ResourceEngineStatus;
+    readonly enabled: boolean;
+    readonly status: ResourceAnalysisStatus;
     readonly success: boolean;
     readonly entryMethod: string;
     readonly ruleIds?: readonly string[];
@@ -32,6 +33,7 @@ export interface ResourceAnalysisResult {
     readonly reachedStatements?: number;
     readonly reachedFacts?: number;
     readonly error?: string;
+    readonly unsupportedApiFamilies?: readonly string[];
     readonly unresolvedRuleIds?: readonly string[];
     readonly solverStatistics?: Readonly<import('../../ifds').IFDSSolverStatistics>;
     readonly coverage?: readonly ResourceRuleCoverage[];

@@ -26,7 +26,7 @@ export interface ClosureAnalysisResult {
     readonly registrationLeaks: readonly RegistrationDiagnostic[];
     readonly closureRetentionLeaks: readonly ClosureRetentionDiagnostic[];
     readonly unresolvedRuleIds: readonly string[];
-    readonly unsupportedLegacyRuleIds?: readonly string[];
+    readonly unsupportedApiFamilies?: readonly string[];
     readonly limitations: readonly string[];
     readonly statistics?: HeapFlowRun;
     readonly error?: string;

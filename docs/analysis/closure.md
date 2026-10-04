@@ -29,7 +29,7 @@ npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
 
 规则定义 callback/event 参数索引、释放参数索引、是否允许省略回调取消全部监听、是否自行到期。receiver 类型不自动被当成长期根，只有它从已建模根可达才构成保留证明。
 
-SDK 缺失的家族进入 `unresolvedRuleIds`。Sensor、定位、Worker onmessage、AbilityContext、InputMethod、DisplaySync、CommonEvent 尚无专用摘要，当前通过 `unsupportedLegacyRuleIds` 显示，不产生冒名候选。
+SDK 缺失的家族进入 `unresolvedRuleIds`。Sensor、定位、Worker onmessage、AbilityContext、InputMethod、DisplaySync、CommonEvent 尚无专用摘要，由 [RegistrationCapabilities](../../src/analysis/closure/RegistrationCapabilities.ts) 独立定义，通过 `unsupportedApiFamilies` 显示，不产生冒名候选。
 
 自定义 `closureRules` 替代默认摘要，空集或无效配置使闭包模块失败。默认摘要完全未解析时仍可完成运行，但结果的未解析清单必须连同零候选解释；不存在通用任意 on/off 检测。
 

@@ -47,7 +47,7 @@ Map/Set/Array 的 set/add/push 形成存储边；clear/delete 或整个容器替
 
 ## 输出与未支持范围
 
-每条候选包含 object ID/type、allocation、root、retention path、lifecycle end、reason 和 confidence。结果有独立 enabled/success、统计、未解析及未支持注册根清单、limitations。
+每条候选包含 object ID/type、allocation、root、retention path、lifecycle end、reason 和 confidence。结果有独立 enabled/success、统计、`unresolvedRegistrationRuleIds` 和 `unsupportedRegistrationApiFamilies` 注册根清单、limitations。
 
 默认 20000 状态、4 层调用，超界失败并将部分结果降级。WeakMap/WeakSet 的 ephemeron、完整指针分析/动态分派、完整闭包环境、Page stack、跨线程/跨进程根和所有异步时序尚未建模。WeakRef 的反例通过不能证明完整弱集合语义。
 

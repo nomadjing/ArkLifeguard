@@ -17,6 +17,7 @@ import type {
     ResourceLocation,
 } from './ResourceResult';
 import type { ResourceRule } from './rules/ResourceRule';
+import { UNSUPPORTED_RESOURCE_API_FAMILIES } from './rules/ResourceCapabilities';
 import { resolveHarmonyResourceRules } from './rules/HarmonyResourceRules';
 
 class ResourceSolver extends DataflowSolver<ResourceFact> {}
@@ -44,13 +45,15 @@ export class ResourceRunner {
         const entryMethod = dummyMain.getSignature().toString();
         if (this.rules.length === 0) {
             return {
-                status: 'not-implemented',
+                enabled: true,
+                status: 'failed',
                 success: false,
                 entryMethod,
+                unsupportedApiFamilies: UNSUPPORTED_RESOURCE_API_FAMILIES,
                 ruleIds: [],
                 diagnostics: [],
                 unresolvedRuleIds: this.unresolvedRuleIds,
-                error: '新资源分析尚未配置规则；请选择 legacy 引擎。',
+                error: '资源分析没有可用规则；请检查 SDK 解析或提供有效的 resourceRules。',
             };
         }
         try {
@@ -68,9 +71,11 @@ export class ResourceRunner {
                 byStatement.set(statement, facts);
             }
             return {
+                enabled: true,
                 status: 'success',
                 success: true,
                 entryMethod,
+                unsupportedApiFamilies: UNSUPPORTED_RESOURCE_API_FAMILIES,
                 ruleIds: this.rules.map(rule => rule.id),
                 diagnostics: this.collectDiagnostics(byStatement, dummyMain),
                 reachedStatements: byStatement.size,
@@ -103,9 +108,11 @@ export class ResourceRunner {
             };
         } catch (error) {
             return {
+                enabled: true,
                 status: 'failed',
                 success: false,
                 entryMethod,
+                unsupportedApiFamilies: UNSUPPORTED_RESOURCE_API_FAMILIES,
                 ruleIds: this.rules.map(rule => rule.id),
                 diagnostics: [],
                 error: error instanceof Error ? error.message : String(error),

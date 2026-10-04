@@ -5,8 +5,7 @@ import { RegistrationState } from '../closure/RegistrationState';
 import { RegistrationModel } from '../closure/RegistrationModel';
 import { resolveRegistrationRules, type RegistrationRule } from '../closure/RegistrationRules';
 import type { RetentionEvidenceEdge } from '../closure/ClosureResult';
-import { HARMONYOS_SOURCES } from '../resource/SourceSinkManager';
-import { legacyRuleMigration } from '../shared/RuleOwnership';
+import { UNSUPPORTED_REGISTRATION_API_FAMILIES } from '../closure/RegistrationCapabilities';
 
 export interface MemoryRetentionCandidate {
     readonly objectId: string; readonly objectType: string;
@@ -23,7 +22,7 @@ export interface MemoryAnalysisResult {
     readonly registrationRetentions: readonly MemoryRetentionCandidate[];
     readonly limitations: readonly string[];
     readonly unresolvedRegistrationRuleIds?: readonly string[];
-    readonly unsupportedRegistrationRuleIds?: readonly string[];
+    readonly unsupportedRegistrationApiFamilies?: readonly string[];
     readonly statistics?: import('../shared/HeapFlow').HeapFlowRun;
     readonly error?: string;
 }
@@ -36,8 +35,7 @@ export class MemoryRunner {
         private readonly registrationRules?: readonly RegistrationRule[]) {}
     runWithDummyMain(entry: ArkMethod): MemoryAnalysisResult {
         const base = { enabled: true, memoryRetentionCandidates: [], registrationRetentions: [], limitations: [],
-            unsupportedRegistrationRuleIds: legacyRuleMigration(HARMONYOS_SOURCES)
-                .filter(rule => rule.status === 'unsupported-registration').map(rule => rule.legacyId) };
+            unsupportedRegistrationApiFamilies: UNSUPPORTED_REGISTRATION_API_FAMILIES };
         try {
             const resolution = this.registrationRules === undefined ? resolveRegistrationRules(this.scene)
                 : { rules: this.registrationRules, unresolvedRuleIds: [] };

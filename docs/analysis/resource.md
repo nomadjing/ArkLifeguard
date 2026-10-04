@@ -4,17 +4,17 @@
 
 检测有显式释放义务的句柄，关注“同一资源是否释放/转交”，不依据对象大小判断内存泄漏。
 
-当前有两条可执行路径：默认旧 Source/Sink 引擎和独立规则 IFDS。新增规则与核心功能以独立引擎为落点；旧路径的退役条件见[维护策略](../maintenance.md)。
+唯一入口为规则 IFDS；工程入口、CLI 和独立 Runner 使用相同合同。接口与共享设施见[维护策略](../maintenance.md)。
 
 ```bash
 npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
-  --checks resource --resource-engine new \
+  --checks resource \
   --format json --output out/resource.json
 ```
 
-选择独立引擎时，旧资源块标为关闭；结果只读取 `newResourceAnalysis`。省略引擎参数会执行旧路径。
+结果读取 `resourceAnalysis.diagnostics`；`enabled` 与 `status` 明确区分关闭、成功和失败。CLI 无引擎选择参数。
 
-## 独立引擎的默认规则
+## 默认规则
 
 [HarmonyResourceRules](../../src/analysis/resourceleak/rules/HarmonyResourceRules.ts) 从本地 SDK 的模块、声明类、方法/重载和调用点绑定完整签名。项目自定义同名 `release` / `close` 不会被当成平台释放 API。
 
@@ -31,9 +31,9 @@ npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
 | `AudioCapturerNotReleased` | AudioCapturer | release |
 | `ResultSetNotClosed` | RdbStore 的 query/querySql 等结果集 | ResultSet.close |
 
-这是 10 个资源家族，不是所有 HarmonyOS 资源 API。Worker/ThreadWorker terminate、AVRecorder、其他 socket/camera 等未列出的 API 没有默认独立规则；不能因旧表含这些名字就声称独立引擎支持。
+这是 10 个资源家族，不是所有 HarmonyOS 资源 API。Worker/ThreadWorker terminate、AVRecorder、其他 socket/camera 等未列出的 API 没有默认规则。已知缺口由 [ResourceCapabilities](../../src/analysis/resourceleak/rules/ResourceCapabilities.ts) 定义，并通过 `unsupportedApiFamilies` 输出；它不是实际调用清单或完整平台枚举。
 
-API 通过 `resourceRules` 或直接 `ResourceRunner` 注入 [ResourceRule](../../src/analysis/resourceleak/rules/ResourceRule.ts)，字段包括规则 ID、完整 API 签名、句柄位置、异步获取方式、投影和是否允许 nullify。规则数组替代默认集；空集或所有默认规则未解析时明确失败，不回退到旧引擎。接口存在 `static` 位置标签，不等于已经支持任意静态槽位/容器所有权。
+API 通过 `resourceRules` 或直接 `ResourceRunner` 注入 [ResourceRule](../../src/analysis/resourceleak/rules/ResourceRule.ts)，字段包括规则 ID、完整 API 签名、句柄位置、异步获取方式、投影和是否允许 nullify。规则数组替代默认集；空集或所有默认规则未解析时明确失败，不进行同名匹配或其他分析回退。接口存在 `static` 位置标签，不等于已经支持任意静态槽位/容器所有权。
 
 ## 事实及传播
 
@@ -51,7 +51,7 @@ API 通过 `resourceRules` 或直接 `ResourceRunner` 注入 [ResourceRule](../.
 
 创建/释放调用按规则合同直接处理；已知直接被调摘要负责对应资源路径，避免 unchanged bypass 把已经释放的事实重新带回。Promise 获取先记 pending，`await` 可映射到兑现句柄；未建模回调/外部转交保守返回未知所有权。
 
-内部资源调用帧深度固定为 4，超界降级为未知。工程的 `maxPropagationDepth`、Ability 数和导航数约束没有传入此 Runner，不约束新引擎。
+内部资源调用帧深度固定为 4，超界降级为未知。工程的 `maxPropagationDepth` 只约束空指针；资源不接受 Ability 数或导航跳数传播参数。
 
 ## 诊断与覆盖
 
@@ -59,14 +59,10 @@ API 通过 `resourceRules` 或直接 `ResourceRunner` 注入 [ResourceRule](../.
 
 候选理由为 `unreleased`、`partially-released`、`overwritten`、`wrong-release`、`unknown-ownership`，附分配点、边界和关键位置证据。方法返回/接收者字段转交按当前模型处理；没有完整多容器/多实例所有权证明。
 
-`coverage` 分别统计全部/入口可达的创建与释放调用。`unresolvedRuleIds` 表示 SDK 绑定失败。创建调用未到达时的零候选，不是该调用被证明安全。统计开启时在 `solverStatistics` 中输出 IFDS 指标。
+`coverage` 分别统计全部/入口可达的创建与释放调用。`unresolvedRuleIds` 表示 SDK 绑定失败。创建调用未到达时的零候选，不是该调用被证明安全。统计开启时，完整 API 在 `solverStatistics` 中提供 IFDS 指标，CLI 通过 `--ifds-stats` 单独输出；主用户报告省略指标。
 
-## 当前旧资源路径
+## 边界与验证
 
-`analysis/resource` 包含规则管理、旧 Fact/Problem/Solver/Runner、方法内扫描、位置扫描及结果抑制。默认规则只加载资源类别，注册和分配即内存泄漏标签已移出默认集合。
+方法内扫描、Source/Sink 位置列表与污点标签不属于资源结果。新增规则必须使用完整 SDK 签名和句柄位置，不以方法同名替代平台合同。默认清单的未支持 API 家族不因自定义规则注入而自动更新，需审查实际规则。
 
-旧匹配仍有模式/同名 fallback；方法内检测是两遍扫描，结构性 timer/file 抑制也不能提供完整身份与路径证明。`resourceAnalysis.resourceLeaks` 与 `methodLocal.leaks` 分别保存，不能相加当成已确认缺陷。`taintLeaks` 不构成完整隐私污点能力。
-
-`SourceSinkManager(true)` 是明确 opt-in 的旧混合表访问，不属于标准独立引擎。旧规则更多不代表更准；新旧结果不要求相同，不混合输出或统计。
-
-定向测试位于 `test/resourceleak/` 和当前旧 `test/resource/`。功能边界还包括不完整异步调度、复杂静态/容器所有权及精度真值不足；真实工程成功执行只证明该次运行完成。
+定向测试位于 `test/resourceleak/`，工程入口夹具包含真实 SDK API 调用与项目同名 API 反例。功能边界包括不完整异步调度、复杂静态/容器所有权及精度真值不足；真实工程成功执行只证明该次运行完成。

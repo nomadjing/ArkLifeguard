@@ -1,7 +1,7 @@
 {
   "name": "arkLifeguard",
   "version": "0.1.0",
-  "description": "A static taint analysis framework for HarmonyOS applications, built on ArkAnalyzer.",
+  "description": "HarmonyOS source analyzer for nullness, resource obligations, closure and memory retention.",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test:ifds": "vitest run test/ifds",
     "test:cli": "vitest run test/application test/report test/cli",
     "test:nullness": "vitest run test/nullness --exclude test/nullness/NullnessArkDefectBench.test.ts",
-    "test:resource": "vitest run test/resource",
+    "test:resource": "vitest run test/resourceleak",
     "test:closure": "vitest run test/closure",
     "test:memory": "vitest run test/memory",
     "test:nullness:ir": "vitest run test/nullness/ArkTSNullSafetyIR.test.ts",

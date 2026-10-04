@@ -6,9 +6,10 @@ export type { ResourceState, ResourceEvent } from './ResourceFact';
 export type {
     ResourceAnalysisResult,
     ResourceDiagnostic,
-    ResourceEngineStatus,
+    ResourceAnalysisStatus,
     ResourceLeakReason,
     ResourceLocation,
     ResourceRuleCoverage,
 } from './ResourceResult';
 export type { ResourceApi, ResourceHandleLocation, ResourceRule } from './rules/ResourceRule';
+export * from './rules/ResourceCapabilities';

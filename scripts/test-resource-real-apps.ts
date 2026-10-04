@@ -14,10 +14,6 @@ import { createHash } from 'node:crypto';
 import {
     ProjectAnalyzer,
     type DummyMainRecord,
-    type LifecycleAmplificationRecord,
-    type MethodLocalResourceLeakRecord,
-    type ResourceLeakRecord,
-    type TaintLeakRecord,
 } from '../src/application/ProjectAnalyzer';
 import type { IFDSSolverStatistics } from '../src/ifds';
 import type { LifecycleModelMode } from '../src/lifecycle';
@@ -25,7 +21,6 @@ import type { LifecycleModelStatistics } from '../src/lifecycle';
 import { HARMONY_RESOURCE_DEFINITIONS, type ResourceAnalysisResult } from '../src/analysis/resourceleak';
 
 type ProjectStatus = 'success' | 'failed' | 'timeout';
-type ResourceEngine = 'legacy' | 'new';
 
 interface ProjectMetadata {
     name: string;
@@ -40,13 +35,9 @@ interface MetadataFile {
 interface Options {
     realAppsRoot: string;
     sdkRoot: string;
-    engine: ResourceEngine;
     projects: string[];
     outputPath?: string;
     timeoutMs: number;
-    maxAbilitiesPerFlow: number;
-    maxNavigationHops: number;
-    maxPropagationDepth: number;
     collectSolverStatistics: boolean;
     lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
     compactLifecycleDispatcher: boolean;
@@ -65,11 +56,6 @@ interface ProjectResult {
     classes: number;
     methods: number;
     resourceLeakCount: number;
-    taintLeakCount: number;
-    methodLocalLeakCount: number;
-    sourceCount: number;
-    sinkCount: number;
-    analyzedMethods: number;
     reachedStatements: number;
     reachedFacts: number;
     totalTimeMs: number;
@@ -80,31 +66,22 @@ interface ProjectResult {
     solverStatistics?: Readonly<IFDSSolverStatistics>;
     lifecycleStatistics?: LifecycleModelStatistics;
     dummyMain?: DummyMainRecord;
-    amplification?: LifecycleAmplificationRecord;
-    resourceLeaks: ResourceLeakRecord[];
-    taintLeaks: TaintLeakRecord[];
-    methodLocalLeaks: MethodLocalResourceLeakRecord[];
-    newResourceAnalysis?: ResourceAnalysisResult;
-    newDiagnosticCount: number;
-    newHighConfidenceCount: number;
-    newUnknownOwnershipCount: number;
+    resourceAnalysis?: ResourceAnalysisResult;
+    highConfidenceCount: number;
+    unknownOwnershipCount: number;
     matchedAllocatorCalls: number;
     reachedAllocatorCalls: number;
     input?: { metadataCommit?: string; sourceSha256: string; files: number };
 }
 
 interface RealAppsReport {
-    schemaVersion: 1;
+    schemaVersion: 2;
     analysisKind: 'resource-leak';
     updatedAt: string;
     completed: boolean;
     settings: {
         sdkRoot: string;
-        engine: ResourceEngine;
         timeoutMs: number;
-        maxAbilitiesPerFlow: number;
-        maxNavigationHops: number;
-        maxPropagationDepth: number;
         collectSolverStatistics: boolean;
         lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
         lifecycleOptimizations: {
@@ -118,13 +95,10 @@ interface RealAppsReport {
         successfulProjects: number;
         failedProjects: number;
         timedOutProjects: number;
-        projectsWithLeaks: number;
+        projectsWithCandidates: number;
         resourceLeakCount: number;
-        taintLeakCount: number;
-        methodLocalLeakCount: number;
-        newDiagnosticCount: number;
-        newHighConfidenceCount: number;
-        newUnknownOwnershipCount: number;
+        highConfidenceCount: number;
+        unknownOwnershipCount: number;
         matchedAllocatorCalls: number;
         reachedAllocatorCalls: number;
         averageTotalTimeMs: number;
@@ -214,15 +188,11 @@ function help(): void {
         '  --output <file>             Persist the JSON report; omitted means console only',
         '  --real-apps-root <path>     HarmonyRealApps directory containing meta.json',
         '  --sdk-root <path>           SDK root containing openharmony/ets and hms/ets',
-        '  --engine <legacy|new>      Resource analysis engine; default: legacy',
         '  --timeout-ms <n>            Hard per-project timeout; default: 180000',
-        '  --max-abilities-per-flow <n>  Ability bound; 0 disables it; default: 0',
-        '  --max-navigation-hops <n>   Navigation bound; 0 disables it; default: 0',
-        '  --max-propagation-depth <n> Resource fact propagation bound; default: 40',
         '  --ifds-stats                Collect aggregate IFDS solver statistics',
         '  --lifecycle-model <mode>    flat, opt-flat or hierarchical; default: flat',
-        '  --no-compact-dispatcher     M1-NoCompact ablation',
-        '  --no-ability-prune          M1-NoAbilityPrune ablation',
+        '  --no-compact-dispatcher     Disable compact lifecycle dispatch',
+        '  --no-ability-prune          Retain unreachable Abilities',
         '  --list                      List projects without analyzing',
         '  -h, --help                  Show this help',
         '',
@@ -246,24 +216,12 @@ function positiveInteger(value: string, option: string): number {
     return parsed;
 }
 
-function nonNegativeInteger(value: string, option: string): number {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0) {
-        throw new Error(`${option} must be a non-negative integer: ${value}`);
-    }
-    return parsed;
-}
-
 function parseArgs(args: string[]): Options {
     let realAppsRoot = defaultRealAppsRoot;
     let sdkRoot: string | undefined;
-    let engine: ResourceEngine = 'legacy';
     const projects: string[] = [];
     let outputPath: string | undefined;
     let timeoutMs = 180_000;
-    let maxAbilitiesPerFlow = 0;
-    let maxNavigationHops = 0;
-    let maxPropagationDepth = 40;
     let collectSolverStatistics = false;
     let lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'> = 'flat';
     let compactLifecycleDispatcher = true;
@@ -301,36 +259,12 @@ function parseArgs(args: string[]): Options {
             realAppsRoot = path.resolve(arg.slice('--real-apps-root='.length));
         } else if (arg === '--sdk-root') {
             sdkRoot = path.resolve(consume(arg));
-        } else if (arg === '--engine') {
-            const value = consume(arg);
-            if (value !== 'legacy' && value !== 'new') {
-                throw new Error(`--engine must be legacy or new: ${value}`);
-            }
-            engine = value;
         } else if (arg.startsWith('--sdk-root=')) {
             sdkRoot = path.resolve(arg.slice('--sdk-root='.length));
         } else if (arg === '--timeout-ms') {
             timeoutMs = positiveInteger(consume(arg), arg);
         } else if (arg.startsWith('--timeout-ms=')) {
             timeoutMs = positiveInteger(arg.slice('--timeout-ms='.length), '--timeout-ms');
-        } else if (arg === '--max-abilities-per-flow') {
-            maxAbilitiesPerFlow = nonNegativeInteger(consume(arg), arg);
-        } else if (arg.startsWith('--max-abilities-per-flow=')) {
-            maxAbilitiesPerFlow = nonNegativeInteger(
-                arg.slice('--max-abilities-per-flow='.length), '--max-abilities-per-flow'
-            );
-        } else if (arg === '--max-navigation-hops') {
-            maxNavigationHops = nonNegativeInteger(consume(arg), arg);
-        } else if (arg.startsWith('--max-navigation-hops=')) {
-            maxNavigationHops = nonNegativeInteger(
-                arg.slice('--max-navigation-hops='.length), '--max-navigation-hops'
-            );
-        } else if (arg === '--max-propagation-depth') {
-            maxPropagationDepth = positiveInteger(consume(arg), arg);
-        } else if (arg.startsWith('--max-propagation-depth=')) {
-            maxPropagationDepth = positiveInteger(
-                arg.slice('--max-propagation-depth='.length), '--max-propagation-depth'
-            );
         } else if (arg === '--ifds-stats') {
             collectSolverStatistics = true;
         } else if (arg === '--lifecycle-model') {
@@ -364,13 +298,9 @@ function parseArgs(args: string[]): Options {
     return {
         realAppsRoot,
         sdkRoot: sdkRoot ?? path.resolve(realAppsRoot, '../sdk/default'),
-        engine,
         projects,
         outputPath,
         timeoutMs,
-        maxAbilitiesPerFlow,
-        maxNavigationHops,
-        maxPropagationDepth,
         collectSolverStatistics,
         lifecycleModel,
         compactLifecycleDispatcher,
@@ -415,11 +345,6 @@ function emptyProjectResult(metadata: ProjectMetadata): ProjectResult {
         classes: 0,
         methods: 0,
         resourceLeakCount: 0,
-        taintLeakCount: 0,
-        methodLocalLeakCount: 0,
-        sourceCount: 0,
-        sinkCount: 0,
-        analyzedMethods: 0,
         reachedStatements: 0,
         reachedFacts: 0,
         totalTimeMs: 0,
@@ -427,12 +352,8 @@ function emptyProjectResult(metadata: ProjectMetadata): ProjectResult {
         lifecycleModelingTimeMs: 0,
         resourceAnalysisTimeMs: 0,
         peakRssMB: null,
-        resourceLeaks: [],
-        taintLeaks: [],
-        methodLocalLeaks: [],
-        newDiagnosticCount: 0,
-        newHighConfidenceCount: 0,
-        newUnknownOwnershipCount: 0,
+        highConfidenceCount: 0,
+        unknownOwnershipCount: 0,
         matchedAllocatorCalls: 0,
         reachedAllocatorCalls: 0,
     };
@@ -448,49 +369,33 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
             sdkRoot: options.sdkRoot,
             runNullness: false,
             runResourceAnalysis: true,
-            resourceEngine: options.engine,
             analyzeNavigation: false,
             lifecycleModel: options.lifecycleModel,
             compactLifecycleDispatcher: options.compactLifecycleDispatcher,
             pruneUnreachableAbilities: options.pruneUnreachableAbilities,
-            maxAbilitiesPerFlow: options.maxAbilitiesPerFlow,
-            maxNavigationHops: options.maxNavigationHops,
-            maxPropagationDepth: options.maxPropagationDepth,
             collectSolverStatistics: options.collectSolverStatistics,
         }).analyze(projectPath);
         record.projectFiles = result.summary.projectFiles;
         record.classes = result.summary.classes;
         record.methods = result.summary.methods;
-        record.resourceLeaks = result.resourceAnalysis.resourceLeaks;
-        record.newResourceAnalysis = result.newResourceAnalysis;
-        const diagnostics = result.newResourceAnalysis?.diagnostics ?? [];
-        record.newDiagnosticCount = diagnostics.length;
-        record.newHighConfidenceCount = diagnostics.filter(item => item.confidence === 'high').length;
-        record.newUnknownOwnershipCount = diagnostics.filter(item => item.confidence === 'low').length;
-        const coverage = result.newResourceAnalysis?.coverage ?? [];
+        record.resourceAnalysis = result.resourceAnalysis;
+        const diagnostics = result.resourceAnalysis.diagnostics;
+        record.resourceLeakCount = diagnostics.length;
+        record.highConfidenceCount = diagnostics.filter(item => item.confidence === 'high').length;
+        record.unknownOwnershipCount = diagnostics.filter(item => item.reason === 'unknown-ownership').length;
+        const coverage = result.resourceAnalysis.coverage ?? [];
         record.matchedAllocatorCalls = coverage.reduce((sum, item) => sum + item.allocatorCalls, 0);
         record.reachedAllocatorCalls = coverage.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0);
-        record.taintLeaks = result.resourceAnalysis.taintLeaks;
-        record.methodLocalLeaks = result.resourceAnalysis.methodLocal.leaks;
-        record.resourceLeakCount = record.resourceLeaks.length;
-        record.taintLeakCount = record.taintLeaks.length;
-        record.methodLocalLeakCount = record.methodLocalLeaks.length;
-        record.sourceCount = result.summary.sources;
-        record.sinkCount = result.summary.sinks;
-        record.analyzedMethods = result.resourceAnalysis.analyzedMethods;
-        record.reachedStatements = result.newResourceAnalysis?.reachedStatements ?? result.resourceAnalysis.reachedStatements;
-        record.reachedFacts = result.newResourceAnalysis?.reachedFacts ?? result.resourceAnalysis.reachedFacts;
+        record.reachedStatements = result.resourceAnalysis.reachedStatements ?? 0;
+        record.reachedFacts = result.resourceAnalysis.reachedFacts ?? 0;
         record.resourceAnalysisTimeMs = result.duration.resourceAnalysis;
         record.sceneBuildingTimeMs = result.duration.sceneBuilding;
         record.lifecycleModelingTimeMs = result.duration.lifecycleModeling;
-        record.solverStatistics = result.newResourceAnalysis?.solverStatistics ?? result.resourceAnalysis.solverStatistics;
+        record.solverStatistics = result.resourceAnalysis.solverStatistics;
         record.lifecycleStatistics = result.lifecycleStatistics;
         record.dummyMain = result.dummyMain;
-        record.amplification = result.resourceAnalysis.amplification;
-        if (result.status !== 'success' ||
-            (options.engine === 'legacy' && !result.resourceAnalysis.success) ||
-            (options.engine === 'new' && !result.newResourceAnalysis?.success)) {
-            record.error = result.newResourceAnalysis?.error ?? result.resourceAnalysis.error ??
+        if (result.status !== 'success' || !result.resourceAnalysis.success) {
+            record.error = result.resourceAnalysis.error ??
                 (result.errors.join('; ') || 'Resource analysis failed without an error message');
         } else {
             record.status = 'success';
@@ -518,13 +423,10 @@ function emptySummary(selectedProjects: number): RealAppsReport['summary'] {
         successfulProjects: 0,
         failedProjects: 0,
         timedOutProjects: 0,
-        projectsWithLeaks: 0,
+        projectsWithCandidates: 0,
         resourceLeakCount: 0,
-        taintLeakCount: 0,
-        methodLocalLeakCount: 0,
-        newDiagnosticCount: 0,
-        newHighConfidenceCount: 0,
-        newUnknownOwnershipCount: 0,
+        highConfidenceCount: 0,
+        unknownOwnershipCount: 0,
         matchedAllocatorCalls: 0,
         reachedAllocatorCalls: 0,
         averageTotalTimeMs: 0,
@@ -549,15 +451,12 @@ function updateSummary(report: RealAppsReport): void {
         successfulProjects: successful.length,
         failedProjects: report.projects.filter(item => item.status === 'failed').length,
         timedOutProjects: report.projects.filter(item => item.status === 'timeout').length,
-        projectsWithLeaks: successful.filter(item =>
-            item.resourceLeakCount + item.taintLeakCount + item.methodLocalLeakCount + item.newHighConfidenceCount > 0
+        projectsWithCandidates: successful.filter(item =>
+            item.resourceLeakCount > 0
         ).length,
         resourceLeakCount: successful.reduce((sum, item) => sum + item.resourceLeakCount, 0),
-        taintLeakCount: successful.reduce((sum, item) => sum + item.taintLeakCount, 0),
-        methodLocalLeakCount: successful.reduce((sum, item) => sum + item.methodLocalLeakCount, 0),
-        newDiagnosticCount: successful.reduce((sum, item) => sum + item.newDiagnosticCount, 0),
-        newHighConfidenceCount: successful.reduce((sum, item) => sum + item.newHighConfidenceCount, 0),
-        newUnknownOwnershipCount: successful.reduce((sum, item) => sum + item.newUnknownOwnershipCount, 0),
+        highConfidenceCount: successful.reduce((sum, item) => sum + item.highConfidenceCount, 0),
+        unknownOwnershipCount: successful.reduce((sum, item) => sum + item.unknownOwnershipCount, 0),
         matchedAllocatorCalls: successful.reduce((sum, item) => sum + item.matchedAllocatorCalls, 0),
         reachedAllocatorCalls: successful.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0),
         averageTotalTimeMs: average(successful.map(item => item.totalTimeMs)),
@@ -633,17 +532,13 @@ async function main(): Promise<void> {
     const selected = selectProjects(metadata, options);
     if (selected.length === 0) throw new Error('No HarmonyRealApps projects selected');
     const report: RealAppsReport = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         analysisKind: 'resource-leak',
         updatedAt: new Date().toISOString(),
         completed: false,
         settings: {
             sdkRoot: options.sdkRoot,
-            engine: options.engine,
             timeoutMs: options.timeoutMs,
-            maxAbilitiesPerFlow: options.maxAbilitiesPerFlow,
-            maxNavigationHops: options.maxNavigationHops,
-            maxPropagationDepth: options.maxPropagationDepth,
             collectSolverStatistics: options.collectSolverStatistics,
             lifecycleModel: options.lifecycleModel,
             lifecycleOptimizations: {
@@ -672,10 +567,6 @@ async function main(): Promise<void> {
             '--worker-result', resultPath,
             '--real-apps-root', options.realAppsRoot,
             '--sdk-root', options.sdkRoot,
-            '--engine', options.engine,
-            '--max-abilities-per-flow', String(options.maxAbilitiesPerFlow),
-            '--max-navigation-hops', String(options.maxNavigationHops),
-            '--max-propagation-depth', String(options.maxPropagationDepth),
             '--lifecycle-model', options.lifecycleModel,
         ];
         if (!options.compactLifecycleDispatcher) childArgs.push('--no-compact-dispatcher');
@@ -712,12 +603,10 @@ async function main(): Promise<void> {
         updateSummary(report);
         if (options.outputPath) writeJsonAtomic(options.outputPath, report);
         console.log(
-            `  ${record.status.toUpperCase()} new=${record.newDiagnosticCount} ` +
-            `high=${record.newHighConfidenceCount} unknown=${record.newUnknownOwnershipCount} ` +
-            `allocators=${record.reachedAllocatorCalls}/${record.matchedAllocatorCalls} legacy=${record.resourceLeakCount} ` +
-            `local=${record.methodLocalLeakCount} time=${record.totalTimeMs}ms ` +
-            `lifecycle=${record.lifecycleModelingTimeMs}ms ` +
-            `resource=${record.resourceAnalysisTimeMs}ms ` +
+            `  ${record.status.toUpperCase()} candidates=${record.resourceLeakCount} ` +
+            `high=${record.highConfidenceCount} unknown=${record.unknownOwnershipCount} ` +
+            `allocators=${record.reachedAllocatorCalls}/${record.matchedAllocatorCalls} time=${record.totalTimeMs}ms ` +
+            `lifecycle=${record.lifecycleModelingTimeMs}ms resource=${record.resourceAnalysisTimeMs}ms ` +
             `ifds=${record.solverStatistics?.solveTimeMs ?? 'n/a'}ms`
         );
         if (record.error) console.log(`  error: ${record.error.split(/\r?\n/)[0]}`);

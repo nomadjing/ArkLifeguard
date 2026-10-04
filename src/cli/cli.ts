@@ -12,7 +12,6 @@ import {
     Option,
 } from 'commander';
 import { ProjectAnalysisOptions, ProjectAnalyzer } from '../application';
-import type { ResourceEngine } from '../application/ProjectAnalyzer';
 import type { LifecycleModelMode } from '../lifecycle';
 import {
     LifecycleReportGenerator,
@@ -33,13 +32,10 @@ interface AnalyzeCliOptions {
     navigation: boolean;
     uiCallbacks: boolean;
     checks: AnalysisCheck[];
-    resourceEngine: ResourceEngine;
     lifecycleModel: LifecycleModelMode;
     compactLifecycleDispatcher: boolean;
     pruneUnreachableAbilities: boolean;
     maxCallbackIterations: number;
-    maxAbilitiesPerFlow: number;
-    maxNavigationHops: number;
     maxAccessPathLength: number;
     maxPropagationDepth: number;
     reportUnresolvedReturns: boolean;
@@ -59,10 +55,10 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
     program
         .name(NAME)
         .version(VERSION)
-        .description('HarmonyOS lifecycle, resource-leak and null-pointer static analyzer');
+        .description('HarmonyOS nullness, resource, closure and memory static analyzer');
 
     const analyzeCommand = program.command('analyze')
-        .description('Run the complete Scene -> lifecycle -> resource/nullness -> report pipeline')
+        .description('Analyze a source project with the selected independent checks')
         .argument('<project-path>', 'HarmonyOS project directory')
         .option('-o, --output <path>', 'write the report to a file')
         .addOption(new Option('-f, --format <format>', 'report format')
@@ -76,8 +72,6 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
             '--checks <checks>',
             'checks to run: all, nullness, resource, closure, memory, or a comma-separated list'
         ).argParser(parseChecks).default(['nullness', 'resource', 'closure', 'memory'] as AnalysisCheck[], 'all'))
-        .addOption(new Option('--resource-engine <engine>', 'resource analysis engine')
-            .choices(['legacy', 'new']).default('legacy'))
         .addOption(new Option('--lifecycle-model <mode>', 'DummyMain lifecycle model')
             .choices([
                 'flat',
@@ -86,13 +80,11 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                 'hierarchical',
                 'bounded-unroll',
             ]).default('flat'))
-        .option('--no-compact-lifecycle-dispatcher', 'disable compact lifecycle dispatch (RQ1.5 ablation)')
-        .option('--no-prune-unreachable-abilities', 'retain unreachable Abilities (RQ1.5 ablation)')
+        .option('--no-compact-lifecycle-dispatcher', 'disable compact lifecycle dispatch')
+        .option('--no-prune-unreachable-abilities', 'retain unreachable Abilities')
         .option('--max-callback-iterations <n>', 'bounded lifecycle expansion rounds', positiveInteger, 1)
-        .option('--max-abilities-per-flow <n>', 'optional Ability flow bound; 0 disables it', nonNegativeInteger, 0)
-        .option('--max-navigation-hops <n>', 'optional navigation hop bound; 0 disables it', nonNegativeInteger, 0)
         .option('--max-access-path-length <n>', 'maximum nullness access-path length', positiveInteger, 5)
-        .option('--max-propagation-depth <n>', 'maximum resource/nullness fact propagation depth', positiveInteger, 40)
+        .option('--max-propagation-depth <n>', 'maximum nullness fact propagation depth', positiveInteger, 40)
         .option('--report-unresolved-returns', 'include low-confidence unresolved-return reports', false)
         .option('--max-retention-states <n>', 'state budget for closure/memory interpretation', positiveInteger, 20000)
         .option('--max-retention-call-depth <n>', 'call depth for closure/memory interpretation', positiveInteger, 4)
@@ -117,13 +109,10 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     runMemoryAnalysis: selectedChecks.has('memory'),
                     maxRetentionStates: options.maxRetentionStates,
                     maxRetentionCallDepth: options.maxRetentionCallDepth,
-                    resourceEngine: options.resourceEngine,
                     lifecycleModel: options.lifecycleModel,
                     compactLifecycleDispatcher: options.compactLifecycleDispatcher,
                     pruneUnreachableAbilities: options.pruneUnreachableAbilities,
                     maxCallbackIterations: options.maxCallbackIterations,
-                    maxAbilitiesPerFlow: options.maxAbilitiesPerFlow,
-                    maxNavigationHops: options.maxNavigationHops,
                     maxAccessPathLength: options.maxAccessPathLength,
                     maxPropagationDepth: options.maxPropagationDepth,
                     reportUnresolvedReturns: options.reportUnresolvedReturns,
@@ -189,14 +178,6 @@ function positiveInteger(value: string): number {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 1) {
         throw new InvalidArgumentError(`expected a positive integer, received: ${value}`);
-    }
-    return parsed;
-}
-
-function nonNegativeInteger(value: string): number {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0) {
-        throw new InvalidArgumentError(`expected a non-negative integer, received: ${value}`);
     }
     return parsed;
 }

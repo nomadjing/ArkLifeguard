@@ -311,38 +311,10 @@ export enum UIEventType {
 // 第五部分：DummyMain 构建配置
 // ============================================================================
 
-/**
- * 有界约束配置
- *
- * 对应论文中的三条约束：
- * - 约束1（Ability 数量）：单条数据流最多流经 maxAbilitiesPerFlow 个不同 Ability
- * - 约束2（UI 事件响应次数）：Ability+Component 生命周期序列最多重复 maxCallbackIterations 次
- * - 约束3（路由跳转次数）：单条数据流最多经历 maxNavigationHops 次页面路由跳转
- */
+/** Finite lifecycle expansion; cyclic models ignore this bound. */
 export interface BoundsConfig {
-  /**
-   * 约束2：整个 Ability+Component 生命周期回调序列的最大重复次数（循环展开次数）
-   *
-   * - 1 = bounded-unroll 中每个回调只执行一次，DummyMain CFG 为 DAG
-   * - 2+ = 允许重复，覆盖更多路径但分析代价更高
-   *
-   * `bounded-unroll` 与 `bounded-opt-flat` 消费此参数；其余循环模型忽略它。
-   */
+  /** bounded-opt-flat counts callback choices; bounded-unroll counts scan rounds. */
   maxCallbackIterations: number;
-
-  /**
-   * 约束1：单条数据流最多流经几个不同的 Ability（0 = 不限制）
-   *
-   * 由 IFDS 层在 TaintFact 传播时检查（Phase 2 实现）。
-   */
-  maxAbilitiesPerFlow: number;
-
-  /**
-   * 约束3：单条数据流最多经历几次页面路由跳转（0 = 不限制）
-   *
-   * 由 IFDS 层在检测到 router.pushUrl / startAbility 时检查（Phase 2 实现）。
-   */
-  maxNavigationHops: number;
 }
 
 /**
@@ -507,8 +479,6 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleModelConfig = {
     pruneUnreachableAbilities: true,
   },
   bounds: {
-    maxCallbackIterations: 1, // 默认：单次展开，DummyMain 为 DAG
-    maxAbilitiesPerFlow: 0, // 默认关闭；资源 IFDS 可显式启用
-    maxNavigationHops: 0, // 默认关闭；资源 IFDS 可显式启用
+    maxCallbackIterations: 1, // 有界模型默认一层/轮；循环模型忽略此值
   },
 };

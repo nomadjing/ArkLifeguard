@@ -3,7 +3,6 @@ export {
     AnalysisLocation,
     ComponentRecord,
     DummyMainRecord,
-    LifecycleAmplificationRecord,
     NavigationRecord,
     NullnessDiagnosticRecord,
     ProjectAnalysisOptions,

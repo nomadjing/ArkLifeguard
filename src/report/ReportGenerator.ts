@@ -1,322 +1,99 @@
-/*
- * Copyright (c) 2024-2026 Huawei Device Co., Ltd.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- */
-
 import fs from 'node:fs';
 import path from 'node:path';
-import { ProjectAnalysisResult } from '../application';
+import type { ProjectAnalysisResult } from '../application';
 
 export type ReportFormat = 'json' | 'text' | 'html' | 'markdown';
+export interface ReportOptions { format: ReportFormat; outputPath?: string; title?: string }
 
-export interface ReportOptions {
-    format: ReportFormat;
-    outputPath?: string;
-    title?: string;
-}
-
-/** Serializes the public application result without depending on solver internals. */
+/** Serializes independent module results; solver metrics belong to the statistics report. */
 export class ReportGenerator {
     generate(result: ProjectAnalysisResult, options: ReportOptions): string {
-        const content = this.render(result, options);
+        const content = options.format === 'json'
+            ? JSON.stringify(this.compactJson(result), null, 2)
+            : options.format === 'html' ? this.html(result, options)
+                : this.lines(result, options, options.format === 'markdown').join('\n');
         if (options.outputPath) {
-            const outputPath = path.resolve(options.outputPath);
-            fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-            fs.writeFileSync(outputPath, content, 'utf8');
+            const output = path.resolve(options.outputPath);
+            fs.mkdirSync(path.dirname(output), { recursive: true });
+            fs.writeFileSync(output, content, 'utf8');
         }
         return content;
     }
 
-    private render(result: ProjectAnalysisResult, options: ReportOptions): string {
-        switch (options.format) {
-            case 'json': return JSON.stringify(this.compactJson(result), null, 2);
-            case 'text': return this.text(result, options);
-            case 'markdown': return this.markdown(result, options);
-            case 'html': return this.html(result, options);
-        }
-    }
-
     private compactJson(result: ProjectAnalysisResult): object {
+        const { solverStatistics: _statistics, ...resource } = result.resourceAnalysis;
         return {
-            schemaVersion: result.schemaVersion,
-            analysisKind: result.analysisKind,
-            status: result.status,
-            project: result.project,
+            schemaVersion: result.schemaVersion, analysisKind: result.analysisKind,
+            status: result.status, project: result.project,
             summary: {
                 nullDereferences: result.summary.nullDereferences,
-                resourceLeaks: result.summary.resourceLeaks,
-                methodLocalResourceLeaks: result.resourceAnalysis.methodLocal.leaks.length,
-                ...(result.closureAnalysis ? { registrationLeaks: result.closureAnalysis.registrationLeaks.length,
-                    closureRetentionLeaks: result.closureAnalysis.closureRetentionLeaks.length } : {}),
-                ...(result.memoryAnalysis ? { memoryRetentionCandidates: result.memoryAnalysis.memoryRetentionCandidates.length } : {}),
+                resourceLeaks: result.resourceAnalysis.diagnostics.length,
+                ...(result.closureAnalysis ? {
+                    registrationLeaks: result.closureAnalysis.registrationLeaks.length,
+                    closureRetentionLeaks: result.closureAnalysis.closureRetentionLeaks.length,
+                } : {}),
+                ...(result.memoryAnalysis ? {
+                    memoryRetentionCandidates: result.memoryAnalysis.memoryRetentionCandidates.length,
+                } : {}),
             },
             nullness: {
-                enabled: result.nullness.enabled,
-                success: result.nullness.success,
+                enabled: result.nullness.enabled, success: result.nullness.success,
                 diagnostics: result.nullness.diagnostics,
+                ...(result.nullness.error ? { error: result.nullness.error } : {}),
             },
-            resourceAnalysis: {
-                enabled: result.resourceAnalysis.enabled,
-                engine: result.resourceAnalysis.engine,
-                success: result.resourceAnalysis.success,
-                ...(result.resourceAnalysis.error ? { error: result.resourceAnalysis.error } : {}),
-                resourceLeaks: result.resourceAnalysis.resourceLeaks,
-                methodLocal: {
-                    leaks: result.resourceAnalysis.methodLocal.leaks,
-                },
-            },
-            ...(result.newResourceAnalysis
-                ? { newResourceAnalysis: result.newResourceAnalysis }
-                : {}),
+            resourceAnalysis: resource,
             ...(result.closureAnalysis ? { closureAnalysis: result.closureAnalysis } : {}),
             ...(result.memoryAnalysis ? { memoryAnalysis: result.memoryAnalysis } : {}),
-            duration: { total: result.duration.total },
-            warnings: result.warnings,
-            errors: result.errors,
+            duration: { total: result.duration.total }, warnings: result.warnings, errors: result.errors,
         };
     }
 
-    private text(result: ProjectAnalysisResult, options: ReportOptions): string {
-        const title = options.title ?? 'ArkLifeguard HarmonyOS 静态分析报告';
-        const lines = [
-            '='.repeat(72),
-            title,
-            '='.repeat(72),
-            `项目: ${result.project.name}`,
-            `路径: ${result.project.path}`,
-            `状态: ${result.status}`,
-            `时间: ${result.project.analyzedAt}`,
-            '',
-            '【总体结果】',
-            `  空指针报告: ${result.nullness.enabled ? result.summary.nullDereferences : '未启用'}`,
-            `  跨过程资源泄漏报告: ${this.resourceCount(result, result.summary.resourceLeaks)}`,
-            `  方法内资源候选: ${this.resourceCount(result, result.resourceAnalysis.methodLocal.leaks.length)}`,
-        ];
-        lines.push(...this.retentionLines(result));
-        if (result.newResourceAnalysis) {
-            lines.push(`  新资源分析: ${result.newResourceAnalysis.success
-                ? result.newResourceAnalysis.diagnostics.length : '失败'}`);
-            lines.push('', '【新资源泄漏诊断】');
-            if (!result.newResourceAnalysis.success) {
-                lines.push(`  分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
-            } else if (result.newResourceAnalysis.diagnostics.length === 0) {
-                lines.push('  未检出新资源泄漏候选问题。');
-            } else {
-                result.newResourceAnalysis.diagnostics.forEach((diagnostic, index) => {
-                    lines.push(`  ${index + 1}. ${diagnostic.ruleId}：${diagnostic.reason}（${diagnostic.confidence}）`);
-                    lines.push(`     创建: ${this.locationText(diagnostic.allocation)}`);
-                    lines.push(`     边界: ${this.locationText(diagnostic.boundary)}`);
-                    for (const event of diagnostic.evidence.slice(1, -1)) {
-                        lines.push(`     关键节点: ${this.locationText(event)}`);
-                    }
-                });
-            }
+    private lines(result: ProjectAnalysisResult, options: ReportOptions, markdown = false): string[] {
+        const heading = (title: string): string => markdown ? `## ${title}` : `【${title}】`;
+        const resource = result.resourceAnalysis;
+        const count = (enabled: boolean, success: boolean, value: number): string | number =>
+            !enabled ? '未启用' : !success ? '失败' : value;
+        const lines = [markdown ? `# ${options.title ?? 'ArkLifeguard HarmonyOS 静态分析报告'}`
+            : options.title ?? 'ArkLifeguard HarmonyOS 静态分析报告', '',
+            `项目: ${result.project.name}`, `路径: ${result.project.path}`, `状态: ${result.status}`,
+            `时间: ${result.project.analyzedAt}`, '', heading('结果摘要'), '',
+            `空指针报告: ${count(result.nullness.enabled, result.nullness.success, result.nullness.diagnostics.length)}`,
+            `资源泄漏报告: ${count(resource.enabled, resource.success, resource.diagnostics.length)}`,
+            `总耗时: ${result.duration.total}ms`, '', heading('资源泄漏诊断'), ''];
+        if (!resource.enabled) lines.push('未启用资源泄漏分析。');
+        else if (!resource.success) lines.push(`分析失败：${resource.error ?? '未知错误'}`);
+        else if (!resource.diagnostics.length) lines.push('未检出资源泄漏候选问题。');
+        else for (const item of resource.diagnostics) {
+            lines.push(`- ${item.ruleId}：${item.reason}（${item.confidence}）`,
+                `  创建：${this.locationText(item.allocation)}`, `  边界：${this.locationText(item.boundary)}`);
+            for (const event of item.evidence.slice(1, -1)) lines.push(`  关键节点：${this.locationText(event)}`);
         }
-        lines.push('', '【资源泄漏诊断】');
-        if (!result.resourceAnalysis.enabled) {
-            lines.push('  未启用资源泄漏分析。');
-        } else if (!result.resourceAnalysis.success) {
-            lines.push(`  分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
-        } else if (result.resourceAnalysis.resourceLeaks.length === 0) {
-            lines.push('  未检出资源泄漏候选问题。');
-        } else {
-            result.resourceAnalysis.resourceLeaks.forEach((leak, index) => {
-                lines.push(`  ${index + 1}. ${leak.description}`);
-                lines.push(`     类型: ${leak.resourceType}`);
-                lines.push(`     位置: ${this.locationText(leak.source)}`);
-                lines.push(`     期望释放: ${leak.expectedSink}`);
-            });
+        if (resource.enabled) {
+            if (resource.unresolvedRuleIds?.length) lines.push(`未解析规则：${resource.unresolvedRuleIds.join(', ')}。`);
+            if (resource.unsupportedApiFamilies?.length) lines.push(`未支持的 API 家族：${resource.unsupportedApiFamilies.join(', ')}。`);
         }
-        lines.push('', '【方法内资源泄漏诊断】');
-        if (!result.resourceAnalysis.enabled) {
-            lines.push('  未启用资源泄漏分析。');
-        } else if (!result.resourceAnalysis.success) {
-            lines.push(`  分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
-        } else if (result.resourceAnalysis.methodLocal.leaks.length === 0) {
-            lines.push('  未检出方法内资源泄漏候选问题。');
-        } else {
-            result.resourceAnalysis.methodLocal.leaks.forEach((leak, index) => {
-                lines.push(`  ${index + 1}. [${leak.severity}] ${leak.description}`);
-                lines.push(`     位置: ${leak.filePath}:${leak.lineNumber}`);
-                lines.push(`     期望释放: ${leak.expectedSink}`);
-            });
-        }
-        lines.push('', '【空指针诊断】');
-        if (!result.nullness.enabled) {
-            lines.push('  未启用空指针分析。');
-        } else if (result.nullness.diagnostics.length === 0) {
-            lines.push('  未检出空指针候选问题。');
-        } else {
-            result.nullness.diagnostics.forEach((diagnostic, index) => {
-                lines.push(`  ${index + 1}. [${diagnostic.confidence}] ${diagnostic.description}`);
-                lines.push(`     位置: ${this.locationText(diagnostic.dereference)}`);
-                lines.push(`     来源: ${this.locationText(diagnostic.source)}`);
-                lines.push(`     访问路径: ${diagnostic.accessPath} (${diagnostic.nullness})`);
-            });
-        }
-        lines.push('', '【耗时】');
-        lines.push(`  总耗时: ${result.duration.total}ms`);
-        this.appendMessages(lines, result);
-        return lines.join('\n');
-    }
-
-    private markdown(result: ProjectAnalysisResult, options: ReportOptions): string {
-        const title = options.title ?? 'ArkLifeguard HarmonyOS 静态分析报告';
-        const lines = [
-            `# ${title}`,
-            '',
-            `- 项目：\`${result.project.name}\``,
-            `- 状态：\`${result.status}\``,
-            `- 分析时间：${result.project.analyzedAt}`,
-            '',
-            '## 结果摘要',
-            '',
-            '| 指标 | 数值 |',
-            '|---|---:|',
-            `| 空指针报告 | ${result.nullness.enabled ? result.summary.nullDereferences : '未启用'} |`,
-            `| 跨过程资源泄漏报告 | ${this.resourceCount(result, result.summary.resourceLeaks)} |`,
-            `| 方法内资源候选 | ${this.resourceCount(result, result.resourceAnalysis.methodLocal.leaks.length)} |`,
-            ...(result.newResourceAnalysis
-                ? [`| 新资源分析 | ${result.newResourceAnalysis.success
-                    ? result.newResourceAnalysis.diagnostics.length : '失败'} |`]
-                : []),
-            `| 总耗时(ms) | ${result.duration.total} |`,
-        ];
-        if (result.newResourceAnalysis) {
-            lines.push('', '## 新资源泄漏诊断', '');
-            if (!result.newResourceAnalysis.success) {
-                lines.push(`分析失败：${result.newResourceAnalysis.error ?? '未知错误'}`);
-            } else if (result.newResourceAnalysis.diagnostics.length === 0) {
-                lines.push('未检出新资源泄漏候选问题。');
-            } else {
-                for (const diagnostic of result.newResourceAnalysis.diagnostics) {
-                    lines.push(`- **${diagnostic.ruleId}** ${diagnostic.reason}（${diagnostic.confidence}）`);
-                    lines.push(`  - 创建：\`${this.locationText(diagnostic.allocation)}\``);
-                    lines.push(`  - 边界：\`${this.locationText(diagnostic.boundary)}\``);
-                    for (const event of diagnostic.evidence.slice(1, -1)) {
-                        lines.push(`  - 关键节点：\`${this.locationText(event)}\``);
-                    }
-                }
-            }
-        }
-        lines.push(...this.retentionLines(result, true));
-        lines.push('', '## 资源泄漏诊断', '');
-        if (!result.resourceAnalysis.enabled) {
-            lines.push('未启用资源泄漏分析。');
-        } else if (!result.resourceAnalysis.success) {
-            lines.push(`分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
-        } else if (result.resourceAnalysis.resourceLeaks.length === 0) {
-            lines.push('未检出资源泄漏候选问题。');
-        } else {
-            for (const leak of result.resourceAnalysis.resourceLeaks) {
-                lines.push(`- **${leak.resourceType}** ${leak.description}`);
-                lines.push(`  - 位置：\`${this.locationText(leak.source)}\``);
-                lines.push(`  - 期望释放：\`${leak.expectedSink}\``);
-            }
-        }
-        lines.push('', '## 方法内资源泄漏诊断', '');
-        if (!result.resourceAnalysis.enabled) {
-            lines.push('未启用资源泄漏分析。');
-        } else if (!result.resourceAnalysis.success) {
-            lines.push(`分析失败：${result.resourceAnalysis.error ?? '未知错误'}`);
-        } else if (result.resourceAnalysis.methodLocal.leaks.length === 0) {
-            lines.push('未检出方法内资源泄漏候选问题。');
-        } else {
-            for (const leak of result.resourceAnalysis.methodLocal.leaks) {
-                lines.push(`- **${leak.severity} / ${leak.resourceType}** ${leak.description}`);
-                lines.push(`  - 位置：\`${leak.filePath}:${leak.lineNumber}\``);
-                lines.push(`  - 期望释放：\`${leak.expectedSink}\``);
-            }
-        }
-        lines.push('', '## 空指针诊断', '');
-        if (!result.nullness.enabled) {
-            lines.push('未启用空指针分析。');
-        } else if (result.nullness.diagnostics.length === 0) {
-            lines.push('未检出空指针候选问题。');
-        } else {
-            for (const diagnostic of result.nullness.diagnostics) {
-                lines.push(`- **${diagnostic.confidence}** ${diagnostic.description}`);
-                lines.push(`  - 位置：\`${this.locationText(diagnostic.dereference)}\``);
-                lines.push(`  - 来源：\`${this.locationText(diagnostic.source)}\``);
-                lines.push(`  - 访问路径：\`${diagnostic.accessPath}\``);
-            }
-        }
-        return lines.join('\n');
+        lines.push(...this.retentionLines(result, markdown), '', heading('空指针诊断'), '');
+        if (!result.nullness.enabled) lines.push('未启用空指针分析。');
+        else if (!result.nullness.success) lines.push(`分析失败：${result.nullness.error ?? '未知错误'}`);
+        else if (!result.nullness.diagnostics.length) lines.push('未检出空指针候选问题。');
+        else for (const item of result.nullness.diagnostics) lines.push(`- ${item.description}（${item.confidence}）`,
+            `  位置：${this.locationText(item.dereference)}`, `  来源：${this.locationText(item.source)}`,
+            `  访问路径：${item.accessPath}（${item.nullness}）`);
+        if (result.warnings.length) lines.push('', heading('警告'), '', ...result.warnings);
+        if (result.errors.length) lines.push('', heading('错误'), '', ...result.errors);
+        return lines;
     }
 
     private html(result: ProjectAnalysisResult, options: ReportOptions): string {
         const title = this.escape(options.title ?? 'ArkLifeguard HarmonyOS 静态分析报告');
-        const summary: Array<[string, string | number]> = [
-            ['空指针报告', result.nullness.enabled ? result.summary.nullDereferences : '未启用'],
-            ['跨过程资源泄漏报告', this.resourceCount(result, result.summary.resourceLeaks)],
-            ['方法内资源候选', this.resourceCount(result, result.resourceAnalysis.methodLocal.leaks.length)],
-            ...(result.newResourceAnalysis
-                ? [['新资源分析', result.newResourceAnalysis.success
-                    ? result.newResourceAnalysis.diagnostics.length : '失败'] as [string, string | number]]
-                : []),
-            ['总耗时(ms)', result.duration.total],
-        ];
-        const summaryRows = summary
-            .map(([name, value]) => `<tr><th>${name}</th><td>${value}</td></tr>`).join('');
-        const diagnostics = !result.nullness.enabled
-            ? '<p>未启用空指针分析。</p>'
-            : result.nullness.diagnostics.length === 0
-            ? '<p>未检出空指针候选问题。</p>'
-            : `<ol>${result.nullness.diagnostics.map(diagnostic => `<li>
-                <strong>${diagnostic.confidence}</strong> ${this.escape(diagnostic.description)}
-                <div><code>${this.escape(this.locationText(diagnostic.dereference))}</code></div>
-                <div>访问路径: <code>${this.escape(diagnostic.accessPath)}</code></div>
-            </li>`).join('')}</ol>`;
-        const resourceLeaks = !result.resourceAnalysis.enabled
-            ? '<p>未启用资源泄漏分析。</p>'
-            : !result.resourceAnalysis.success
-            ? `<p>分析失败：${this.escape(result.resourceAnalysis.error ?? '未知错误')}</p>`
-            : result.resourceAnalysis.resourceLeaks.length === 0
-            ? '<p>未检出资源泄漏候选问题。</p>'
-            : `<ol>${result.resourceAnalysis.resourceLeaks.map(leak => `<li>
-                <strong>${this.escape(leak.resourceType)}</strong> ${this.escape(leak.description)}
-                <div><code>${this.escape(this.locationText(leak.source))}</code></div>
-                <div>期望释放: <code>${this.escape(leak.expectedSink)}</code></div>
-            </li>`).join('')}</ol>`;
-        const methodLocalLeaks = !result.resourceAnalysis.enabled
-            ? '<p>未启用资源泄漏分析。</p>'
-            : !result.resourceAnalysis.success
-            ? `<p>分析失败：${this.escape(result.resourceAnalysis.error ?? '未知错误')}</p>`
-            : result.resourceAnalysis.methodLocal.leaks.length === 0
-            ? '<p>未检出方法内资源泄漏候选问题。</p>'
-            : `<ol>${result.resourceAnalysis.methodLocal.leaks.map(leak => `<li>
-                <strong>${this.escape(leak.severity)} / ${this.escape(leak.resourceType)}</strong>
-                ${this.escape(leak.description)}
-                <div><code>${this.escape(`${leak.filePath}:${leak.lineNumber}`)}</code></div>
-                <div>期望释放: <code>${this.escape(leak.expectedSink)}</code></div>
-            </li>`).join('')}</ol>`;
-        const newResourceLeaks = result.newResourceAnalysis
-            ? !result.newResourceAnalysis.success
-                ? `<p>分析失败：${this.escape(result.newResourceAnalysis.error ?? '未知错误')}</p>`
-                : result.newResourceAnalysis.diagnostics.length === 0
-                    ? '<p>未检出新资源泄漏候选问题。</p>'
-                    : `<ol>${result.newResourceAnalysis.diagnostics.map(item => `<li>
-                        <strong>${this.escape(item.ruleId)}</strong> ${this.escape(item.reason)}
-                        (${this.escape(item.confidence)})
-                        <div>创建: <code>${this.escape(this.locationText(item.allocation))}</code></div>
-                        <div>边界: <code>${this.escape(this.locationText(item.boundary))}</code></div>
-                        ${item.evidence.slice(1, -1).map(event => `<div>关键节点: <code>${this.escape(this.locationText(event))}</code></div>`).join('')}
-                    </li>`).join('')}</ol>`
-            : '';
+        const lines = this.lines(result, options);
+        const body = lines.slice(1).filter(Boolean).map(line =>
+            /^【.+】$/.test(line) ? `<h2>${this.escape(line.slice(1, -1))}</h2>`
+                : `<p>${this.escape(line)}</p>`).join('\n');
         return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title>
-<style>body{font:14px/1.6 system-ui,sans-serif;max-width:1100px;margin:32px auto;padding:0 20px;color:#202124}h1,h2{color:#16324f}table{border-collapse:collapse;width:100%;margin:12px 0 24px}th,td{border:1px solid #ccd3da;padding:8px;text-align:left}th{background:#f3f6f8}code{background:#f3f6f8;padding:2px 5px}.failed{color:#b42318}.success{color:#067647}</style>
-</head><body><h1>${title}</h1>
-<p>项目: <code>${this.escape(result.project.path)}</code></p>
-<p>状态: <strong class="${result.status}">${result.status}</strong></p>
-<h2>结果摘要</h2><table>${summaryRows}</table>
-${result.newResourceAnalysis ? `<h2>新资源泄漏诊断</h2>${newResourceLeaks}` : ''}
-${this.retentionLines(result).map(line => `<div>${this.escape(line)}</div>`).join('\n')}
-<h2>资源泄漏诊断</h2>${resourceLeaks}
-<h2>方法内资源泄漏诊断</h2>${methodLocalLeaks}
-<h2>空指针诊断</h2>${diagnostics}
-</body></html>`;
+<style>body{font:14px/1.6 system-ui,sans-serif;max-width:1100px;margin:32px auto;padding:0 20px;color:#202124}h1,h2{color:#16324f}p{white-space:pre-wrap;overflow-wrap:anywhere}</style>
+</head><body><h1>${title}</h1>${body}</body></html>`;
     }
 
     private retentionLines(result: ProjectAnalysisResult, markdown = false): string[] {
@@ -341,7 +118,7 @@ ${this.retentionLines(result).map(line => `<div>${this.escape(line)}</div>`).joi
                     }
                 }
                 if (closure.unresolvedRuleIds.length) lines.push(`未解析规则：${closure.unresolvedRuleIds.join(', ')}。`);
-                if (closure.unsupportedLegacyRuleIds?.length) lines.push(`未支持的旧规则：${closure.unsupportedLegacyRuleIds.join(', ')}。`);
+                if (closure.unsupportedApiFamilies?.length) lines.push(`未支持的 API 家族：${closure.unsupportedApiFamilies.join(', ')}。`);
                 if (closure.limitations.length) lines.push(`覆盖限制：${closure.limitations.join(', ')}。`);
             }
         }
@@ -359,37 +136,17 @@ ${this.retentionLines(result).map(line => `<div>${this.escape(line)}</div>`).joi
                     `另有 ${memory.registrationRetentions.length} 条注册保留链关联证据，主诊断归闭包检测，不计入内存候选。`);
                 if (memory.limitations.length) lines.push(`覆盖限制：${memory.limitations.join(', ')}。`);
                 if (memory.unresolvedRegistrationRuleIds?.length) lines.push(`未解析的注册根规则：${memory.unresolvedRegistrationRuleIds.join(', ')}。`);
-                if (memory.unsupportedRegistrationRuleIds?.length) lines.push(`未支持的注册根规则：${memory.unsupportedRegistrationRuleIds.join(', ')}。`);
+                if (memory.unsupportedRegistrationApiFamilies?.length) lines.push(`未支持的注册根规则：${memory.unsupportedRegistrationApiFamilies.join(', ')}。`);
             }
         }
         return lines;
     }
 
-    private resourceCount(result: ProjectAnalysisResult, count: number): number | string {
-        if (!result.resourceAnalysis.enabled) return '未启用';
-        if (!result.resourceAnalysis.success) return '失败';
-        return count;
-    }
-
-    private appendMessages(lines: string[], result: ProjectAnalysisResult): void {
-        if (result.warnings.length > 0) {
-            lines.push('', '【警告】', ...result.warnings.map(value => `  ${value}`));
-        }
-        if (result.errors.length > 0) {
-            lines.push('', '【错误】', ...result.errors.map(value => `  ${value}`));
-        }
-    }
-
     private locationText(location: { relativePath?: string; filePath?: string; line: number; col: number }): string {
         return `${location.relativePath ?? location.filePath ?? 'unknown'}:${location.line}:${location.col}`;
     }
-
     private escape(value: unknown): string {
-        return String(value)
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#39;');
+        return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
     }
 }

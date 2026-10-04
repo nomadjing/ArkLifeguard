@@ -3,14 +3,14 @@ import path from 'node:path';
 import type { ProjectAnalysisResult } from '../application';
 
 export interface SolverStatisticsReport {
-    schemaVersion: 1;
+    schemaVersion: 2;
     reportKind: 'ifds-solver-statistics';
     project: ProjectAnalysisResult['project'];
     resourceAnalysis: {
         enabled: boolean;
         success: boolean;
+        status: ProjectAnalysisResult['resourceAnalysis']['status'];
         statistics: ProjectAnalysisResult['resourceAnalysis']['solverStatistics'] | null;
-        amplification: ProjectAnalysisResult['resourceAnalysis']['amplification'];
     };
 }
 
@@ -18,14 +18,14 @@ export interface SolverStatisticsReport {
 export class SolverStatisticsReportGenerator {
     generate(result: ProjectAnalysisResult, outputPath?: string): string {
         const report: SolverStatisticsReport = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             reportKind: 'ifds-solver-statistics',
             project: result.project,
             resourceAnalysis: {
                 enabled: result.resourceAnalysis.enabled,
                 success: result.resourceAnalysis.success,
                 statistics: result.resourceAnalysis.solverStatistics ?? null,
-                amplification: result.resourceAnalysis.amplification,
+                status: result.resourceAnalysis.status,
             },
         };
         const content = JSON.stringify(report, null, 2);

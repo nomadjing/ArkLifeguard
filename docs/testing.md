@@ -9,14 +9,14 @@
 | `npm run typecheck` | 生产源码 |
 | `npm run typecheck:test` | 生产与测试源码 |
 | `npm run typecheck:scripts` | 生产与脚本源码 |
-| `npm run test:closure` / `test:memory` | 注册/捕获/迁移、内存保留 |
+| `npm run test:closure` / `test:memory` | 注册/捕获、内存保留 |
 | `npm run test:ifds` / `test:lifecycle` | 求解机制、框架建模 |
 | `npm run test:nullness` | 空指针单测，排除独立大范围 Bench 测试文件 |
-| `npm run test:resource` | 当前旧资源模块单测；不包含独立资源测试 |
+| `npm run test:resource` | 资源事实流、十个 SDK 规则家族及正反例 |
 | `npm run test:cli` | 应用编排、CLI 和报告契约 |
 | `npm test` | 默认大范围套件，排除 `NullnessArkDefectBench.test.ts` |
 
-独立资源模块直接指定文件/目录：
+只验证资源模块的一部分时，直接指定文件：
 
 ```bash
 ./node_modules/.bin/vitest run test/resourceleak/ResourceLeakFlow.test.ts
@@ -56,12 +56,12 @@ npm run test:resource:real-apps -- --help
 npm run test:nullness:real-apps -- --list
 
 npm run test:resource:real-apps -- \
-  --project PROJECT_NAME --engine new \
+  --project PROJECT_NAME \
   --sdk-root "/path/to/sdk-root" --timeout-ms 180000 \
   --ifds-stats --output out/resource-real-apps.json
 ```
 
-资源脚本使用 `--engine`，工程 CLI 使用 `--resource-engine`，不能混用。当前两个真实应用脚本分别运行资源或空指针，不负责闭包/内存真实应用精度评估。
+资源脚本直接运行唯一资源引擎，不接受 `--engine`。报告 schema 为 2，`resourceAnalysis.diagnostics` 为唯一诊断数组，计数、置信度、创建调用覆盖与统计分别保存。两个真实应用脚本分别运行资源或空指针，不负责闭包/内存真实应用精度评估。
 
 逐项目独立进程、超时与增量报告记录执行状态、候选、覆盖、统计和内存。单项目成功只证明执行完成；缺少人工真值时不能计算可信的缺陷 Precision/Recall。
 

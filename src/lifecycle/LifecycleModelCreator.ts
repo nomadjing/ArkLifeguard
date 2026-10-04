@@ -312,23 +312,6 @@ export class LifecycleModelCreator {
     this.lifecycleModelStatistics.pageTransitions = { ...statistics };
   }
 
-  /**
-   * 获取"方法 → 所属 Ability 类名"映射
-   *
-   * 供 Phase 2（IFDS 层 Ability 数量约束）使用：
-   * 当某条数据流经过某方法时，可查询该方法属于哪个 Ability，
-   * 从而在 TaintFact 中追踪已访问的 Ability 集合。
-   */
-  public getAbilityMethodSet(): Map<ArkMethod, string> {
-    const result = new Map<ArkMethod, string>();
-    for (const ability of this.abilities) {
-      for (const [, method] of ability.lifecycleMethods) {
-        result.set(method, ability.arkClass.getName());
-      }
-    }
-    return result;
-  }
-
   // ========================================================================
   // Step 1: 收集 Ability 和 Component
   // ========================================================================

@@ -1,0 +1,8 @@
+{
+  module: {
+    name: 'entry',
+    type: 'entry',
+    mainElement: 'EntryAbility',
+    abilities: [{ name: 'EntryAbility', srcEntry: './EntryAbility.ets' }]
+  }
+}

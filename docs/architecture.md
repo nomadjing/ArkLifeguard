@@ -11,7 +11,7 @@ flowchart TD
     Scene --> Lifecycle["Ability / Page / Component / UI callback"]
     Lifecycle --> Entry["共同 DummyMain"]
     Entry --> Nullness["NullnessAnalysisRunner"]
-    Entry --> Resource["ResourceRunner 或旧 TaintAnalysisRunner"]
+    Entry --> Resource["ResourceRunner"]
     Entry --> Closure["ClosureRunner"]
     Entry --> Memory["MemoryRunner"]
     Nullness --> IFDS["共享 IFDS / ICFG"]
@@ -45,7 +45,7 @@ flowchart TD
 | [report](../src/report/ReportGenerator.ts) | 只读结果并生成用户报告 |
 | [cli](../src/cli/cli.ts) | 参数解析、开关和退出码 |
 
-旧 `analysis/resource` 当前仍是默认资源路径，并被闭包/内存的支持清单引用。这是当前实际依赖，不能把目标目录结构当成已经完成的完全解耦；解除方式见[维护策略](maintenance.md)。
+能力清单由资源和注册模块独立维护，不从混合规则表推导。公共接口与失败策略见[维护文档](maintenance.md)。
 
 ## Runner 契约
 
@@ -55,7 +55,6 @@ flowchart TD
 | `ResourceRunner(scene, rules?, collectStatistics?)` | Scene、DummyMain；规则可省略 | 解析默认资源规则，执行 IFDS，收集出口状态与覆盖 |
 | `ClosureRunner(scene, rules?, options?)` | Scene、入口、生命周期合同 | 核对注册及捕获链，区分未取消注册与闭包保留 |
 | `MemoryRunner(scene, options?, registrationRules?)` | Scene、入口、生命周期合同 | 解析根与引用链，分出注册保留关联证据 |
-| 旧 `TaintAnalysisRunner` | Scene、DummyMain、Ability 方法集合 | 旧 Source/Sink IFDS 与旧结果策略 |
 
 独立资源、闭包、内存提供 `runWithDummyMain(entry)`。空指针同时提供 `runFromDummyMain()` 和 `runWithDummyMain(entry)`：前者负责生成入口，后者接收现有模型。这是两种入口使用方式，不是必须保留的历史兼容层。
 
@@ -73,4 +72,4 @@ ICFG 的调用目标解析可能识别回调方法，但识别目标不等于证
 
 完整 API 为 `ProjectAnalysisResult`，包含配置、各模块结果、生命周期信息和耗时。主报告为精简视图，保留模块状态、候选、证据及覆盖限制。两者字段范围不同。
 
-当前主报告 schema 为 2；`analysisKind` 固定字面值、旧资源结果块和零值摘要仍存在。旁路生命周期/旧 IFDS 统计报告有各自 schema，不必与主报告同号。模块语义与状态是解释数量的前提，不能只汇总数组长度。
+当前主报告 schema 为 3，`analysisKind: "arklifeguard"`。资源只使用 `resourceAnalysis`，含显式 enabled/status/success；诊断与覆盖留在主报告，IFDS 统计通过 schema 2 旁路报告输出。完整 API 保留求解统计。生命周期报告使用自身 schema。模块语义与状态是解释数量的前提，不能只汇总数组长度。

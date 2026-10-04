@@ -10,8 +10,8 @@ import {
 } from '../../src/report';
 
 const result: ProjectAnalysisResult = {
-    schemaVersion: 2,
-    analysisKind: 'lifecycle-nullness',
+    schemaVersion: 3,
+    analysisKind: 'arklifeguard',
     status: 'success',
     project: { path: '/project', name: 'project', analyzedAt: '2026-08-24T00:00:00.000Z' },
     settings: {
@@ -21,7 +21,6 @@ const result: ProjectAnalysisResult = {
         analyzeNavigation: true,
         runNullness: true,
         runResourceAnalysis: true,
-        resourceEngine: 'legacy',
         lifecycleModel: 'flat',
         lifecycleOptimizations: {
             compactDispatcher: true,
@@ -29,15 +28,12 @@ const result: ProjectAnalysisResult = {
         },
         bounds: {
             maxCallbackIterations: 1,
-            maxAbilitiesPerFlow: 3,
-            maxNavigationHops: 5,
             maxAccessPathLength: 5,
             maxPropagationDepth: 40,
         },
+        resourceBounds: { maxCallDepth: 4 },
         boundEnforcement: {
             maxCallbackIterations: 'inactive-with-cyclic-model',
-            maxAbilitiesPerFlow: 'enforced',
-            maxNavigationHops: 'enforced',
             maxAccessPathLength: 'enforced',
             maxPropagationDepth: 'enforced',
         },
@@ -56,9 +52,6 @@ const result: ProjectAnalysisResult = {
         navigations: 1,
         nullDereferences: 1,
         resourceLeaks: 1,
-        taintLeaks: 0,
-        sources: 1,
-        sinks: 1,
         reachedStatements: 10,
         reachedFacts: 12,
     },
@@ -121,48 +114,12 @@ const result: ProjectAnalysisResult = {
         reachedFacts: 12,
     },
     resourceAnalysis: {
-        enabled: true,
-        engine: 'legacy',
-        success: true,
-        entryMethod: 'DummyMain.main()',
-        resourceLeaks: [{
-            sourceId: 'fs.open',
-            resourceType: 'File',
-            expectedSink: 'fs.close',
-            description: '文件资源未释放',
-            source: { filePath: '/project/Index.ets', relativePath: 'Index.ets', line: 20, col: 5 },
-        }],
-        taintLeaks: [],
-        reachedStatements: 8,
-        reachedFacts: 10,
-        sources: [{
-            resourceType: 'File',
-            methodPattern: 'fs.open',
-            methodSignature: 'fs.open()',
-            location: { filePath: '/project/Index.ets', relativePath: 'Index.ets', line: 20, col: 5 },
-        }],
-        sinks: [{
-            resourceType: 'File',
-            methodPattern: 'fs.close',
-            methodSignature: 'fs.close()',
-            location: { filePath: '/project/Index.ets', relativePath: 'Index.ets', line: 24, col: 5 },
-        }],
-        analyzedMethods: 3,
-        amplification: {
-            reachedFacts: 10,
-            reachedStatements: 8,
-            processedEdges: null,
-            propagationAttempts: null,
-            ifdsTimeMs: null,
-            factsPerStatement: 1.25,
-            edgesPerStatement: null,
-        },
-        methodLocal: {
-            leaks: [],
-            analyzedMethods: 8,
-            sourceCount: 1,
-            sinkCount: 1,
-        },
+        enabled: true, status: 'success', success: true, entryMethod: 'DummyMain.main()',
+        diagnostics: [{ ruleId: 'FileNotClosed', reason: 'unreleased', confidence: 'high',
+            allocation: { filePath: '/project/Index.ets', line: 20, col: 5 },
+            boundary: { filePath: '/project/Index.ets', line: 30, col: 1 }, evidence: [],
+        }], reachedStatements: 8, reachedFacts: 10,
+        unresolvedRuleIds: ['AudioRendererNotReleased'], unsupportedApiFamilies: ['Worker/ThreadWorker termination'],
     },
     duration: {
         sceneBuilding: 100,
@@ -186,7 +143,7 @@ describe('ReportGenerator', () => {
                     confidence: 'high', registrars: ['system:emitter'], events: ['1'], callbacks: ['callback:1'],
                     capturedObject: 'owner:1', root: 'registration-root:1',
                     retentionPath: [{ from: 'callback:1', to: 'owner:1', via: 'capture:<script>', location }] }],
-                unresolvedRuleIds: ['WindowRegistration'], unsupportedLegacyRuleIds: ['sensor.on'], limitations: [] },
+                unresolvedRuleIds: ['WindowRegistration'], unsupportedApiFamilies: ['sensor.on'], limitations: [] },
             memoryAnalysis: { enabled: true, success: false, memoryRetentionCandidates: [],
                 registrationRetentions: [], limitations: ['state-budget-exceeded'], error: 'Memory budget exceeded' } };
         const report = new ReportGenerator().generate(withRetention, { format });
@@ -228,7 +185,7 @@ describe('ReportGenerator', () => {
         const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'arklifeguard-report-')), 'report.json');
         new ReportGenerator().generate(result, { format: 'json', outputPath });
         expect(JSON.parse(fs.readFileSync(outputPath, 'utf8')).analysisKind)
-            .toBe('lifecycle-nullness');
+            .toBe('arklifeguard');
     });
 
     it('writes solver statistics as a separate developer report', () => {
@@ -278,11 +235,13 @@ describe('ReportGenerator', () => {
         expect(report.summary).toEqual({
             nullDereferences: 1,
             resourceLeaks: 1,
-            methodLocalResourceLeaks: 0,
         });
         expect(report.nullness.diagnostics).toHaveLength(1);
-        expect(report.resourceAnalysis.resourceLeaks).toHaveLength(1);
-        expect(report.resourceAnalysis.engine).toBe('legacy');
+        expect(report.resourceAnalysis.diagnostics).toHaveLength(1);
+        expect(report.resourceAnalysis.status).toBe('success');
+        expect(report.schemaVersion).toBe(3);
+        expect(report).not.toHaveProperty('newResourceAnalysis');
+        expect(report.resourceAnalysis).not.toHaveProperty('methodLocal');
         expect(report.duration).toEqual({ total: 155 });
         expect(report).not.toHaveProperty('settings');
         expect(report).not.toHaveProperty('abilities');
@@ -292,60 +251,41 @@ describe('ReportGenerator', () => {
     });
 
     it.each(['json', 'text', 'markdown', 'html'] as const)(
-        'shows a failed new resource engine in %s instead of a clean result', format => {
-            const failed: ProjectAnalysisResult = {
-                ...result,
-                status: 'failed',
-                settings: { ...result.settings, resourceEngine: 'new' },
+        'shows a failed resource module in %s without claiming a clean result', format => {
+            const failed: ProjectAnalysisResult = { ...result, status: 'failed',
                 summary: { ...result.summary, resourceLeaks: 0 },
-                resourceAnalysis: {
-                    ...result.resourceAnalysis,
-                    enabled: false,
-                    resourceLeaks: [],
-                    methodLocal: { leaks: [], analyzedMethods: 0, sourceCount: 0, sinkCount: 0 },
-                },
-                newResourceAnalysis: {
-                    status: 'not-implemented', success: false,
-                    entryMethod: 'DummyMain.main()', diagnostics: [],
-                    error: '新资源分析尚未实现',
-                },
-                errors: ['新资源分析尚未实现'],
+                resourceAnalysis: { enabled: true, status: 'failed', success: false,
+                    entryMethod: 'DummyMain.main()', diagnostics: [], error: '没有可用资源规则' },
+                errors: ['没有可用资源规则'],
             };
             const report = new ReportGenerator().generate(failed, { format });
-            expect(report).toContain('新资源分析尚未实现');
-            if (format === 'json') {
-                expect(JSON.parse(report).newResourceAnalysis).toMatchObject({
-                    status: 'not-implemented', success: false, error: '新资源分析尚未实现',
-                });
-            } else {
+            expect(report).toContain('没有可用资源规则');
+            if (format === 'json') expect(JSON.parse(report).resourceAnalysis).toMatchObject({
+                enabled: true, status: 'failed', success: false, diagnostics: [],
+            });
+            else {
                 expect(report).toContain('失败');
                 expect(report).not.toContain('未检出资源泄漏候选问题');
             }
-        }
-    );
+        });
 
-    it.each(['json', 'text', 'markdown', 'html'] as const)(
-        'renders new resource diagnostics in %s', format => {
-            const withNew: ProjectAnalysisResult = {
-                ...result,
-                settings: { ...result.settings, resourceEngine: 'new' },
-                resourceAnalysis: { ...result.resourceAnalysis, enabled: false, resourceLeaks: [] },
-                newResourceAnalysis: {
-                    status: 'success', success: true, entryMethod: 'DummyMain.main()',
-                    diagnostics: [{
-                        ruleId: 'HandleNotReleased', reason: 'unreleased', confidence: 'high',
-                        allocation: { filePath: '/project/Index.ets', line: 20, col: 5 },
-                        boundary: { filePath: '/project/Index.ets', line: 30, col: 1 },
-                        evidence: [],
-                    }],
-                },
-            };
-            const report = new ReportGenerator().generate(withNew, { format });
-            expect(report).toContain('HandleNotReleased');
-            expect(report).toContain('unreleased');
-            expect(report).toContain('/project/Index.ets');
-        }
-    );
+    it.each(['json', 'text', 'markdown', 'html'] as const)('renders sole resource evidence in %s', format => {
+        const report = new ReportGenerator().generate(result, { format });
+        expect(report).toContain('FileNotClosed');
+        expect(report).toContain('unreleased');
+        expect(report).toContain('/project/Index.ets');
+        expect(report).toContain('AudioRendererNotReleased');
+        expect(report).toContain('Worker/ThreadWorker termination');
+        expect(report).not.toContain('方法内资源');
+    });
+
+    it.each(['text', 'markdown', 'html'] as const)('distinguishes a disabled resource module in %s', format => {
+        const disabled: ProjectAnalysisResult = { ...result, resourceAnalysis: {
+            enabled: false, status: 'disabled', success: true, entryMethod: '', diagnostics: [] } };
+        const report = new ReportGenerator().generate(disabled, { format });
+        expect(report).toContain('未启用资源泄漏分析');
+        expect(report).not.toContain('未检出资源泄漏候选问题');
+    });
 
     it('writes lifecycle modeling details as a separate report', () => {
         const report = JSON.parse(new LifecycleReportGenerator().generate(result));
