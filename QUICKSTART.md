@@ -42,8 +42,7 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 
 | 参数 | 默认值 | 实际作用 |
 | --- | ---: | --- |
-| `--lifecycle-model` | `flat` | 可选 `flat`、`opt-flat`、`bounded-opt-flat`、`hierarchical`、`bounded-unroll` |
-| `--max-callback-iterations` | 1 | 仅两种 bounded 模型限制回调展开；其他模型不使用 |
+| `--lifecycle-model` | `flat` | 可选 `flat`、`opt-flat`、`hierarchical` |
 | `--max-access-path-length` | 5 | 空指针访问路径长度 |
 | `--max-propagation-depth` | 40 | 空指针事实传播深度；不约束资源检查 |
 | `--max-retention-states` | 20000 | 每个闭包/内存 Runner 的状态上限 |

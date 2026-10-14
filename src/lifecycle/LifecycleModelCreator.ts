@@ -15,7 +15,7 @@
 
 /**
  * @file LifecycleModelCreator.ts
- * @description 扩展版 DummyMain 创建器
+ * @description 扩展版 DummyMain 创建器的共享基础
  *
  * 本模块是对原有 DummyMainCreater 的扩展，主要增强功能：
  *
@@ -31,28 +31,7 @@
  *    - 分析 startAbility/router.pushUrl 等调用
  *    - 在 CFG 中体现跳转关系
  *
- * 生成的 DummyMain 结构（循环展开版，k = bounds.maxCallbackIterations）：
- * ```
- * function @extendedDummyMain() {
- *     // 1. 静态初始化
- *     staticInit()
- *     count = 0
- *
- *     // 2. 循环展开 k 次（k=1 时 CFG 为 DAG）
- *     // --- Round 1 ---
- *     if (count == 1) { ability1.onCreate(...); ...; ability1.onDestroy() }
- *     if (count == 2) { ability2.onCreate(...); ...; ability2.onDestroy() }
- *     if (count == 3) { comp1.aboutToAppear(); comp1.build(); comp1.onClick() }
- *     ...
- *     // --- Round 2 (k>=2) ---
- *     if (count == 1) { ability1.onCreate(...); ... }
- *     ...
- *
- *     return
- * }
- * ```
- *
- * k=1 时每个回调只出现一次，CFG 为 DAG，IFDS 单趟即可结束（有界约束2）。
+ * 具体的 DummyMain CFG 由循环生命周期模型实现。
  */
 import {
   Scene,
@@ -60,20 +39,14 @@ import {
   ArkMethod,
   ArkFile,
   Language,
-  ArkBody,
   Local,
   ClassType,
   NumberType,
-  Constant,
   ArkAssignStmt,
-  ArkIfStmt,
   ArkInvokeStmt,
-  ArkReturnVoidStmt,
-  ArkConditionExpr,
   ArkInstanceInvokeExpr,
   ArkNewExpr,
   ArkStaticInvokeExpr,
-  RelationalBinaryOperator,
   BasicBlock,
   Cfg,
   ClassSignature,
@@ -97,7 +70,6 @@ import {
   LifecycleModelConfig,
   LifecycleModelStatistics,
   DEFAULT_LIFECYCLE_CONFIG,
-  BoundsConfig,
   NavigationType,
   ScopeModelInfo,
 } from "./LifecycleTypes";
@@ -117,7 +89,7 @@ import {
  * const dummyMain = creator.getDummyMain();
  * ```
  */
-export class LifecycleModelCreator {
+export abstract class LifecycleModelCreator {
   // ========================================================================
   // 成员变量
   // ========================================================================
@@ -199,14 +171,9 @@ export class LifecycleModelCreator {
    */
   constructor(scene: Scene, config?: Partial<LifecycleModelConfig>) {
     this.scene = scene;
-    // bounds 需要深合并，避免传入部分 bounds 时丢失其余默认值
     this.config = {
       ...DEFAULT_LIFECYCLE_CONFIG,
       ...config,
-      bounds: {
-        ...DEFAULT_LIFECYCLE_CONFIG.bounds,
-        ...(config?.bounds ?? {}),
-      } as BoundsConfig,
       optimizations: {
         ...DEFAULT_LIFECYCLE_CONFIG.optimizations,
         ...(config?.optimizations ?? {}),
@@ -272,13 +239,6 @@ export class LifecycleModelCreator {
     return this.components;
   }
 
-  /**
-   * 获取当前有界约束配置
-   */
-  public getBounds(): BoundsConfig {
-    return this.config.bounds;
-  }
-
   /** Return a defensive copy of hierarchy statistics for reports. */
   public getLifecycleModelStatistics(): LifecycleModelStatistics {
     return {
@@ -294,7 +254,7 @@ export class LifecycleModelCreator {
 
   /**
    * DummyMain 的 scope 结构信息，供 profiling / 调试使用。
-   * 仅分层模型返回非 undefined；Flat / bounded-unroll 返回 undefined。
+   * 仅分层模型返回非 undefined；Flat 返回 undefined。
    */
   public getScopeModelInfo(): ScopeModelInfo | undefined {
     return this.scopeModelInfo;
@@ -648,101 +608,8 @@ export class LifecycleModelCreator {
     dummyClass.addMethod(this.dummyMain);
   }
 
-  // ========================================================================
-  // Step 4: 构建 CFG
-  // ========================================================================
+  protected abstract buildDummyMainCfg(): void;
 
-  /**
-   * 构建 DummyMain 的控制流图（循环展开版）
-   *
-   * 生成结构（k = config.bounds.maxCallbackIterations）：
-   * ```
-   * entryBlock (静态初始化)
-   *   ↓
-   * [第 1 轮]
-   *   if(count==1) → Ability1Block_1
-   *   if(count==2) → Ability2Block_1
-   *   if(count==3) → Comp1Block_1
-   *   ...
-   *   ↓
-   * [第 2 轮]  (k >= 2 时)
-   *   if(count==1) → Ability1Block_2
-   *   ...
-   *   ↓
-   * returnBlock
-   * ```
-   *
-   * k=1 时 CFG 为 DAG（无环），IFDS 单趟扫描即可结束，
-   * 避免了原 while(true) 循环导致的无界不动点迭代。
-   */
-  protected buildDummyMainCfg(): void {
-    const cfg = new Cfg();
-    cfg.setDeclaringMethod(this.dummyMain);
-
-    // 创建入口基本块
-    const entryBlock = new BasicBlock();
-    cfg.addBlock(entryBlock);
-
-    // 4.1 添加静态初始化
-    this.addStaticInitialization(cfg, entryBlock);
-
-    // 4.2 创建共享计数器变量（用于 if-branch 的非确定性条件）
-    const countLocal = new Local("count", NumberType.getInstance());
-    const zero = ValueUtil.getOrCreateNumberConst(0);
-    entryBlock.addStmt(new ArkAssignStmt(countLocal, zero));
-
-    // 4.3 循环展开：重复 maxCallbackIterations 轮，每轮生成相同的分支结构
-    const maxIter = this.config.bounds.maxCallbackIterations;
-    let lastBlocks: BasicBlock[] = [entryBlock];
-
-    for (let iter = 0; iter < maxIter; iter++) {
-      let branchIdx = 0;
-      const scopedComponents = new Set<ComponentInfo>();
-
-      // 每轮为所有 Ability 添加生命周期调用分支
-      for (const ability of this.abilities) {
-        for (const component of ability.components) {
-          scopedComponents.add(component);
-        }
-        lastBlocks = this.addAbilityLifecycleBranch(
-          cfg,
-          ability,
-          lastBlocks,
-          countLocal,
-          ++branchIdx,
-        );
-      }
-
-      // 每轮为所有 Component 添加生命周期和 UI 回调调用分支
-      for (const component of this.components) {
-        if (scopedComponents.has(component)) {
-          continue;
-        }
-        lastBlocks = this.addComponentLifecycleBranch(
-          cfg,
-          component,
-          lastBlocks,
-          countLocal,
-          ++branchIdx,
-        );
-      }
-    }
-
-    // 4.4 添加返回块（直接连接最后一轮的末尾块，无 back-edge）
-    this.createReturnBlock(cfg, lastBlocks);
-
-    // 设置方法体
-    const locals = new Set(this.classInstanceMap.values());
-    const body = new ArkBody(locals, cfg);
-    this.dummyMain.setBody(body);
-
-    // 为所有语句设置 CFG 引用
-    this.linkStmtsToCfg(cfg);
-  }
-
-  /**
-   * 添加静态初始化调用
-   */
   protected addStaticInitialization(cfg: Cfg, entryBlock: BasicBlock): void {
     let isFirst = true;
 
@@ -767,181 +634,6 @@ export class LifecycleModelCreator {
       cfg.setStartingStmt(assignStmt);
       entryBlock.addStmt(assignStmt);
     }
-  }
-
-  /**
-   * 为单个 Ability 添加生命周期调用分支
-   *
-   * @returns 更新后的 lastBlocks
-   */
-  private addAbilityLifecycleBranch(
-    cfg: Cfg,
-    ability: AbilityInfo,
-    lastBlocks: BasicBlock[],
-    countLocal: Local,
-    branchIndex: number,
-  ): BasicBlock[] {
-    // 创建条件判断块: if (count == branchIndex)
-    const condition = new ArkConditionExpr(
-      countLocal,
-      new Constant(branchIndex.toString(), NumberType.getInstance()),
-      RelationalBinaryOperator.Equality,
-    );
-    const ifStmt = new ArkIfStmt(condition);
-    const ifBlock = new BasicBlock();
-    ifBlock.addStmt(ifStmt);
-    cfg.addBlock(ifBlock);
-
-    // 连接前驱块
-    for (const block of lastBlocks) {
-      ifBlock.addPredecessorBlock(block);
-      block.addSuccessorBlock(ifBlock);
-    }
-
-    // 创建 Ability 调用块
-    const invokeBlock = new BasicBlock();
-    cfg.addBlock(invokeBlock);
-
-    // 获取或创建 Ability 实例
-    const abilityLocal = this.getOrCreateClassInstance(ability.arkClass);
-
-    // 添加实例化语句
-    this.addInstanceCreation(invokeBlock, abilityLocal, ability.arkClass);
-
-    // 按顺序调用生命周期方法
-    for (const stage of this.config.lifecycleOrder) {
-      const lifecycleMethod = ability.lifecycleMethods.get(stage);
-      if (lifecycleMethod) {
-        this.addMethodInvocation(invokeBlock, abilityLocal, lifecycleMethod);
-      }
-    }
-
-    const embeddedComponentKeys = new Set<string>();
-    for (const component of ability.components) {
-      const key = component.signature.toString();
-      if (embeddedComponentKeys.has(key)) {
-        continue;
-      }
-      embeddedComponentKeys.add(key);
-      this.addComponentInvocationsToBlock(invokeBlock, component);
-    }
-
-    // 连接 if 块和调用块
-    ifBlock.addSuccessorBlock(invokeBlock);
-    invokeBlock.addPredecessorBlock(ifBlock);
-
-    return [ifBlock, invokeBlock];
-  }
-
-  /**
-   * 为单个 Component 添加生命周期和回调调用分支
-   */
-  private addComponentLifecycleBranch(
-    cfg: Cfg,
-    component: ComponentInfo,
-    lastBlocks: BasicBlock[],
-    countLocal: Local,
-    branchIndex: number,
-  ): BasicBlock[] {
-    // 创建条件判断块
-    const condition = new ArkConditionExpr(
-      countLocal,
-      new Constant(branchIndex.toString(), NumberType.getInstance()),
-      RelationalBinaryOperator.Equality,
-    );
-    const ifStmt = new ArkIfStmt(condition);
-    const ifBlock = new BasicBlock();
-    ifBlock.addStmt(ifStmt);
-    cfg.addBlock(ifBlock);
-
-    // 连接前驱块
-    for (const block of lastBlocks) {
-      ifBlock.addPredecessorBlock(block);
-      block.addSuccessorBlock(ifBlock);
-    }
-
-    // 创建调用块
-    const invokeBlock = new BasicBlock();
-    cfg.addBlock(invokeBlock);
-
-    // 获取或创建 Component 实例
-    const componentLocal = this.getOrCreateClassInstance(component.arkClass);
-
-    // 添加实例化
-    this.addInstanceCreation(invokeBlock, componentLocal, component.arkClass);
-
-    // 调用 Component 生命周期方法（含 aboutToDisappear，以便 clearInterval 等释放逻辑被覆盖）
-    this.addComponentInvocationsToBlock(invokeBlock, component, componentLocal);
-
-    // 连接
-    ifBlock.addSuccessorBlock(invokeBlock);
-    invokeBlock.addPredecessorBlock(ifBlock);
-
-    return [ifBlock, invokeBlock];
-  }
-
-  /**
-   * 创建返回块，并将其连接到给定的所有前驱块
-   *
-   * 循环展开后不再有 whileBlock，改为将最后一轮的末尾块直接连向 returnBlock。
-   */
-  private addComponentInvocationsToBlock(
-    block: BasicBlock,
-    component: ComponentInfo,
-    componentLocal?: Local,
-  ): void {
-    const local =
-      componentLocal ?? this.getOrCreateClassInstance(component.arkClass);
-    const beforeCallbacks: ComponentLifecycleStage[] = [
-      ComponentLifecycleStage.ABOUT_TO_APPEAR,
-      ComponentLifecycleStage.WILL_APPLY_THEME,
-      ComponentLifecycleStage.BUILD,
-      ComponentLifecycleStage.DID_BUILD,
-      ComponentLifecycleStage.PAGE_SHOW,
-    ];
-    const afterCallbacks: ComponentLifecycleStage[] = [
-      ComponentLifecycleStage.BACK_PRESS,
-      ComponentLifecycleStage.KEY_EVENT,
-      ComponentLifecycleStage.ABOUT_TO_RECYCLE,
-      ComponentLifecycleStage.ABOUT_TO_REUSE,
-      ComponentLifecycleStage.PAGE_HIDE,
-      ComponentLifecycleStage.ABOUT_TO_DISAPPEAR,
-    ];
-
-    for (const stage of beforeCallbacks) {
-      const method = component.lifecycleMethods.get(stage);
-      if (method) {
-        this.addMethodInvocation(block, local, method);
-      }
-    }
-
-    // UI events occur while the component/page is active, before hide/disappear.
-    if (this.config.enableFineGrainedUICallbacks) {
-      for (const callback of component.uiCallbacks) {
-        this.addUICallbackInvocation(block, local, callback);
-      }
-    }
-
-    for (const stage of afterCallbacks) {
-      const method = component.lifecycleMethods.get(stage);
-      if (method) {
-        this.addMethodInvocation(block, local, method);
-      }
-    }
-  }
-
-  private createReturnBlock(cfg: Cfg, predecessors: BasicBlock[]): BasicBlock {
-    const returnBlock = new BasicBlock();
-    const returnStmt = new ArkReturnVoidStmt();
-    returnBlock.addStmt(returnStmt);
-    cfg.addBlock(returnBlock);
-
-    for (const block of predecessors) {
-      block.addSuccessorBlock(returnBlock);
-      returnBlock.addPredecessorBlock(block);
-    }
-
-    return returnBlock;
   }
 
   // ========================================================================

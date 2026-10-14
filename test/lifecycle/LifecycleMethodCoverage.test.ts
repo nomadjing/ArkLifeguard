@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import 'arkanalyzer';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
-import { LifecycleModelCreator } from '../../src/lifecycle/LifecycleModelCreator';
+import { FlatLifecycleModelCreator } from '../../src/lifecycle/FlatLifecycleModelCreator';
 import {
     AbilityLifecycleStage,
     BackupExtensionLifecycleStage,
@@ -30,7 +30,7 @@ describe('lifecycle method coverage', () => {
     });
 
     it('emits all collected lifecycle methods into DummyMain', () => {
-        const creator = new LifecycleModelCreator(buildLifecycleScene('lifecycle-coverage'), {
+        const creator = new FlatLifecycleModelCreator(buildLifecycleScene('lifecycle-coverage'), {
             enableViewTreeParsing: false,
         });
         creator.create();

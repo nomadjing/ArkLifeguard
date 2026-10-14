@@ -311,12 +311,6 @@ export enum UIEventType {
 // 第五部分：DummyMain 构建配置
 // ============================================================================
 
-/** Finite lifecycle expansion; cyclic models ignore this bound. */
-export interface BoundsConfig {
-  /** bounded-opt-flat counts callback choices; bounded-unroll counts scan rounds. */
-  maxCallbackIterations: number;
-}
-
 /**
  * 扩展 DummyMain 的配置选项
  */
@@ -335,9 +329,6 @@ export interface LifecycleModelConfig {
 
   /** 最大跳转深度（防止无限循环） */
   maxNavigationDepth: number;
-
-  /** 有界约束配置 */
-  bounds: BoundsConfig;
 
   /** RQ1.5 中可独立关闭的通用生命周期 CFG 优化。 */
   optimizations: LifecycleOptimizationConfig;
@@ -417,7 +408,7 @@ export interface LifecycleModelStatistics {
  *
  * 用于 profiling / 调试：把"哪个 Stmt 是哪个 Page scope / fallback / Ability
  * 分发器"暴露给上层，配合 IFDS 求解结果做按 scope 的事实统计。Flat /
- * bounded-unroll 等无 scope 结构的模型返回 undefined。
+ * 其他无 scope 结构的模型返回 undefined。
  */
 export interface PageScopeInfo {
   pageId: string;
@@ -477,8 +468,5 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleModelConfig = {
   optimizations: {
     compactDispatcher: true,
     pruneUnreachableAbilities: true,
-  },
-  bounds: {
-    maxCallbackIterations: 1, // 有界模型默认一层/轮；循环模型忽略此值
   },
 };

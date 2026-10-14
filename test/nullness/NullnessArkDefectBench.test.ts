@@ -52,13 +52,6 @@ const sdks: Sdk[] = SDK_ROOT ? [
     { name: 'ohosSdk', path: path.join(SDK_ROOT, 'openharmony/ets'), moduleName: '' },
     { name: 'hmsSdk', path: path.join(SDK_ROOT, 'hms/ets'), moduleName: '' },
 ] : [{ name: '', path: SDK_DIR, moduleName: '' }];
-const CALLBACK_ITERATIONS = process.env.ARK_LIFECYCLE_CALLBACK_ITERATIONS
-    ? Number(process.env.ARK_LIFECYCLE_CALLBACK_ITERATIONS)
-    : undefined;
-if (CALLBACK_ITERATIONS !== undefined &&
-    (!Number.isInteger(CALLBACK_ITERATIONS) || CALLBACK_ITERATIONS < 1)) {
-    throw new Error(`ARK_LIFECYCLE_CALLBACK_ITERATIONS must be a positive integer: ${process.env.ARK_LIFECYCLE_CALLBACK_ITERATIONS}`);
-}
 const LIFECYCLE_MODEL = (process.env.ARK_LIFECYCLE_MODEL ?? 'flat') as LifecycleModelMode;
 if (!['flat', 'hierarchical'].includes(LIFECYCLE_MODEL)) {
     throw new Error(`ARK_LIFECYCLE_MODEL must be flat or hierarchical: ${LIFECYCLE_MODEL}`);
@@ -276,9 +269,6 @@ describe.sequential('ArkDefectBench null-pointer conformance', () => {
             const scene = buildScene(casePath);
             const result = new NullnessAnalysisRunner(scene, {
                 lifecycleModel: LIFECYCLE_MODEL,
-                ...(CALLBACK_ITERATIONS === undefined ? {} : {
-                    lifecycle: { bounds: { maxCallbackIterations: CALLBACK_ITERATIONS } },
-                }),
             }).runFromDummyMain();
 
             expect(result.success, result.error).toBe(true);

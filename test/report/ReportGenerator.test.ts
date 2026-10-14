@@ -27,13 +27,11 @@ const result: ProjectAnalysisResult = {
             pruneUnreachableAbilities: true,
         },
         bounds: {
-            maxCallbackIterations: 1,
             maxAccessPathLength: 5,
             maxPropagationDepth: 40,
         },
         resourceBounds: { maxCallDepth: 4 },
         boundEnforcement: {
-            maxCallbackIterations: 'inactive-with-cyclic-model',
             maxAccessPathLength: 'enforced',
             maxPropagationDepth: 'enforced',
         },
@@ -291,7 +289,7 @@ describe('ReportGenerator', () => {
         const report = JSON.parse(new LifecycleReportGenerator().generate(result));
         expect(report.reportKind).toBe('lifecycle-modeling-details');
         expect(report.settings.lifecycleModel).toBe('flat');
-        expect(report.settings.maxCallbackIterations).toBeNull();
+        expect(report.settings).not.toHaveProperty('maxCallbackIterations');
         expect(report.abilities).toHaveLength(1);
         expect(report.components).toHaveLength(1);
         expect(report.navigations).toHaveLength(1);

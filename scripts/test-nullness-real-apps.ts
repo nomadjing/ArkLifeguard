@@ -36,9 +36,8 @@ interface Options {
     timeoutMs: number;
     lifecycleModel: Extract<
         LifecycleModelMode,
-        'flat' | 'opt-flat' | 'bounded-opt-flat' | 'hierarchical'
+        'flat' | 'opt-flat' | 'hierarchical'
     >;
-    maxCallbackIterations: number;
     compactLifecycleDispatcher: boolean;
     pruneUnreachableAbilities: boolean;
     collectSolverStatistics: boolean;
@@ -95,9 +94,8 @@ interface RealAppsReport {
         timeoutMs: number;
         lifecycleModel: Extract<
             LifecycleModelMode,
-            'flat' | 'opt-flat' | 'bounded-opt-flat' | 'hierarchical'
+            'flat' | 'opt-flat' | 'hierarchical'
         >;
-        maxCallbackIterations: number | null;
         lifecycleOptimizations: {
             compactDispatcher: boolean;
             pruneUnreachableAbilities: boolean;
@@ -149,8 +147,7 @@ function help(): void {
         '  --real-apps-root <path>   HarmonyRealApps directory containing meta.json',
         '  --sdk-root <path>         SDK root containing openharmony/ets and hms/ets',
         '  --timeout-ms <n>          Per-project timeout; default: 600000',
-        '  --lifecycle-model <mode>  flat, opt-flat, bounded-opt-flat or hierarchical; default: flat',
-        '  --max-callback-iterations <n> K for bounded-opt-flat; default: 1',
+        '  --lifecycle-model <mode>  flat, opt-flat or hierarchical; default: flat',
         '  --no-compact-dispatcher   M1-NoCompact ablation',
         '  --no-ability-prune        M1-NoAbilityPrune ablation',
         '  --ifds-stats              Collect IFDS solver time and counters',
@@ -194,9 +191,8 @@ function parseArgs(args: string[]): Options {
     let timeoutMs = 600_000;
     let lifecycleModel: Extract<
         LifecycleModelMode,
-        'flat' | 'opt-flat' | 'bounded-opt-flat' | 'hierarchical'
+        'flat' | 'opt-flat' | 'hierarchical'
     > = 'flat';
-    let maxCallbackIterations = 1;
     let compactLifecycleDispatcher = true;
     let pruneUnreachableAbilities = true;
     let collectSolverStatistics = false;
@@ -273,9 +269,9 @@ function parseArgs(args: string[]): Options {
         if (arg === '--lifecycle-model') {
             const value = optionValue(args, index, arg);
             if (value !== 'flat' && value !== 'opt-flat' &&
-                value !== 'bounded-opt-flat' && value !== 'hierarchical') {
+                value !== 'hierarchical') {
                 throw new Error(
-                    `${arg} must be flat, opt-flat, bounded-opt-flat or hierarchical: ${value}`
+                    `${arg} must be flat, opt-flat or hierarchical: ${value}`
                 );
             }
             lifecycleModel = value;
@@ -285,24 +281,12 @@ function parseArgs(args: string[]): Options {
         if (arg.startsWith('--lifecycle-model=')) {
             const value = arg.slice('--lifecycle-model='.length);
             if (value !== 'flat' && value !== 'opt-flat' &&
-                value !== 'bounded-opt-flat' && value !== 'hierarchical') {
+                value !== 'hierarchical') {
                 throw new Error(
-                    `--lifecycle-model must be flat, opt-flat, bounded-opt-flat or hierarchical: ${value}`
+                    `--lifecycle-model must be flat, opt-flat or hierarchical: ${value}`
                 );
             }
             lifecycleModel = value;
-            continue;
-        }
-        if (arg === '--max-callback-iterations') {
-            maxCallbackIterations = parsePositiveInteger(optionValue(args, index, arg), arg);
-            index++;
-            continue;
-        }
-        if (arg.startsWith('--max-callback-iterations=')) {
-            maxCallbackIterations = parsePositiveInteger(
-                arg.slice('--max-callback-iterations='.length),
-                '--max-callback-iterations'
-            );
             continue;
         }
         if (arg === '--ifds-stats') {
@@ -371,7 +355,6 @@ function parseArgs(args: string[]): Options {
         outputPath,
         timeoutMs,
         lifecycleModel,
-        maxCallbackIterations,
         compactLifecycleDispatcher,
         pruneUnreachableAbilities,
         collectSolverStatistics,
@@ -483,9 +466,6 @@ function analyzeProject(
         const result = new NullnessAnalysisRunner(scene, {
             lifecycleModel: options.lifecycleModel,
             lifecycle: {
-                bounds: {
-                    maxCallbackIterations: options.maxCallbackIterations,
-                },
                 optimizations: {
                     compactDispatcher: options.compactLifecycleDispatcher,
                     pruneUnreachableAbilities: options.pruneUnreachableAbilities,
@@ -613,9 +593,6 @@ function createReport(
             sdkRoot: options.sdkRoot,
             timeoutMs: options.timeoutMs,
             lifecycleModel: options.lifecycleModel,
-            maxCallbackIterations: options.lifecycleModel === 'bounded-opt-flat'
-                ? options.maxCallbackIterations
-                : null,
             lifecycleOptimizations: {
                 compactDispatcher: options.compactLifecycleDispatcher,
                 pruneUnreachableAbilities: options.pruneUnreachableAbilities,
@@ -728,7 +705,6 @@ function runParent(options: Options): void {
                 '--real-apps-root', options.realAppsRoot,
                 '--sdk-root', options.sdkRoot,
                 '--lifecycle-model', options.lifecycleModel,
-                '--max-callback-iterations', String(options.maxCallbackIterations),
                 '--max-access-path-length', String(options.maxAccessPathLength),
                 '--max-propagation-depth', String(options.maxPropagationDepth),
                 ...(options.collectSolverStatistics ? ['--ifds-stats'] : []),

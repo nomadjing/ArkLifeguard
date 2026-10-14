@@ -45,7 +45,6 @@ export interface ProjectAnalysisOptions {
     lifecycleModel?: LifecycleModelMode;
     compactLifecycleDispatcher?: boolean;
     pruneUnreachableAbilities?: boolean;
-    maxCallbackIterations?: number;
     maxAccessPathLength?: number;
     maxPropagationDepth?: number;
     reportUnresolvedReturns?: boolean;
@@ -94,13 +93,11 @@ export interface ProjectAnalysisResult {
             pruneUnreachableAbilities: boolean;
         };
         bounds: {
-            maxCallbackIterations: number;
             maxAccessPathLength: number;
             maxPropagationDepth: number;
         };
         resourceBounds: { maxCallDepth: number };
         boundEnforcement: {
-            maxCallbackIterations: 'enforced' | 'inactive-with-cyclic-model';
             maxAccessPathLength: 'enforced';
             maxPropagationDepth: 'enforced';
         };
@@ -206,7 +203,6 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     lifecycleModel: DEFAULT_LIFECYCLE_MODEL_MODE,
     compactLifecycleDispatcher: DEFAULT_LIFECYCLE_CONFIG.optimizations.compactDispatcher,
     pruneUnreachableAbilities: DEFAULT_LIFECYCLE_CONFIG.optimizations.pruneUnreachableAbilities,
-    maxCallbackIterations: DEFAULT_LIFECYCLE_CONFIG.bounds.maxCallbackIterations,
     maxAccessPathLength: 5,
     maxPropagationDepth: 40,
     reportUnresolvedReturns: false,
@@ -242,15 +238,6 @@ export class ProjectAnalyzer {
 
         const lifecycleStart = Date.now();
         const creator = this.withLifecycleConsole(() => {
-            const boundedUnrollConfig =
-                this.options.lifecycleModel === 'bounded-unroll' ||
-                this.options.lifecycleModel === 'bounded-opt-flat'
-                ? {
-                    bounds: {
-                        maxCallbackIterations: this.options.maxCallbackIterations,
-                    },
-                }
-                : {};
             const lifecycleCreator = createLifecycleModelCreator(scene, this.options.lifecycleModel, {
                 lifecycleOrder: NULLNESS_LIFECYCLE_ORDER,
                 enableViewTreeParsing: this.options.extractUICallbacks,
@@ -258,7 +245,6 @@ export class ProjectAnalyzer {
                     compactDispatcher: this.options.compactLifecycleDispatcher,
                     pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
                 },
-                ...boundedUnrollConfig,
             });
             lifecycleCreator.create();
             return lifecycleCreator;
@@ -376,17 +362,11 @@ export class ProjectAnalyzer {
                     pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
                 },
                 bounds: {
-                    maxCallbackIterations: this.options.maxCallbackIterations,
                     maxAccessPathLength: this.options.maxAccessPathLength,
                     maxPropagationDepth: this.options.maxPropagationDepth,
                 },
                 resourceBounds: { maxCallDepth: 4 },
                 boundEnforcement: {
-                    maxCallbackIterations:
-                        this.options.lifecycleModel === 'bounded-unroll' ||
-                        this.options.lifecycleModel === 'bounded-opt-flat'
-                        ? 'enforced'
-                        : 'inactive-with-cyclic-model',
                     maxAccessPathLength: 'enforced',
                     maxPropagationDepth: 'enforced',
                 },
@@ -630,7 +610,6 @@ export class ProjectAnalyzer {
 
     private validateBounds(): void {
         for (const [name, value] of [
-            ['maxCallbackIterations', this.options.maxCallbackIterations],
             ['maxAccessPathLength', this.options.maxAccessPathLength],
             ['maxPropagationDepth', this.options.maxPropagationDepth],
             ['maxRetentionStates', this.options.maxRetentionStates],

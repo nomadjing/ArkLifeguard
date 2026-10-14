@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import 'arkanalyzer';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
-import { LifecycleModelCreator } from '../../src/lifecycle/LifecycleModelCreator';
 import { HierarchicalLifecycleModelCreator } from '../../src/lifecycle/HierarchicalLifecycleModelCreator';
 import { OptimizedFlatLifecycleModelCreator } from '../../src/lifecycle/FlatLifecycleModelCreator';
 import type { BasicBlock } from '../../src/adapter/arkanalyzer';
 import { buildLifecycleScene } from '../helpers/buildScene';
-
-function statements(creator: LifecycleModelCreator): string[] {
-    return [...creator.getDummyMain().getCfg()!.getBlocks()]
-        .flatMap(block => block.getStmts().map(stmt => stmt.toString()));
-}
 
 describe('lifecycle scope embedding', () => {
     it('links loaded components to their owning abilities', () => {
@@ -116,18 +110,4 @@ describe('lifecycle scope embedding', () => {
         )).toBe(true);
     });
 
-    it('embeds a loaded component before the next ability branch', () => {
-        const creator = new LifecycleModelCreator(buildLifecycleScene('ability-scope-nesting'));
-        creator.create();
-        const stmts = statements(creator);
-        const entryAbility = stmts.findIndex(stmt => stmt.includes('EntryAbility.onCreate'));
-        const entryPage = stmts.findIndex(stmt => stmt.includes('EntryPage.aboutToAppear'));
-        const secondAbility = stmts.findIndex(stmt => stmt.includes('SecondAbility.onCreate'));
-        const secondPage = stmts.findIndex(stmt => stmt.includes('SecondPage.aboutToAppear'));
-
-        expect(entryAbility).toBeGreaterThanOrEqual(0);
-        expect(entryPage).toBeGreaterThan(entryAbility);
-        expect(secondAbility).toBeGreaterThan(entryPage);
-        expect(secondPage).toBeGreaterThan(secondAbility);
-    });
 });

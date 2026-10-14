@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import 'arkanalyzer';
-import { LifecycleModelCreator } from '../../src/lifecycle/LifecycleModelCreator';
+import { FlatLifecycleModelCreator } from '../../src/lifecycle/FlatLifecycleModelCreator';
 import { buildLifecycleScene } from '../helpers/buildScene';
 
-function invokedMethodNames(creator: LifecycleModelCreator): string[] {
+function invokedMethodNames(creator: FlatLifecycleModelCreator): string[] {
     const cfg = creator.getDummyMain().getCfg();
     expect(cfg).toBeDefined();
     return [...cfg!.getBlocks()].flatMap(block =>
@@ -16,9 +16,9 @@ function invokedMethodNames(creator: LifecycleModelCreator): string[] {
     );
 }
 
-describe('LifecycleModelCreator', () => {
+describe('FlatLifecycleModelCreator', () => {
     it('builds a connected DummyMain CFG for a simple project', () => {
-        const creator = new LifecycleModelCreator(buildLifecycleScene('simple'));
+        const creator = new FlatLifecycleModelCreator(buildLifecycleScene('simple'));
         creator.create();
 
         const cfg = creator.getDummyMain().getCfg();
@@ -34,7 +34,7 @@ describe('LifecycleModelCreator', () => {
     });
 
     it('emits ability, component and UI callback invocations', () => {
-        const creator = new LifecycleModelCreator(buildLifecycleScene('simple'));
+        const creator = new FlatLifecycleModelCreator(buildLifecycleScene('simple'));
         creator.create();
         const names = invokedMethodNames(creator);
 
@@ -49,7 +49,7 @@ describe('LifecycleModelCreator', () => {
     });
 
     it('models all abilities from a multi-ability project', () => {
-        const creator = new LifecycleModelCreator(buildLifecycleScene('multi-ability'));
+        const creator = new FlatLifecycleModelCreator(buildLifecycleScene('multi-ability'));
         creator.create();
 
         expect(creator.getAbilities().map(ability => ability.name)).toEqual(

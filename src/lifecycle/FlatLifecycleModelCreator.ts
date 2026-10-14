@@ -323,7 +323,6 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
     to.addPredecessorBlock(from);
   }
 }
-
 /**
  * RQ1.5 M0-OptFlat baseline.
  *
@@ -440,38 +439,16 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
     returnBlock.addStmt(new ArkReturnVoidStmt());
     cfg.addBlock(returnBlock);
 
-    const maxInvocations = this.maxCallbackInvocations();
-    if (maxInvocations === null) {
-      const dispatcher = this.createGlobalDispatcher(cfg, [entryBlock]);
-      for (const createInvocation of invocationFactories) {
-        this.linkGlobal(cfg, dispatcher, createInvocation(), dispatcher);
-      }
-      this.linkBlocks(dispatcher, returnBlock);
-    } else {
-      let predecessors = [entryBlock];
-      for (let invocationIndex = 0; invocationIndex < maxInvocations; invocationIndex++) {
-        const dispatcher = this.createGlobalDispatcher(cfg, predecessors);
-        const invocationBlocks = invocationFactories.map(createInvocation => {
-          const invocation = createInvocation();
-          this.linkGlobal(cfg, dispatcher, invocation);
-          return invocation;
-        });
-        predecessors = [dispatcher, ...invocationBlocks];
-      }
-      for (const predecessor of predecessors) {
-        this.linkBlocks(predecessor, returnBlock);
-      }
+    const dispatcher = this.createGlobalDispatcher(cfg, [entryBlock]);
+    for (const createInvocation of invocationFactories) {
+      this.linkGlobal(cfg, dispatcher, createInvocation(), dispatcher);
     }
+    this.linkBlocks(dispatcher, returnBlock);
 
     this.dummyMain.setBody(
       new ArkBody(new Set(this.classInstanceMap.values()), cfg),
     );
     this.linkStmtsToCfg(cfg);
-  }
-
-  /** Null means the callback dispatcher is cyclic and therefore unbounded. */
-  protected maxCallbackInvocations(): number | null {
-    return null;
   }
 
   private createMethodInvocationBlock(
@@ -532,20 +509,5 @@ export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
   private linkBlocks(from: BasicBlock, to: BasicBlock): void {
     from.addSuccessorBlock(to);
     to.addPredecessorBlock(from);
-  }
-}
-
-/**
- * Finite expansion of the optimized-flat callback dispatcher.
- *
- * Each layer nondeterministically executes zero or one callback invocation,
- * then continues to the next layer. Consequently K bounds the number of
- * callback invocations on every DummyMain path while preserving opt-flat's
- * callback set, Ability pruning, initialization and teardown behavior.
- */
-export class BoundedOptimizedFlatLifecycleModelCreator
-  extends OptimizedFlatLifecycleModelCreator {
-  protected override maxCallbackInvocations(): number {
-    return this.config.bounds.maxCallbackIterations;
   }
 }

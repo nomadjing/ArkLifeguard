@@ -14,17 +14,15 @@ npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
   --lifecycle-report out/lifecycle.json
 ```
 
-## 五种当前模型
+## 三种当前模型
 
 | 模式 | 实现 | 控制流与适用范围 |
 | --- | --- | --- |
 | `flat`（默认） | `FlatLifecycleModelCreator` | 全局回调选择循环，允许回调反复组合；不使用 K |
 | `opt-flat` | `OptimizedFlatLifecycleModelCreator` | 全局回调集合，使用可配置的 compact dispatcher 和可达 Ability 裁剪；不引入 Page 后继约束 |
-| `bounded-opt-flat` | `BoundedOptimizedFlatLifecycleModelCreator` | 有限 K 层，每层执行零或一个回调，限制路径上的回调调用数 |
 | `hierarchical` | `HierarchicalLifecycleModelCreator` | Ability 边界、Page scope、owner 回调、导航后继和未知归属 fallback；有循环，不使用 K |
-| `bounded-unroll` | `LifecycleModelCreator` | 有限轮生命周期/回调扫描，生成展开 CFG；K 是扫描轮数 |
 
-两种 bounded 模型都读取 `--max-callback-iterations`，但 K 的含义不同，不能用相同 K 宣称相同路径覆盖。循环模型的状态有界性由后续分析的事实抽象和预算处理。
+当前生命周期模型均为循环 CFG；状态有界性由后续分析的事实抽象和预算处理。
 
 ## Hierarchical 的核心实现
 
@@ -44,7 +42,7 @@ compact dispatcher 从 scope head 直接连接候选 invocation，减少仅表�
 
 Ability 裁剪从 entry Ability 的静态导航闭包出发；缺少入口或存在未解析目标/owner 时保守保留。测试 Ability 过滤属于收集阶段规则。模型支持范围和开关实际是否生效应根据生成的 CFG 与统计判断。
 
-CLI 通过 `--no-compact-lifecycle-dispatcher` 和 `--no-prune-unreachable-abilities` 关闭对应优化。普通 `flat` 与有限扫描模型的 CFG 结构不能当作 compact 模型使用。
+CLI 通过 `--no-compact-lifecycle-dispatcher` 和 `--no-prune-unreachable-abilities` 关闭对应优化。普通 `flat` 的 CFG 结构不能当作 compact 模型使用。
 
 ## 生命周期与分析责任
 

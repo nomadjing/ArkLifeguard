@@ -16,8 +16,6 @@ export interface LifecycleModelingReport {
         lifecycleModel: ProjectAnalysisResult['settings']['lifecycleModel'];
         extractUICallbacks: boolean;
         analyzeNavigation: boolean;
-        /** Only present for finite lifecycle models; cyclic models do not consume a K bound. */
-        maxCallbackIterations: number | null;
         optimizations: ProjectAnalysisResult['settings']['lifecycleOptimizations'];
     };
     summary: {
@@ -50,11 +48,6 @@ export class LifecycleReportGenerator {
                 lifecycleModel: result.settings.lifecycleModel,
                 extractUICallbacks: result.settings.extractUICallbacks,
                 analyzeNavigation: result.settings.analyzeNavigation,
-                maxCallbackIterations:
-                    result.settings.lifecycleModel === 'bounded-unroll' ||
-                    result.settings.lifecycleModel === 'bounded-opt-flat'
-                    ? result.settings.bounds.maxCallbackIterations
-                    : null,
                 optimizations: result.settings.lifecycleOptimizations,
             },
             summary: {

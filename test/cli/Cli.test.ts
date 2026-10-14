@@ -55,9 +55,16 @@ describe('ArkLifeguard CLI', () => {
         output.mockRestore();
     });
 
-    it.each(['--resource-engine', '--max-abilities-per-flow', '--max-navigation-hops'])(
+    it.each(['--resource-engine', '--max-abilities-per-flow', '--max-navigation-hops',
+        '--max-callback-iterations'])(
         'rejects the retired option %s instead of silently accepting it', async option => {
             expect(await runCLI(['node', 'arklifeguard', 'analyze', '/not/analyzed', option, 'new'])).toBe(1);
+        });
+
+    it.each(['bounded-unroll', 'bounded-opt-flat'])(
+        'rejects the retired lifecycle model %s', async model => {
+            expect(await runCLI(['node', 'arklifeguard', 'analyze', '/not/analyzed',
+                '--lifecycle-model', model])).toBe(1);
         });
 
     it('runs all four checks by default', async () => {

@@ -43,9 +43,7 @@ import type { IFDSSolverStatistics } from '../../ifds';
 export interface NullnessRunnerConfig {
     lifecycleModel?: LifecycleModelMode;
     problem?: NullnessAnalysisConfig;
-    lifecycle?: Omit<Partial<LifecycleModelConfig>, 'bounds'> & {
-        bounds?: Partial<LifecycleModelConfig['bounds']>;
-    };
+    lifecycle?: Partial<LifecycleModelConfig>;
     libraryRegistry?: NullnessLibraryRegistry;
     /** Analyze project-file module initializers that can introduce nullish facts. */
     analyzeModuleInitializers?: boolean;

@@ -35,7 +35,6 @@ interface AnalyzeCliOptions {
     lifecycleModel: LifecycleModelMode;
     compactLifecycleDispatcher: boolean;
     pruneUnreachableAbilities: boolean;
-    maxCallbackIterations: number;
     maxAccessPathLength: number;
     maxPropagationDepth: number;
     reportUnresolvedReturns: boolean;
@@ -76,13 +75,10 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
             .choices([
                 'flat',
                 'opt-flat',
-                'bounded-opt-flat',
                 'hierarchical',
-                'bounded-unroll',
             ]).default('flat'))
         .option('--no-compact-lifecycle-dispatcher', 'disable compact lifecycle dispatch')
         .option('--no-prune-unreachable-abilities', 'retain unreachable Abilities')
-        .option('--max-callback-iterations <n>', 'bounded lifecycle expansion rounds', positiveInteger, 1)
         .option('--max-access-path-length <n>', 'maximum nullness access-path length', positiveInteger, 5)
         .option('--max-propagation-depth <n>', 'maximum nullness fact propagation depth', positiveInteger, 40)
         .option('--report-unresolved-returns', 'include low-confidence unresolved-return reports', false)
@@ -112,7 +108,6 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     lifecycleModel: options.lifecycleModel,
                     compactLifecycleDispatcher: options.compactLifecycleDispatcher,
                     pruneUnreachableAbilities: options.pruneUnreachableAbilities,
-                    maxCallbackIterations: options.maxCallbackIterations,
                     maxAccessPathLength: options.maxAccessPathLength,
                     maxPropagationDepth: options.maxPropagationDepth,
                     reportUnresolvedReturns: options.reportUnresolvedReturns,

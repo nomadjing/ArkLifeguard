@@ -36,7 +36,7 @@ describe('ProjectAnalyzer module orchestration', () => {
     });
     it('runs the default resource contract alongside nullness on one lifecycle entry', async () => {
         const result = await new ProjectAnalyzer({
-            sdkPaths: [fixturePath('sdk')], maxCallbackIterations: 2,
+            sdkPaths: [fixturePath('sdk')],
             maxAccessPathLength: 4, maxPropagationDepth: 30,
         }).analyze(fixturePath('lifecycle', 'simple'));
         expect(result.status, result.errors.join(', ')).toBe('success');
@@ -45,8 +45,7 @@ describe('ProjectAnalyzer module orchestration', () => {
         expect(result.dummyMain.edges).toBeGreaterThan(0);
         expect(result.nullness.success).toBe(true);
         expect(result.resourceAnalysis).toMatchObject({ enabled: true, status: 'success', success: true });
-        expect(result.settings.boundEnforcement.maxCallbackIterations).toBe('inactive-with-cyclic-model');
-        expect(result.settings.bounds).toEqual({ maxCallbackIterations: 2, maxAccessPathLength: 4, maxPropagationDepth: 30 });
+        expect(result.settings.bounds).toEqual({ maxAccessPathLength: 4, maxPropagationDepth: 30 });
         expect(result.settings.resourceBounds).toEqual({ maxCallDepth: 4 });
         expect(result.settings).not.toHaveProperty('resourceEngine');
     });

@@ -82,60 +82,14 @@ describe('interchangeable lifecycle model entry', () => {
         );
     });
 
-    it('keeps the bounded unroll model selectable for comparison', () => {
-        const creator = createLifecycleModelCreator(
-            buildLifecycleScene('simple'),
-            'bounded-unroll',
-            { bounds: { maxCallbackIterations: 1 } as any }
-        );
-        creator.create();
-
-        const blocks = [...creator.getDummyMain().getCfg()!.getBlocks()];
-        expect(hasCycle(blocks)).toBe(false);
-    });
-
-    it.each([1, 2, 3])(
-        'bounds optimized-flat paths to at most %i callback invocations',
-        maxCallbackIterations => {
-            const creator = createLifecycleModelCreator(
+    it.each(['bounded-unroll', 'bounded-opt-flat'])(
+        'rejects the retired model %s through the factory', mode => {
+            expect(() => createLifecycleModelCreator(
                 buildLifecycleScene('simple'),
-                'bounded-opt-flat',
-                { bounds: { maxCallbackIterations } as any }
-            );
-            creator.create();
-
-            const cfg = creator.getDummyMain().getCfg()!;
-            const blocks = [...cfg.getBlocks()];
-            expect(hasCycle(blocks)).toBe(false);
-            const callbackCalls = blocks.flatMap(invokedNames).filter(name =>
-                ['onForeground', 'onBackground', 'build', 'handleClick'].includes(name)
-            );
-            expect(callbackCalls.filter(name => name === 'handleClick')).toHaveLength(
-                maxCallbackIterations
-            );
+                mode as Parameters<typeof createLifecycleModelCreator>[1]
+            )).toThrow(`Unsupported lifecycle model: ${mode}`);
         }
     );
-
-    it('preserves optimized-flat callback kinds in every bounded layer', () => {
-        const create = (mode: 'opt-flat' | 'bounded-opt-flat', k = 1) => {
-            const creator = createLifecycleModelCreator(
-                buildLifecycleScene('simple'),
-                mode,
-                { bounds: { maxCallbackIterations: k } as any }
-            );
-            creator.create();
-            return [...creator.getDummyMain().getCfg()!.getBlocks()]
-                .flatMap(invokedNames);
-        };
-        const unboundedKinds = new Set(create('opt-flat'));
-        const boundedCalls = create('bounded-opt-flat', 2);
-        const boundedKinds = new Set(boundedCalls);
-
-        expect(boundedKinds).toEqual(unboundedKinds);
-        for (const name of ['onForeground', 'onBackground', 'build', 'handleClick']) {
-            expect(boundedCalls.filter(candidate => candidate === name)).toHaveLength(2);
-        }
-    });
 
     it('keeps the hierarchical model cyclic for unbounded legal repetition', () => {
         const creator = createLifecycleModelCreator(
@@ -202,28 +156,4 @@ describe('interchangeable lifecycle model entry', () => {
         expect(noPrune.getLifecycleModelStatistics().abilities.pruned).toBe(0);
     });
 
-    it.each(['flat', 'opt-flat', 'hierarchical'] as const)(
-        '%s ignores the bounded-unroll callback iteration parameter',
-        mode => {
-            const shapes = [1, 7].map(maxCallbackIterations => {
-                const creator = createLifecycleModelCreator(
-                    buildLifecycleScene('simple'),
-                    mode,
-                    { bounds: { maxCallbackIterations } as any }
-                );
-                creator.create();
-                const blocks = [...creator.getDummyMain().getCfg()!.getBlocks()];
-                return {
-                    blocks: blocks.length,
-                    edges: blocks.reduce(
-                        (sum, block) => sum + block.getSuccessors().length,
-                        0
-                    ),
-                    calls: blocks.flatMap(invokedNames).sort(),
-                };
-            });
-
-            expect(shapes[1]).toEqual(shapes[0]);
-        }
-    );
 });

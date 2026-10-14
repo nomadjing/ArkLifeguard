@@ -19,7 +19,6 @@ import {
     DEFAULT_LIFECYCLE_MODEL_MODE,
     type LifecycleModelMode,
 } from '../src/lifecycle/LifecycleModelEntry';
-import { DEFAULT_LIFECYCLE_CONFIG } from '../src/lifecycle/LifecycleTypes';
 
 type OutputFormat = 'ir' | 'source' | 'both';
 
@@ -29,7 +28,6 @@ interface Options {
     sdkRoot?: string;
     sdkPaths: string[];
     inferTypes: boolean;
-    callbackIterations: number;
     model: LifecycleModelMode;
 }
 
@@ -46,8 +44,7 @@ function help(): void {
         '  --format <ir|source|both>  Output format; default: both',
         '  --sdk-root <path>          Use openharmony/ets and hms/ets below an SDK root',
         '  --sdk <ets-path>           Use an ETS SDK path; repeatable',
-        '  --callback-iterations <n>  DummyMain lifecycle expansion rounds; default: 1',
-        '  --model <flat|opt-flat|bounded-opt-flat|hierarchical|bounded-unroll>  Lifecycle model; default: flat',
+        '  --model <flat|opt-flat|hierarchical>  Lifecycle model; default: flat',
         '  --no-infer-types           Skip Scene type inference',
         '  -h, --help                 Show this help',
         '',
@@ -73,7 +70,6 @@ function parseArgs(args: string[]): Options {
     let sdkRoot: string | undefined;
     const sdkPaths: string[] = [];
     let inferTypes = true;
-    let callbackIterations = 1;
     let model: LifecycleModelMode = DEFAULT_LIFECYCLE_MODEL_MODE;
 
     for (let index = 0; index < args.length; index++) {
@@ -109,11 +105,6 @@ function parseArgs(args: string[]): Options {
             sdkPaths.push(arg.slice('--sdk='.length));
             continue;
         }
-        if (arg === '--callback-iterations') {
-            callbackIterations = Number(value(args, index, arg));
-            index++;
-            continue;
-        }
         if (arg === '--model') {
             model = value(args, index, arg) as LifecycleModelMode;
             index++;
@@ -121,10 +112,6 @@ function parseArgs(args: string[]): Options {
         }
         if (arg.startsWith('--model=')) {
             model = arg.slice('--model='.length) as LifecycleModelMode;
-            continue;
-        }
-        if (arg.startsWith('--callback-iterations=')) {
-            callbackIterations = Number(arg.slice('--callback-iterations='.length));
             continue;
         }
         if (arg === '--no-infer-types') {
@@ -143,13 +130,10 @@ function parseArgs(args: string[]): Options {
     if (!['ir', 'source', 'both'].includes(format)) {
         throw new Error(`Invalid --format: ${format}; expected ir, source, or both`);
     }
-    if (!Number.isInteger(callbackIterations) || callbackIterations < 1) {
-        throw new Error(`--callback-iterations must be a positive integer: ${callbackIterations}`);
+    if (!['flat', 'opt-flat', 'hierarchical'].includes(model)) {
+        throw new Error(`Invalid --model: ${model}; expected flat, opt-flat, or hierarchical`);
     }
-    if (!['flat', 'opt-flat', 'bounded-opt-flat', 'hierarchical', 'bounded-unroll'].includes(model)) {
-        throw new Error(`Invalid --model: ${model}; expected flat, opt-flat, bounded-opt-flat, hierarchical, or bounded-unroll`);
-    }
-    return { projectPath, format, sdkRoot, sdkPaths, inferTypes, callbackIterations, model };
+    return { projectPath, format, sdkRoot, sdkPaths, inferTypes, model };
 }
 
 function discoverSdks(options: Options): Sdk[] {
@@ -304,12 +288,7 @@ function main(): void {
     const scene = new Scene();
     scene.buildSceneFromProjectDir(config);
     if (options.inferTypes) scene.inferTypes();
-    const creator = createLifecycleModelCreator(scene, options.model, {
-        bounds: {
-            ...DEFAULT_LIFECYCLE_CONFIG.bounds,
-            maxCallbackIterations: options.callbackIterations,
-        },
-    });
+    const creator = createLifecycleModelCreator(scene, options.model);
     creator.create();
     const dummyMain = creator.getDummyMain();
     const header = [
@@ -317,7 +296,6 @@ function main(): void {
         `PROJECT: ${projectPath}`,
         `FORMAT: ${options.format}`,
         `MODEL: ${options.model}`,
-        `CALLBACK_ITERATIONS: ${options.model === 'bounded-unroll' ? options.callbackIterations : 'n/a'}`,
         `SDK: ${sdks.map(sdk => `${sdk.name}=${sdk.path}`).join(', ')}`,
         '',
         `METHOD ${dummyMain.getSignature().toString()}`,
