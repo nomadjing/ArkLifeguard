@@ -7,7 +7,7 @@ import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import { NavigationAnalyzer } from '../../src/lifecycle/NavigationAnalyzer';
 import { NavigationType } from '../../src/lifecycle/LifecycleTypes';
 
-const PROJECT_DIR = path.resolve(__dirname, '../../examples/lifecycle-model-showcase');
+const PROJECT_DIR = path.resolve(__dirname, '../../ArkDefectBench/examples/lifecycle-model-showcase');
 const SDK_DIR = path.resolve(__dirname, '../fixtures/sdk');
 
 function buildShowcaseScene(): Scene {

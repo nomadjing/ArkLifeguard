@@ -1,75 +1,26 @@
 # ArkLifeguard
 
-ArkLifeguard 分析 HarmonyOS/OpenHarmony ArkTS 源码工程，基于 ArkAnalyzer IR、生命周期入口和数据流/堆引用模型，输出可定位、可审查的缺陷候选。输入为源码及 ETS SDK，不支持直接分析 `.hap` / `.app` 安装包。
+ArkLifeguard 是面向 HarmonyOS/OpenHarmony 应用的静态分析工具，分析对象为 ArkTS 源码工程，支持空值使用、资源未释放、闭包保留和内存保留四类检查。工具无需运行应用，输出包含问题位置和相关证据的分析报告，帮助开发者排查缺陷，也为研究者提供可审查的分析结果。
+
+分析需要应用源码及对应的 ETS SDK，目前不支持直接分析编译后的 `.hap` 安装包。
 
 ## 功能与边界
 
-| 检查 | 检测内容 | 判定边界 |
+| 检查 | 检测内容 | 检查范围与限制 |
 | --- | --- | --- |
-| `nullness` | `null`、`undefined` 及可能为空的值在解引用或非空参数位置使用 | 依赖访问路径、调用解析和库摘要；不是完整语言空安全证明 |
-| `resource` | 已获得资源句柄的释放义务 | 完整 SDK 签名与规则 IFDS；默认覆盖 10 个资源家族 |
-| `closure` | 未取消注册，以及注册者经回调保留生命周期已结束的对象 | 核对注册者、事件/定时器、回调身份；只有捕获链成立才报闭包保留 |
-| `memory` | 生命周期结束后仍从长期根强可达的对象 | 输出保留候选；局部分配、无根循环、弱引用本身不构成泄漏 |
+| 空值使用（`nullness`） | 可能为 `null` 或 `undefined` 的值被用于访问属性、调用方法，或传给要求非空的参数 | 结果受可分析的调用关系和外部库行为影响，不能保证发现所有空值错误 |
+| 资源未释放（`resource`） | 已获得的资源在使用结束后没有按要求释放 | 仅检查已有规则覆盖的资源 API；未覆盖的资源不在检测范围内 |
+| 闭包泄漏（`closure`） | 事件监听或定时器未取消，以及回调持续引用已结束使用的页面或对象 | 未取消注册与闭包保留分别报告；闭包保留需有回调引用该对象的证据 |
+| 内存泄漏（`memory`） | 已结束使用的对象仍被全局变量、长期存活的对象等通过强引用保留 | 报告可能的非预期保留，是否属于泄漏需结合业务判断；仅有循环引用或弱引用不足以判定泄漏 |
 
-生命周期建模收集 Ability、页面、Component 和 UI 回调，生成共同分析入口。各检查独立启用、独立返回结果；静态候选仍需业务审查，零候选不能证明没有缺陷。
-
-**当前默认：** CLI 运行四类检查，生命周期模型为 `flat`。资源检查直接使用规则 IFDS。API 默认运行空指针和资源检查，闭包/内存须显式开启。完整边界见[模块文档](docs/README.md)。
+分析报告中的问题是待确认的缺陷候选，可能存在误报,需要结合业务行为审查；没有报告问题不代表程序一定没有缺陷。各类检查的详细范围见[模块文档](docs/README.md)。
 
 ## 安装与运行
 
-需要 Node.js 18、20 或 22 及以上版本、npm、待分析源码和本机 ETS SDK。SDK 不随工具安装。
-
-```bash
-npm ci
-npm run cli -- analyze "/path/to/HarmonyOSApp" \
-  --sdk "/path/to/openharmony/ets" \
-  --checks all \
-  --format json \
-  --output out/report.json
-```
-
-资源分析无需选择引擎。源码运行无需构建。使用构建产物时先执行 `npm run build`，再运行 `node dist/cli/main.js analyze ...`。
-
-常用组合：
-
-```bash
-# 查看参数，不执行分析
-npm run cli -- analyze --help
-
-# 只分析注册和对象保留
-npm run cli -- analyze "/path/to/HarmonyOSApp" \
-  --sdk "/path/to/openharmony/ets" --checks closure,memory \
-  --format markdown --output out/retention.md
-
-# 只分析资源释放义务
-npm run cli -- analyze "/path/to/HarmonyOSApp" \
-  --sdk "/path/to/openharmony/ets" --checks resource \
-  --format json --output out/resource.json
-```
-
-SDK 发现、所有默认值、API 示例和退出码见[使用指南](QUICKSTART.md)。
-
-## 结果解读
-
-主报告支持 JSON、文本、Markdown、HTML，JSON 为 `schemaVersion: 3`、`analysisKind: "arklifeguard"`。
-
-| 字段 | 含义 |
-| --- | --- |
-| `nullness.diagnostics` | 空指针候选 |
-| `resourceAnalysis.diagnostics` | 资源释放义务候选；`summary.resourceLeaks` 对应其数量 |
-| `closureAnalysis.registrationLeaks` / `closureRetentionLeaks` | 未取消注册 / 有捕获与生命周期证据的闭包保留 |
-| `memoryAnalysis.memoryRetentionCandidates` | 有强引用链的内存保留候选 |
-| `memoryAnalysis.registrationRetentions` | 注册保留关联证据，不重复计入内存主候选 |
-
-先检查 `enabled`、`success`、`status` 和 `errors`，再检查候选及覆盖限制。预算耗尽是分析未完成，不是零缺陷。完整 API 结果包含配置与耗时；CLI 的主报告是精简视图。
+准备应用源码和 ETS SDK，按[使用指南](QUICKSTART.md)完成环境配置、安装与首次分析。
 
 ## 文档与开发
 
-- [文档索引](docs/README.md)：模块功能、核心实现与边界。
-- [架构与 Runner 职责](docs/architecture.md)：共享入口、IFDS 与堆解释器。
-- [维护与接口策略](docs/maintenance.md)：唯一资源入口、schema 和模块职责。
-- [测试与调试](docs/testing.md)：定向测试、IR 检查、基准脚本。
-
-代码入口为 `src/application/ProjectAnalyzer.ts`。分析模块位于 `src/analysis/`；`src/lifecycle/` 提供生命周期模型，`src/ifds/` 提供通用求解设施，`src/report/` 和 `src/cli/` 负责输出与交互。
-
-开发时先运行修改范围内的类型检查和单元测试，遵守[最小验证策略](docs/testing.md)。`npm test` 是默认大范围套件，不是每次修改的必需命令。
+- [使用指南](QUICKSTART.md)：环境配置、运行参数、报告与 API 用法。
+- [模块文档](docs/README.md)：各类分析的功能与限制。
+- [架构说明](docs/architecture.md)、[维护指南](docs/maintenance.md)、[测试与调试](docs/testing.md)。

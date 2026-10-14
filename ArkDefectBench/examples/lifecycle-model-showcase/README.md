@@ -32,7 +32,7 @@ EntryAbility
 
 ```bash
 npm run inspect:dummymain -- \
-  "$(pwd)/examples/lifecycle-model-showcase" \
+  "$(pwd)/ArkDefectBench/examples/lifecycle-model-showcase" \
   --model hierarchical \
   --format both
 ```
@@ -40,7 +40,7 @@ npm run inspect:dummymain -- \
 也可以将 `--model hierarchical` 换成 `flat` 或 `opt-flat`，比较不同 DummyMain 的 scope 与 CFG。
 
 各模型的当前控制流、使用方式和边界见
-[生命周期建模](../../docs/analysis/lifecycle.md)。
+[生命周期建模](../../../docs/analysis/lifecycle.md)。
 
 ## 设计边界
 
