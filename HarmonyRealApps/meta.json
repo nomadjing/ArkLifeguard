@@ -479,6 +479,36 @@
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
       "targetSdkVersion": null
+    },
+    {
+      "name": "Telegram-X-HarmonyNext",
+      "path": "projects/Telegram-X-HarmonyNext",
+      "repo": "https://github.com/hubery-code/Telegram-X-HarmonyNext.git",
+      "revision": "master",
+      "resolvedCommit": "23864f7a3b188ce88455528bfaac97c5d7939c78",
+      "compileSdkVersion": "26.0.0",
+      "compatibleSdkVersion": "6.1.1(24)",
+      "targetSdkVersion": "6.1.1(24)"
+    },
+    {
+      "name": "Ehviewer_OHOS",
+      "path": "projects/Ehviewer_OHOS",
+      "repo": "https://github.com/suibianqwe/Ehviewer_OHOS.git",
+      "revision": "main",
+      "resolvedCommit": "f7b141ca466942871ea3de93cfbf5c446da74499",
+      "compileSdkVersion": "26.0.0",
+      "compatibleSdkVersion": "6.0.0(20)",
+      "targetSdkVersion": "26.0.0"
+    },
+    {
+      "name": "Hey",
+      "path": "projects/Hey",
+      "repo": "https://github.com/popsiclelmlm/Hey.git",
+      "revision": "main",
+      "resolvedCommit": "3371128127712d5b669d6a1c5944705d2d4cf869",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": null,
+      "targetSdkVersion": null
     }
   ]
 }
