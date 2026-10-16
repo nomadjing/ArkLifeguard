@@ -41,7 +41,14 @@ describe('interchangeable lifecycle model entry', () => {
         creator.create();
 
         expect(DEFAULT_LIFECYCLE_MODEL_MODE).toBe('flat');
-        const blocks = [...creator.getDummyMain().getCfg()!.getBlocks()];
+        const cfg = creator.getDummyMain().getCfg()!;
+        expect(cfg.getStartingStmt()).toBeDefined();
+        const blocks = [...cfg.getBlocks()];
+        for (const block of blocks) {
+            for (const stmt of block.getStmts()) {
+                expect(stmt.getCfg()).toBe(cfg);
+            }
+        }
         expect(hasCycle(blocks)).toBe(true);
 
         const entryNames = invokedNames(blocks[0]);

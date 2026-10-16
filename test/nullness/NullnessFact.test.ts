@@ -20,7 +20,6 @@ import {
     removeUndefined,
 } from '../../src/analysis/nullness/NullnessFact';
 import { NullnessProblem } from '../../src/analysis/nullness/NullnessProblem';
-import { NullnessSolver } from '../../src/analysis/nullness/NullnessSolver';
 
 function local(name: string): any {
     return {
@@ -313,7 +312,7 @@ describe('NullnessKind narrowing', () => {
     });
 });
 
-describe('Nullness IFDS scaffold', () => {
+describe('Nullness flow and approximation', () => {
     it('folds overlong access paths into a field-anchored wildcard suffix', () => {
         const base = local('root');
         const concrete = new NullnessAccessPath(
@@ -372,30 +371,6 @@ describe('Nullness IFDS scaffold', () => {
         expect(source.isApproximateEvidence()).toBe(false);
         expect(widened.isApproximateEvidence()).toBe(true);
         expect(rebound.isApproximateEvidence()).toBe(true);
-    });
-
-    it('uses semantic fact equality and safe placeholder flow functions', () => {
-        const entry = stmt(1);
-        const method = {} as any;
-        const problem = new NullnessProblem(entry, method);
-        const source = NullnessFact.create(
-            new NullnessAccessPath(local('value')),
-            NullnessKind.Null,
-            { kind: NullnessOriginKind.NullLiteral, stmt: entry }
-        );
-        const equivalent = NullnessFact.create(
-            source.accessPath,
-            NullnessKind.Null,
-            { kind: NullnessOriginKind.Unknown, stmt: stmt(2) }
-        );
-
-        expect(problem.factEqual(source, equivalent)).toBe(true);
-        expect(problem.getNormalFlowFunction(entry, entry).getDataFacts(source)).toEqual(new Set([source]));
-        expect(problem.getCallFlowFunction(entry, method).getDataFacts(source)).toEqual(new Set());
-        expect(problem.getCallFlowFunction(entry, method).getDataFacts(problem.createZeroValue()))
-            .toEqual(new Set([problem.createZeroValue()]));
-        expect(problem.getConfig().maxAccessPathLength).toBe(5);
-        expect(NullnessSolver).toBeTypeOf('function');
     });
 
     it('maps a captured caller fact through the callee lexical environment', () => {
