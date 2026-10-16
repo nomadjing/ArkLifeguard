@@ -368,6 +368,8 @@ export interface LifecycleModelStatistics {
     directPageRoots: number;
     /** 从 Page ViewTree 中发现的 custom-component 关系。 */
     viewTreeComponentEdges: number;
+    /** Additional component edges recovered from rendering IR. */
+    renderIRComponentEdges?: number;
     /** 从已归属 Component 的导航调用中解析的 Page 关系。 */
     navigationPageEdges: number;
     /** ViewTree 无法构建的已归属 Component 数。 */

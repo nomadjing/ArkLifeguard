@@ -1,0 +1,13 @@
+{
+  "module": {
+    "name": "feature",
+    "mainElement": "FeatureAbility",
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "FeatureAbility",
+        "srcEntry": "./ets/entryability/FeatureAbility.ets"
+      }
+    ]
+  }
+}

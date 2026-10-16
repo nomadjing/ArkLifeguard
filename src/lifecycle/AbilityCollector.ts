@@ -31,6 +31,8 @@ import {
     ArkClass,
     ArkMethod,
     ClassSignature,
+    ArkNewExpr,
+    ts,
 } from '../adapter/arkanalyzer';
 import {
     AbilityInfo,
@@ -145,10 +147,16 @@ export class AbilityCollector {
         viewTreeComponentEdges: 0,
         navigationPageEdges: 0,
         viewTreeFailures: 0,
+        renderIRComponentEdges: 0,
     };
     
+    private renderedComponentCache = new Map<string, ComponentInfo[]>();
+
     /** 缓存：从 module.json5 读取的配置 */
     private moduleConfigs: ModuleConfig[] = [];
+
+    /** Authoritative project module roots, when build-profile declares them. */
+    private runtimeModuleRoots?: string[];
     
     /** 缓存：入口 Ability 名称集合 */
     private entryAbilityNames: Set<string> = new Set();
@@ -187,8 +195,9 @@ export class AbilityCollector {
         
         console.log(`[AbilityCollector] Loading module configs from: ${projectDir}`);
         
-        // 递归查找所有 module.json5 文件
-        const moduleFiles = this.findModuleJsonFiles(projectDir);
+        this.runtimeModuleRoots = this.readRuntimeModuleRoots(projectDir);
+        const moduleFiles = (this.runtimeModuleRoots ?? [projectDir])
+            .flatMap(directory => this.findModuleJsonFiles(directory));
         
         for (const moduleFile of moduleFiles) {
             const config = this.parseModuleJson(moduleFile);
@@ -225,10 +234,12 @@ export class AbilityCollector {
                 
                 if (entry.isDirectory()) {
                     // 跳过 node_modules 和隐藏目录
-                    if (entry.name !== 'node_modules' && !entry.name.startsWith('.')) {
+                    if (entry.name !== 'node_modules' && !entry.name.startsWith('.') &&
+                        !this.isNonRuntimeSource(fullPath)) {
                         files.push(...this.findModuleJsonFiles(fullPath, depth + 1));
                     }
-                } else if (entry.name === 'module.json5') {
+                } else if (entry.name === 'module.json5' &&
+                    !this.isNonRuntimeSource(fullPath)) {
                     files.push(fullPath);
                 }
             }
@@ -345,7 +356,8 @@ export class AbilityCollector {
         
         // 阶段 1: 遍历 Scene 中的所有类，收集 Ability 基本信息
         for (const arkClass of this.scene.getClasses()) {
-            if (this.isAbilityClass(arkClass) && !this.isTestAbilityClass(arkClass)) {
+            if (this.isAbilityClass(arkClass) &&
+                !this.isNonRuntimeSource(arkClass.getDeclaringArkFile().getFilePath())) {
                 const abilityInfo = this.buildAbilityInfo(arkClass);
                 abilities.push(abilityInfo);
                 this.abilityCache.set(arkClass.getSignature(), abilityInfo);
@@ -382,7 +394,8 @@ export class AbilityCollector {
         const components: ComponentInfo[] = [];
         
         for (const arkClass of this.scene.getClasses()) {
-            if (this.isComponentClass(arkClass)) {
+            if (this.isComponentClass(arkClass) &&
+                !this.isNonRuntimeSource(arkClass.getDeclaringArkFile().getFilePath())) {
                 const componentInfo = this.buildComponentInfo(arkClass);
                 components.push(componentInfo);
                 this.componentCache.set(arkClass.getSignature(), componentInfo);
@@ -642,7 +655,9 @@ export class AbilityCollector {
         
         // 尝试关联初始页面到 Component
         if (analysisResult.initialPage) {
-            const component = this.findComponentByPagePath(analysisResult.initialPage);
+            const component = this.findComponentByPagePath(
+                analysisResult.initialPage, ability.arkClass.getDeclaringArkFile().getFilePath()
+            );
             if (component) {
                 this.addPageRoot(ability, component);
                 console.log(`[AbilityCollector] Linked ${ability.name} -> ${component.name}`);
@@ -654,7 +669,9 @@ export class AbilityCollector {
                 target.navigationType === NavigationType.ROUTER_BACK) {
                 continue;
             }
-            const component = this.findComponentByPagePath(target.targetAbilityName);
+            const component = this.findComponentByPagePath(
+                target.targetAbilityName, ability.arkClass.getDeclaringArkFile().getFilePath()
+            );
             if (component && this.addPageRoot(ability, component)) {
                 this.ownershipExpansionStatistics.navigationPageEdges++;
             }
@@ -686,9 +703,8 @@ export class AbilityCollector {
                 if (visited.has(signature)) continue;
                 visited.add(signature);
 
-                for (const child of this.collectViewTreeComponents(component)) {
+                for (const child of this.collectRenderedComponents(component)) {
                     if (this.addOwnedComponent(ability, child)) {
-                        this.ownershipExpansionStatistics.viewTreeComponentEdges++;
                         pending.push(child);
                     }
                 }
@@ -700,7 +716,7 @@ export class AbilityCollector {
                         continue;
                     }
                     const page = this.findComponentByPagePath(
-                        target.targetAbilityName
+                        target.targetAbilityName, component.arkClass.getDeclaringArkFile().getFilePath()
                     );
                     if (!page) continue;
                     const addedPage = this.addPageRoot(ability, page);
@@ -713,38 +729,71 @@ export class AbilityCollector {
         }
     }
 
-    private collectViewTreeComponents(component: ComponentInfo): ComponentInfo[] {
+    private collectRenderedComponents(component: ComponentInfo): ComponentInfo[] {
+        const signature = component.signature.toString();
+        const cached = this.renderedComponentCache.get(signature);
+        if (cached) return cached;
+        const result = new Map<string, ComponentInfo>();
+        const addComponent = (childSignature: ClassSignature): void => {
+            const child = this.componentCache.get(childSignature) ??
+                [...this.componentCache.values()].find(candidate =>
+                    candidate.signature.toString() === childSignature.toString()
+                );
+            if (child && child.signature.toString() !== signature) {
+                result.set(child.signature.toString(), child);
+            }
+        };
         try {
             const root = component.arkClass.getViewTree()?.getRoot();
             if (!root) {
                 this.ownershipExpansionStatistics.viewTreeFailures++;
-                return [];
-            }
-            const result = new Map<string, ComponentInfo>();
-            root.walk(node => {
-                if (!node.isCustomComponent() ||
-                    !(node.signature instanceof ClassSignature)) {
+            } else {
+                root.walk(node => {
+                    if (node.isCustomComponent() && node.signature instanceof ClassSignature) {
+                        addComponent(node.signature);
+                    }
                     return false;
-                }
-                const child = this.componentCache.get(node.signature) ??
-                    [...this.componentCache.values()].find(candidate =>
-                        candidate.signature.toString() === node.signature!.toString()
-                    );
-                if (child && child.signature.toString() !==
-                    component.signature.toString()) {
-                    result.set(child.signature.toString(), child);
-                }
-                return false;
-            });
-            return [...result.values()];
+                });
+            }
         } catch (error) {
             this.ownershipExpansionStatistics.viewTreeFailures++;
             console.warn(
                 `[AbilityCollector] Failed to expand ViewTree ownership for ` +
                 `${component.name}: ${String(error)}`
             );
-            return [];
         }
+        this.ownershipExpansionStatistics.viewTreeComponentEdges += result.size;
+        const treeEdges = result.size;
+        // A failed ArkAnalyzer build may leave a partial ViewTree cached. Union
+        // render-IR edges even when getRoot succeeds on the next collection.
+        const pending = component.arkClass.getMethods().filter(method =>
+            method.getName() === 'build' || method.hasDecorator('Builder')
+        );
+        const visited = new Set<ArkMethod>();
+        while (pending.length > 0) {
+            const method = pending.pop()!;
+            if (visited.has(method)) continue;
+            visited.add(method);
+            for (const stmt of method.getCfg()?.getStmts() ?? []) {
+                for (const expr of stmt.getExprs()) {
+                    if (expr instanceof ArkNewExpr) {
+                        addComponent(expr.getClassType().getClassSignature());
+                    }
+                }
+                const invoke = stmt.getInvokeExpr();
+                if (!invoke) continue;
+                const target = this.scene.getMethod(invoke.getMethodSignature());
+                if (target && (target.hasDecorator('Builder') ||
+                    (target.getDeclaringArkClass() === component.arkClass &&
+                        target.getName() !== 'constructor'))) {
+                    pending.push(target);
+                }
+            }
+        }
+        this.ownershipExpansionStatistics.renderIRComponentEdges += result.size - treeEdges;
+        const children = [...result.values()];
+        this.renderedComponentCache.set(signature, children);
+        return children;
     }
 
     private addPageRoot(ability: AbilityInfo, component: ComponentInfo): boolean {
@@ -837,7 +886,9 @@ export class AbilityCollector {
      * 页面路径格式示例: 'pages/Index', 'pages/Detail'
      * 需要匹配到已收集的 Component
      */
-    private findComponentByPagePath(pagePath: string): ComponentInfo | undefined {
+    private findComponentByPagePath(
+        pagePath: string, sourceFile?: string,
+    ): ComponentInfo | undefined {
         const routedPath = this.routePagePaths.get(pagePath) ??
             this.routePagePaths.get(this.normalizePagePath(pagePath));
         if (routedPath) pagePath = routedPath;
@@ -845,7 +896,27 @@ export class AbilityCollector {
             .replace(/^\.?\//, '')
             .replace(/\.(ets|ts)$/i, '');
         const pageName = normalizedPath.split('/').filter(Boolean).at(-1);
-        const components = [...this.componentCache.values()];
+        let components = [...this.componentCache.values()];
+        if (sourceFile) {
+            const module = this.moduleConfigs
+                .filter(config => this.isWithin(path.dirname(config.filePath), sourceFile))
+                .sort((a, b) => b.filePath.length - a.filePath.length)[0];
+            if (module) {
+                const moduleDir = path.dirname(module.filePath);
+                const exactPaths = [
+                    path.resolve(moduleDir, 'ets', normalizedPath),
+                    path.resolve(moduleDir, normalizedPath),
+                ];
+                const exact = components.filter(component => exactPaths.includes(
+                    path.resolve(component.arkClass.getDeclaringArkFile().getFilePath())
+                        .replace(/\.(ets|ts)$/i, '')
+                ));
+                if (exact.length === 1) return exact[0];
+                components = components.filter(component => this.isWithin(
+                    moduleDir, component.arkClass.getDeclaringArkFile().getFilePath()
+                ));
+            }
+        }
         const pathMatches = components.filter(component => {
             const filePath = component.arkClass.getDeclaringArkFile().getFilePath()
                 .replace(/\\/g, '/')
@@ -878,37 +949,37 @@ export class AbilityCollector {
         if (this.pageInfosResolved) return;
         this.pageInfosResolved = true;
 
-        const pagePaths = new Set<string>();
-        const routeNamesByPath = new Map<string, Set<string>>();
+        const declarations: Array<{
+            module: ModuleConfig; pagePath: string; routeNames: Set<string>;
+        }> = [];
         for (const module of this.moduleConfigs) {
+            const routes = new Map<string, Set<string>>();
             for (const source of this.readProfileStrings(module, module.pagesProfile, 'src')) {
-                const pagePath = this.normalizePagePath(source);
-                pagePaths.add(pagePath);
-                if (module.mainElement) {
-                    this.addDeclarativePageOwner(pagePath, module.mainElement);
-                }
+                routes.set(this.normalizePagePath(source), new Set());
             }
             for (const route of this.readRouterMap(module)) {
                 const pagePath = this.normalizePagePath(route.pageSourceFile);
-                pagePaths.add(pagePath);
-                if (module.mainElement) {
-                    this.addDeclarativePageOwner(pagePath, module.mainElement);
-                }
+                const names = routes.get(pagePath) ?? new Set<string>();
+                names.add(route.name);
+                routes.set(pagePath, names);
                 this.routePagePaths.set(route.name, pagePath);
                 this.routePagePaths.set(this.normalizePagePath(route.name), pagePath);
-                let names = routeNamesByPath.get(pagePath);
-                if (!names) {
-                    names = new Set<string>();
-                    routeNamesByPath.set(pagePath, names);
-                }
-                names.add(route.name);
+            }
+            for (const [pagePath, routeNames] of routes) {
+                declarations.push({ module, pagePath, routeNames });
             }
         }
-
-        for (const pagePath of pagePaths) {
-            const root = this.findComponentByPagePath(pagePath);
+        for (const { module, pagePath, routeNames } of declarations) {
+            const root = this.findComponentByPagePath(pagePath, module.filePath);
             if (!root) continue;
-            this.addPageInfo(pagePath, root, routeNamesByPath.get(pagePath));
+            const ambiguousPath = declarations.filter(item => item.pagePath === pagePath)
+                .length > 1;
+            const id = ambiguousPath ? this.componentPageId(root) : pagePath;
+            if (ambiguousPath) routeNames.add(pagePath);
+            this.addPageInfo(id, root, routeNames);
+            if (module.mainElement) {
+                this.addDeclarativePageOwner(root.signature.toString(), module.mainElement);
+            }
         }
     }
 
@@ -926,8 +997,10 @@ export class AbilityCollector {
             }
         }
         for (const page of this.pageInfos) {
-            for (const ownerName of this.declarativePageOwners.get(page.id) ?? []) {
-                const ability = abilities.find(candidate => candidate.name === ownerName);
+            for (const ownerName of this.declarativePageOwners.get(page.root.signature.toString()) ?? []) {
+                const ability = abilities.find(candidate => candidate.name === ownerName &&
+                    this.moduleConfigPathOf(candidate.arkClass.getDeclaringArkFile().getFilePath()) ===
+                    this.moduleConfigPathOf(page.root.arkClass.getDeclaringArkFile().getFilePath()));
                 if (!ability) continue;
                 this.addPageRoot(ability, page.root);
                 for (const component of page.components) {
@@ -944,11 +1017,11 @@ export class AbilityCollector {
         }
     }
 
-    private addDeclarativePageOwner(pagePath: string, abilityName: string): void {
-        let owners = this.declarativePageOwners.get(pagePath);
+    private addDeclarativePageOwner(componentSignature: string, abilityName: string): void {
+        let owners = this.declarativePageOwners.get(componentSignature);
         if (!owners) {
             owners = new Set<string>();
-            this.declarativePageOwners.set(pagePath, owners);
+            this.declarativePageOwners.set(componentSignature, owners);
         }
         owners.add(abilityName);
     }
@@ -977,7 +1050,7 @@ export class AbilityCollector {
             const signature = component.signature.toString();
             if (components.has(signature)) continue;
             components.set(signature, component);
-            for (const child of this.collectViewTreeComponents(component)) {
+            for (const child of this.collectRenderedComponents(component)) {
                 pending.push(child);
             }
         }
@@ -1058,6 +1131,7 @@ export class AbilityCollector {
         viewTreeComponentEdges: number;
         navigationPageEdges: number;
         viewTreeFailures: number;
+        renderIRComponentEdges: number;
     }> {
         return { ...this.ownershipExpansionStatistics };
     }
@@ -1099,14 +1173,58 @@ export class AbilityCollector {
         return isEntry;
     }
 
-    /** Test-source Abilities are not runtime application entry points. */
-    private isTestAbilityClass(arkClass: ArkClass): boolean {
-        const filePath = arkClass.getDeclaringArkFile().getFilePath()
-            .replace(/\\/g, '/');
-        return /(^|\/)ohosTest(\/|$)/i.test(filePath) ||
-            /\/src\/test(\/|$)/i.test(filePath);
+    private isWithin(directory: string, filePath: string): boolean {
+        const relative = path.relative(directory, filePath);
+        return relative === '' || (!relative.startsWith(`..${path.sep}`) &&
+            relative !== '..' && !path.isAbsolute(relative));
     }
-    
+
+    private moduleConfigPathOf(filePath: string): string | undefined {
+        return this.moduleConfigs
+            .filter(config => this.isWithin(path.dirname(config.filePath), filePath))
+            .sort((a, b) => b.filePath.length - a.filePath.length)[0]?.filePath;
+    }
+
+    private readRuntimeModuleRoots(projectDir: string): string[] | undefined {
+        const profilePath = path.join(projectDir, 'build-profile.json5');
+        if (!fs.existsSync(profilePath)) return undefined;
+        const parsed = ts.parseConfigFileTextToJson(
+            profilePath, fs.readFileSync(profilePath, 'utf8')
+        );
+        const modules: unknown = parsed.config?.modules;
+        // Incomplete/dynamic metadata must not silently narrow the runtime scope.
+        // TypeScript converts JSON5-style quoted/unquoted keys, but reports
+        // diagnostic 1327 because tsconfig itself requires double quotes.
+        if ((parsed.error && parsed.error.code !== 1327) || !Array.isArray(modules) || modules.length === 0 ||
+            modules.some(module => typeof module?.srcPath !== 'string' ||
+                !module.srcPath.trim() || /\$\{|\*/.test(module.srcPath))) {
+            return undefined;
+        }
+        return [...new Set(modules.map(module => path.resolve(projectDir, module.srcPath)))];
+    }
+
+    /** Use project module declarations; without them, apply source-set conventions. */
+    private isNonRuntimeSource(filePath: string): boolean {
+        const projectDir = this.scene.getRealProjectDir();
+        const sourceRoot = this.runtimeModuleRoots
+            ?.filter(directory => this.isWithin(directory, filePath))
+            .sort((a, b) => b.length - a.length)[0] ?? projectDir;
+        const relative = (sourceRoot ? path.relative(sourceRoot, filePath) : filePath)
+            .replace(/\\/g, '/');
+        if (this.runtimeModuleRoots && projectDir && this.isWithin(projectDir, filePath) &&
+            !this.runtimeModuleRoots.some(directory => this.isWithin(directory, filePath))) {
+            return true;
+        }
+        const hasHiddenDirectory = relative.split('/').slice(0, -1).some(segment =>
+            segment.startsWith('.') && segment !== '.' && segment !== '..'
+        );
+        return /^(test|tests|__tests__)(\/|$)/i.test(relative) ||
+            /(^|\/)ohosTest(\/|$)/i.test(relative) ||
+            /(^|\/)src\/(test|tests|__tests__)(\/|$)/i.test(relative) ||
+            /(^|\/)node_modules(\/|$)/i.test(relative) ||
+            hasHiddenDirectory;
+    }
+
     /**
      * 获取所有入口 Ability 名称
      */

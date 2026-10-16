@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import 'arkanalyzer';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import {
@@ -106,4 +106,64 @@ describe('AbilityCollector', () => {
         expect(collector.getOwnershipExpansionStatistics().viewTreeComponentEdges)
             .toBeGreaterThan(0);
     });
+    describe('runtime source and module ownership', () => {
+        let collector: AbilityCollector;
+        beforeAll(() => {
+            collector = new AbilityCollector(buildLifecycleScene('runtime-ownership'));
+            collector.collectAllAbilities();
+        });
+
+        it('uses declared module roots to exclude test and arbitrary template sources', () => {
+            expect(collector.collectAllAbilities().map(ability => ability.name).sort())
+                .toEqual(['EntryAbility', 'FeatureAbility']);
+            const files = collector.collectAllComponents().map(component =>
+                component.arkClass.getDeclaringArkFile().getFilePath()
+            );
+            expect(files.some(file => /ohosTest|\.agents|support-materials/.test(file))).toBe(false);
+            expect(collector.getModuleConfigs().map(module => module.moduleName).sort())
+                .toEqual(['entry', 'feature']);
+            expect(collector.collectAllComponents().some(component =>
+                component.name === 'RuntimeTemplate'
+            )).toBe(true);
+        });
+
+        it('resolves identical page paths within each declaring module', () => {
+            const abilities = collector.collectAllAbilities();
+            for (const [name, module] of [['EntryAbility', 'entry'], ['FeatureAbility', 'feature']]) {
+                const ability = abilities.find(item => item.name === name)!;
+                expect(ability.pageComponents).toHaveLength(1);
+                expect(ability.components.map(component => component.name).sort())
+                    .toEqual(['Child', 'Index']);
+                expect(ability.components.every(component => component.arkClass
+                    .getDeclaringArkFile().getFilePath().replace(/\\/g, '/')
+                    .includes(`/${module}/src/main/`))).toBe(true);
+            }
+            const pages = collector.getPageInfos();
+            expect(pages).toHaveLength(2);
+            expect(new Set(pages.map(page => page.id)).size).toBe(2);
+            expect(pages.every(page => page.abilityNames.length === 1)).toBe(true);
+            expect(collector.resolvePageTarget('pages/Index')).toHaveLength(2);
+        });
+    });
+
+    it('recovers render component ownership when ViewTree construction fails', () => {
+        const scene = buildLifecycleScene('ability-scope-nesting');
+        const page = scene.getClasses().find(item => item.getName() === 'EntryPage')!;
+        const spy = vi.spyOn(page.getViewTree()!, 'getRoot').mockImplementation(() => {
+            throw new RangeError('synthetic ViewTree failure');
+        });
+        try {
+            const collector = new AbilityCollector(scene);
+            const entry = collector.collectAllAbilities()
+                .find(ability => ability.name === 'EntryAbility')!;
+            expect(entry.components.map(component => component.name))
+                .toEqual(expect.arrayContaining(['EntryPage', 'EntryChild']));
+            expect(collector.getOwnershipExpansionStatistics().renderIRComponentEdges)
+                .toBeGreaterThan(0);
+            expect(spy).toHaveBeenCalledTimes(1);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
 });

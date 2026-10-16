@@ -1,0 +1,13 @@
+{
+  "module": {
+    "name": "tests",
+    "mainElement": "GhostAbility",
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "GhostAbility",
+        "srcEntry": "./ets/GhostAbility.ets"
+      }
+    ]
+  }
+}
