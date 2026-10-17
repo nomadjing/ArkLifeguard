@@ -157,9 +157,9 @@ describe('unified hierarchical lifecycle model', () => {
             dispatchBlocks: 1,
         });
         expect(cfgShape(hierarchical)).toEqual({
-            blocks: 15,
-            edges: 26,
-            dispatchBlocks: 5,
+            blocks: 17,
+            edges: 28,
+            dispatchBlocks: 7,
         });
         expect(callbackNames(hierarchical)).toEqual(callbackNames(optFlat));
         expect(nextCallbackPairs(hierarchical)).toHaveLength(11);

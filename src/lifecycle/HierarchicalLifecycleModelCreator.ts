@@ -144,6 +144,8 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
     cfg.addBlock(returnBlock);
     this.linkBlocks(abilityHead, returnBlock);
 
+    this.normalizeCallContinuations(cfg);
+
     this.scopeModelInfo = this.buildScopeModelInfo(
       abilityHead, scopes, fallbackHead, fallbackReturnHead, fallbackComponents,
     );
@@ -183,6 +185,22 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
     const stmts = block.getStmts();
     if (stmts.length === 0) throw new Error('dispatch head block has no statement');
     return stmts[0];
+  }
+
+  /** The ICFG has one return site per call; branch only after that site. */
+  private normalizeCallContinuations(cfg: Cfg): void {
+    for (const block of [...cfg.getBlocks()]) {
+      const tail = block.getStmts().at(-1);
+      const successors = [...block.getSuccessors()];
+      if (!tail?.getInvokeExpr() || successors.length < 2) continue;
+      const continuation = this.createDetachedDispatchHead(cfg);
+      for (const successor of successors) {
+        block.removeSuccessorBlock(successor);
+        successor.removePredecessorBlock(block);
+        this.linkBlocks(continuation, successor);
+      }
+      this.linkBlocks(block, continuation);
+    }
   }
 
   private collectUnambiguousPageGroups(): Array<{
