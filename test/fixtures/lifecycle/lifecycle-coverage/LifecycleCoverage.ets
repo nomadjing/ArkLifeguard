@@ -4,6 +4,10 @@ class UIAbility {
 class BackupExtensionAbility {
 }
 
+class FormExtensionAbility {}
+class UIExtensionAbility {}
+class LifecycleEvent {}
+
 class FullUIAbility extends UIAbility {
   onCreate(): void {}
   onWindowStageCreate(): void {}
@@ -11,11 +15,18 @@ class FullUIAbility extends UIAbility {
   onWindowStageDestroy(): void {}
   onWindowStageRestore(): void {}
   onForeground(): void {}
+  onWillForeground(): void {}
+  onDidForeground(): void {}
   onBackground(): void {}
+  onWillBackground(): void {}
+  onDidBackground(): void {}
   onContinue(): void {}
   onNewWant(): void {}
   onDump(): void {}
   onSaveState(): void {}
+  onSaveStateAsync(): void {}
+  onCollaborate(): void {}
+  onConfigurationUpdate(): void {}
   onShare(): void {}
   onPrepareToTerminate(): void {}
   onPrepareToTerminateAsync(): void {}
@@ -31,6 +42,22 @@ class FullBackupAbility extends BackupExtensionAbility {
   onProcess(): void {}
 }
 
+class FullFormAbility extends FormExtensionAbility {
+  onAddForm(): void {}
+  onCastToNormalForm(): void {}
+  onUpdateForm(): void {}
+  onChangeFormVisibility(): void {}
+  onFormEvent(): void {}
+  onRemoveForm(): void {}
+  onAcquireFormState(): void {}
+}
+
+class FullUIExtensionAbility extends UIExtensionAbility {
+  onSessionCreate(): void {}
+  onSessionDestroy(): void {}
+  onSessionDestory(): void {}
+}
+
 @Entry
 @Component
 struct FullComponent {
@@ -40,9 +67,18 @@ struct FullComponent {
   onDidBuild(): void {}
   onPageShow(): void {}
   onBackPress(): void {}
+  onNewParam(first: unknown, second: LifecycleEvent): void {}
   onKeyEvent(): void {}
   aboutToRecycle(): void {}
   aboutToReuse(): void {}
   onPageHide(): void {}
   aboutToDisappear(): void {}
+  onDetached(): void {}
+  pageTransition(): void {}
+  onFormRecycle(): void {}
+  onFormRecover(): void {}
+  onLayout(): void {}
+  onPlaceChildren(): void {}
+  onMeasure(): void {}
+  onMeasureSize(): void {}
 }

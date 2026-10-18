@@ -5,7 +5,6 @@
  */
 
 import {
-  ArkAssignStmt,
   ArkBody,
   ArkConditionExpr,
   ArkIfStmt,
@@ -13,46 +12,25 @@ import {
   ArkReturnVoidStmt,
   BasicBlock,
   Cfg,
-  Constant,
   Local,
-  NumberType,
   RelationalBinaryOperator,
   ValueUtil,
 } from "../adapter/arkanalyzer";
 import { LifecycleModelCreator } from "./LifecycleModelCreator";
 import {
-  AbilityLifecycleMethodStage,
-  AbilityLifecycleStage,
+  ABILITY_START_STAGES,
+  ABILITY_END_STAGES,
+  COMPONENT_LOOP_STAGES,
   ComponentInfo,
   ComponentLifecycleStage,
 } from "./LifecycleTypes";
 
-const ABILITY_START_STAGES = new Set<AbilityLifecycleMethodStage>([
-  AbilityLifecycleStage.CREATE,
-  AbilityLifecycleStage.WINDOW_STAGE_CREATE,
-]);
-
-const ABILITY_END_STAGES = new Set<AbilityLifecycleMethodStage>([
-  AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY,
-  AbilityLifecycleStage.WINDOW_STAGE_DESTROY,
-  AbilityLifecycleStage.DESTROY,
-]);
-
-const COMPONENT_LOOP_STAGES: ComponentLifecycleStage[] = [
-  ComponentLifecycleStage.WILL_APPLY_THEME,
-  ComponentLifecycleStage.BUILD,
-  ComponentLifecycleStage.DID_BUILD,
-  ComponentLifecycleStage.PAGE_SHOW,
-  ComponentLifecycleStage.BACK_PRESS,
-  ComponentLifecycleStage.KEY_EVENT,
-  ComponentLifecycleStage.PAGE_HIDE,
-];
-
 /**
- * M0 flat lifecycle model, following the FlowDroid/HomeFlow-style DummyMain.
+ * Flat lifecycle model with one compact global event dispatcher.
  *
  * The generated CFG is finite, but contains a back edge around lifecycle and
- * UI callback branches:
+ * UI callback branches. Object collection, initialization order and event
+ * grouping are independent of this structural compaction:
  *
  * entry(create/appear) -> loop -> one callback branch -> loop
  *                           |                            |
@@ -71,13 +49,6 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
     this.addAbilityStartInvocations(entryBlock);
     this.addComponentStartInvocations(entryBlock);
 
-    const countLocal = new Local("count", NumberType.getInstance());
-    const countAssignStmt = new ArkAssignStmt(
-      countLocal,
-      ValueUtil.getOrCreateNumberConst(0),
-    );
-    entryBlock.addStmt(countAssignStmt);
-
     const loopBlock = new BasicBlock();
     const loopCondition = new ArkConditionExpr(
       ValueUtil.getBooleanConstant(true),
@@ -87,9 +58,6 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
     loopBlock.addStmt(new ArkIfStmt(loopCondition));
     cfg.addBlock(loopBlock);
     this.linkBlocks(entryBlock, loopBlock);
-
-    let branchIndex = 0;
-    let lastBlocks: BasicBlock[] = [loopBlock];
 
     for (const ability of this.abilities) {
       const instance = this.getOrCreateClassInstance(ability.arkClass);
@@ -104,11 +72,9 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
           continue;
         }
         emitted.add(signature);
-        lastBlocks = this.addMethodBranch(
+        this.addMethodDispatch(
           cfg,
-          lastBlocks,
-          countLocal,
-          branchIndex++,
+          loopBlock,
           [[instance, method]],
         );
       }
@@ -117,15 +83,15 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
     for (const component of this.uniqueComponents()) {
       const instance = this.getOrCreateClassInstance(component.arkClass);
       for (const stage of COMPONENT_LOOP_STAGES) {
+        if (stage === ComponentLifecycleStage.ABOUT_TO_RECYCLE ||
+            stage === ComponentLifecycleStage.ABOUT_TO_REUSE) continue;
         const method = component.lifecycleMethods.get(stage);
         if (!method) {
           continue;
         }
-        lastBlocks = this.addMethodBranch(
+        this.addMethodDispatch(
           cfg,
-          lastBlocks,
-          countLocal,
-          branchIndex++,
+          loopBlock,
           [[instance, method]],
         );
       }
@@ -140,22 +106,18 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
       if (recycle) reusePair.push([instance, recycle]);
       if (reuse) reusePair.push([instance, reuse]);
       if (reusePair.length > 0) {
-        lastBlocks = this.addMethodBranch(
+        this.addMethodDispatch(
           cfg,
-          lastBlocks,
-          countLocal,
-          branchIndex++,
+          loopBlock,
           reusePair,
         );
       }
 
       if (this.config.enableFineGrainedUICallbacks) {
         for (const callback of component.uiCallbacks) {
-          lastBlocks = this.addCallbackBranch(
+          this.addCallbackDispatch(
             cfg,
-            lastBlocks,
-            countLocal,
-            branchIndex++,
+            loopBlock,
             instance,
             callback,
           );
@@ -163,13 +125,8 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
       }
     }
 
-    for (const block of lastBlocks) {
-      this.linkBlocks(block, loopBlock);
-    }
-
     const returnBlock = new BasicBlock();
-    this.addComponentEndInvocations(returnBlock);
-    this.addAbilityEndInvocations(returnBlock);
+    this.addEndInvocations(returnBlock);
     returnBlock.addStmt(new ArkReturnVoidStmt());
     cfg.addBlock(returnBlock);
     this.linkBlocks(loopBlock, returnBlock);
@@ -219,286 +176,38 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
     }
   }
 
-  private addComponentEndInvocations(returnBlock: BasicBlock): void {
-    for (const component of this.uniqueComponents()) {
-      const method = component.lifecycleMethods.get(
-        ComponentLifecycleStage.ABOUT_TO_DISAPPEAR,
-      );
-      if (method) {
-        this.addMethodInvocation(
-          returnBlock,
-          this.getOrCreateClassInstance(component.arkClass),
-          method,
-        );
-      }
-    }
-  }
-
-  private addAbilityEndInvocations(returnBlock: BasicBlock): void {
-    for (const ability of this.abilities) {
-      const instance = this.getOrCreateClassInstance(ability.arkClass);
-      for (const stage of this.config.lifecycleOrder) {
-        if (!ABILITY_END_STAGES.has(stage)) {
-          continue;
-        }
-        const method = ability.lifecycleMethods.get(stage);
-        if (method) this.addMethodInvocation(returnBlock, instance, method);
-      }
-    }
-  }
-
-  private addMethodBranch(
+  private addMethodDispatch(
     cfg: Cfg,
-    predecessors: BasicBlock[],
-    countLocal: Local,
-    branchIndex: number,
+    dispatcher: BasicBlock,
     invocations: Array<[Local, ArkMethod]>,
-  ): BasicBlock[] {
-    const { ifBlock, invokeBlock } = this.createBranchBlocks(
-      cfg,
-      predecessors,
-      countLocal,
-      branchIndex,
-    );
+  ): void {
+    const invokeBlock = new BasicBlock();
     for (const [instance, method] of invocations) {
       this.addMethodInvocation(invokeBlock, instance, method);
     }
-    return [ifBlock, invokeBlock];
+    this.addEventBlock(cfg, dispatcher, invokeBlock);
   }
 
-  private addCallbackBranch(
+  private addCallbackDispatch(
     cfg: Cfg,
-    predecessors: BasicBlock[],
-    countLocal: Local,
-    branchIndex: number,
+    dispatcher: BasicBlock,
     instance: Local,
     callback: ComponentInfo["uiCallbacks"][number],
-  ): BasicBlock[] {
-    const { ifBlock, invokeBlock } = this.createBranchBlocks(
-      cfg,
-      predecessors,
-      countLocal,
-      branchIndex,
-    );
+  ): void {
+    const invokeBlock = new BasicBlock();
     this.addUICallbackInvocation(invokeBlock, instance, callback);
-    return [ifBlock, invokeBlock];
+    this.addEventBlock(cfg, dispatcher, invokeBlock);
   }
 
-  private createBranchBlocks(
-    cfg: Cfg,
-    predecessors: BasicBlock[],
-    countLocal: Local,
-    branchIndex: number,
-  ): { ifBlock: BasicBlock; invokeBlock: BasicBlock } {
-    const condition = new ArkConditionExpr(
-      countLocal,
-      new Constant(branchIndex.toString(), NumberType.getInstance()),
-      RelationalBinaryOperator.Equality,
-    );
-    const ifBlock = new BasicBlock();
-    ifBlock.addStmt(new ArkIfStmt(condition));
-    cfg.addBlock(ifBlock);
-    for (const predecessor of predecessors) {
-      this.linkBlocks(predecessor, ifBlock);
-    }
-
-    const invokeBlock = new BasicBlock();
-    cfg.addBlock(invokeBlock);
-    this.linkBlocks(ifBlock, invokeBlock);
-    return { ifBlock, invokeBlock };
+  private addEventBlock(cfg: Cfg, dispatcher: BasicBlock, event: BasicBlock): void {
+    cfg.addBlock(event);
+    this.linkBlocks(dispatcher, event);
+    this.linkBlocks(event, dispatcher);
   }
 
   private uniqueComponents(): ComponentInfo[] {
     const seen = new Set<string>();
     return this.components.filter((component) => {
-      const signature = component.signature.toString();
-      if (seen.has(signature)) return false;
-      seen.add(signature);
-      return true;
-    });
-  }
-
-  private linkBlocks(from: BasicBlock, to: BasicBlock): void {
-    from.addSuccessorBlock(to);
-    to.addPredecessorBlock(from);
-  }
-}
-/**
- * RQ1.5 M0-OptFlat baseline.
- *
- * It shares M1's test filtering, Ability pruning, compact dispatcher and
- * omission of empty invocation blocks. The deliberate difference is that all
- * lifecycle/event callbacks return to one global dispatcher instead of an
- * Ability-owned nested scope.
- */
-export class OptimizedFlatLifecycleModelCreator extends LifecycleModelCreator {
-  protected override buildDummyMainCfg(): void {
-    this.retainReachableModelElements();
-
-    const cfg = new Cfg();
-    cfg.setDeclaringMethod(this.dummyMain);
-    const entryBlock = new BasicBlock();
-    cfg.addBlock(entryBlock);
-    this.addStaticInitialization(cfg, entryBlock);
-
-    const components = this.uniqueEffectiveComponents();
-    for (const ability of this.abilities) {
-      const instance = this.getOrCreateClassInstance(ability.arkClass);
-      this.addInstanceCreation(entryBlock, instance, ability.arkClass);
-      for (const stage of this.config.lifecycleOrder) {
-        if (!ABILITY_START_STAGES.has(stage)) continue;
-        const method = ability.lifecycleMethods.get(stage);
-        if (method) this.addMethodInvocation(entryBlock, instance, method);
-      }
-    }
-    for (const component of components) {
-      const instance = this.getOrCreateClassInstance(component.arkClass);
-      this.addInstanceCreation(entryBlock, instance, component.arkClass);
-      const appear = component.lifecycleMethods.get(
-        ComponentLifecycleStage.ABOUT_TO_APPEAR,
-      );
-      if (appear) this.addMethodInvocation(entryBlock, instance, appear);
-    }
-
-    const invocationFactories: Array<() => BasicBlock> = [];
-    for (const ability of this.abilities) {
-      const instance = this.getOrCreateClassInstance(ability.arkClass);
-      const emitted = new Set<string>();
-      for (const stage of this.config.lifecycleOrder) {
-        if (ABILITY_START_STAGES.has(stage) || ABILITY_END_STAGES.has(stage)) {
-          continue;
-        }
-        const method = ability.lifecycleMethods.get(stage);
-        const signature = method?.getSignature().toString();
-        if (!method || !signature || emitted.has(signature)) continue;
-        emitted.add(signature);
-        invocationFactories.push(() =>
-          this.createMethodInvocationBlock(cfg, [[instance, method]])
-        );
-      }
-    }
-
-    for (const component of components) {
-      const instance = this.getOrCreateClassInstance(component.arkClass);
-      for (const stage of COMPONENT_LOOP_STAGES) {
-        const method = component.lifecycleMethods.get(stage);
-        if (method) {
-          invocationFactories.push(() =>
-            this.createMethodInvocationBlock(cfg, [[instance, method]])
-          );
-        }
-      }
-      const reusePair: Array<[Local, ArkMethod]> = [];
-      const recycle = component.lifecycleMethods.get(
-        ComponentLifecycleStage.ABOUT_TO_RECYCLE,
-      );
-      const reuse = component.lifecycleMethods.get(
-        ComponentLifecycleStage.ABOUT_TO_REUSE,
-      );
-      if (recycle) reusePair.push([instance, recycle]);
-      if (reuse) reusePair.push([instance, reuse]);
-      if (reusePair.length > 0) {
-        invocationFactories.push(() =>
-          this.createMethodInvocationBlock(cfg, reusePair)
-        );
-      }
-
-      if (this.config.enableFineGrainedUICallbacks) {
-        for (const callback of component.uiCallbacks) {
-          invocationFactories.push(() => {
-            const callbackBlock = new BasicBlock();
-            this.addUICallbackInvocation(callbackBlock, instance, callback);
-            cfg.addBlock(callbackBlock);
-            return callbackBlock;
-          });
-        }
-      }
-    }
-
-    const returnBlock = new BasicBlock();
-    for (const component of components) {
-      const method = component.lifecycleMethods.get(
-        ComponentLifecycleStage.ABOUT_TO_DISAPPEAR,
-      );
-      if (method) {
-        this.addMethodInvocation(
-          returnBlock,
-          this.getOrCreateClassInstance(component.arkClass),
-          method,
-        );
-      }
-    }
-    for (const ability of this.abilities) {
-      const instance = this.getOrCreateClassInstance(ability.arkClass);
-      for (const stage of this.config.lifecycleOrder) {
-        if (!ABILITY_END_STAGES.has(stage)) continue;
-        const method = ability.lifecycleMethods.get(stage);
-        if (method) this.addMethodInvocation(returnBlock, instance, method);
-      }
-    }
-    returnBlock.addStmt(new ArkReturnVoidStmt());
-    cfg.addBlock(returnBlock);
-
-    const dispatcher = this.createGlobalDispatcher(cfg, [entryBlock]);
-    for (const createInvocation of invocationFactories) {
-      this.linkGlobal(cfg, dispatcher, createInvocation(), dispatcher);
-    }
-    this.linkBlocks(dispatcher, returnBlock);
-
-    this.dummyMain.setBody(
-      new ArkBody(new Set(this.classInstanceMap.values()), cfg),
-    );
-    this.linkStmtsToCfg(cfg);
-  }
-
-  private createMethodInvocationBlock(
-    cfg: Cfg,
-    invocations: Array<[Local, ArkMethod]>,
-  ): BasicBlock {
-    const block = new BasicBlock();
-    for (const [instance, method] of invocations) {
-      this.addMethodInvocation(block, instance, method);
-    }
-    cfg.addBlock(block);
-    return block;
-  }
-
-  private linkGlobal(
-    cfg: Cfg,
-    dispatcher: BasicBlock,
-    invocation: BasicBlock,
-    continuation?: BasicBlock,
-  ): void {
-    if (this.config.optimizations.compactDispatcher) {
-      this.linkBlocks(dispatcher, invocation);
-    } else {
-      const condition = this.createGlobalDispatcher(cfg, [dispatcher]);
-      this.linkBlocks(condition, invocation);
-      this.linkBlocks(condition, dispatcher);
-    }
-    if (continuation) this.linkBlocks(invocation, continuation);
-  }
-
-  private createGlobalDispatcher(
-    cfg: Cfg,
-    predecessors: BasicBlock[],
-  ): BasicBlock {
-    const block = new BasicBlock();
-    block.addStmt(new ArkIfStmt(new ArkConditionExpr(
-      ValueUtil.getBooleanConstant(true),
-      ValueUtil.getBooleanConstant(false),
-      RelationalBinaryOperator.InEquality,
-    )));
-    cfg.addBlock(block);
-    for (const predecessor of predecessors) {
-      this.linkBlocks(predecessor, block);
-    }
-    return block;
-  }
-
-  private uniqueEffectiveComponents(): ComponentInfo[] {
-    const seen = new Set<string>();
-    return this.components.filter(component => {
       const signature = component.signature.toString();
       if (seen.has(signature)) return false;
       seen.add(signature);

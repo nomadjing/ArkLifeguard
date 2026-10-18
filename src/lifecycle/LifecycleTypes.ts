@@ -54,8 +54,12 @@ export enum AbilityLifecycleStage {
   WINDOW_STAGE_RESTORE = "onWindowStageRestore",
   /** 进入前台（可见） */
   FOREGROUND = "onForeground",
+  WILL_FOREGROUND = "onWillForeground",
+  DID_FOREGROUND = "onDidForeground",
   /** 进入后台（不可见） */
   BACKGROUND = "onBackground",
+  WILL_BACKGROUND = "onWillBackground",
+  DID_BACKGROUND = "onDidBackground",
   /** 跨设备迁移 */
   CONTINUE = "onContinue",
   /** 已存在 Ability 收到新 Want */
@@ -64,6 +68,9 @@ export enum AbilityLifecycleStage {
   DUMP = "onDump",
   /** 保存 Ability 状态 */
   SAVE_STATE = "onSaveState",
+  SAVE_STATE_ASYNC = "onSaveStateAsync",
+  COLLABORATE = "onCollaborate",
+  CONFIGURATION_UPDATE = "onConfigurationUpdate",
   /** 分享事件 */
   SHARE = "onShare",
   /** 终止前同步准备 */
@@ -91,12 +98,25 @@ export enum BackupExtensionLifecycleStage {
 export enum FormExtensionLifecycleStage {
   ADD_FORM = "onAddForm",
   UPDATE_FORM = "onUpdateForm",
+  CAST_TO_NORMAL_FORM = "onCastToNormalForm",
+  CHANGE_FORM_VISIBILITY = "onChangeFormVisibility",
+  FORM_EVENT = "onFormEvent",
+  REMOVE_FORM = "onRemoveForm",
+  ACQUIRE_FORM_STATE = "onAcquireFormState",
+}
+
+export enum UIExtensionLifecycleStage {
+  SESSION_CREATE = "onSessionCreate",
+  SESSION_DESTROY = "onSessionDestroy",
+  /** Compatibility with HomeFlow's installed lifecycle method table. */
+  SESSION_DESTORY = "onSessionDestory",
 }
 
 export type AbilityLifecycleMethodStage =
   | AbilityLifecycleStage
   | BackupExtensionLifecycleStage
-  | FormExtensionLifecycleStage;
+  | FormExtensionLifecycleStage
+  | UIExtensionLifecycleStage;
 
 /**
  * Component 生命周期阶段枚举
@@ -126,7 +146,37 @@ export enum ComponentLifecycleStage {
   WILL_APPLY_THEME = "onWillApplyTheme",
   /** 组件按键事件入口 */
   KEY_EVENT = "onKeyEvent",
+  NEW_PARAM = "onNewParam",
+  DETACHED = "onDetached",
+  PAGE_TRANSITION = "pageTransition",
+  FORM_RECYCLE = "onFormRecycle",
+  FORM_RECOVER = "onFormRecover",
+  LAYOUT = "onLayout",
+  PLACE_CHILDREN = "onPlaceChildren",
+  MEASURE = "onMeasure",
+  MEASURE_SIZE = "onMeasureSize",
 }
+
+/** Shared classification keeps collection and all three CFG generators aligned. */
+export const ABILITY_START_STAGES = new Set<AbilityLifecycleMethodStage>([
+  AbilityLifecycleStage.CREATE,
+  AbilityLifecycleStage.WINDOW_STAGE_CREATE,
+  UIExtensionLifecycleStage.SESSION_CREATE,
+]);
+
+export const ABILITY_END_STAGES = new Set<AbilityLifecycleMethodStage>([
+  AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY,
+  AbilityLifecycleStage.WINDOW_STAGE_DESTROY,
+  UIExtensionLifecycleStage.SESSION_DESTROY,
+  UIExtensionLifecycleStage.SESSION_DESTORY,
+  AbilityLifecycleStage.DESTROY,
+]);
+
+export const COMPONENT_LOOP_STAGES = Object.values(ComponentLifecycleStage).filter(
+  stage => stage !== ComponentLifecycleStage.ABOUT_TO_APPEAR &&
+    stage !== ComponentLifecycleStage.ABOUT_TO_DISAPPEAR &&
+    stage !== ComponentLifecycleStage.DETACHED,
+);
 
 // ============================================================================
 // 第二部分：Ability 信息结构
@@ -291,6 +341,9 @@ export enum UIEventType {
   ON_DISAPPEAR = "onDisAppear",
   /** 拖拽开始 */
   ON_DRAG_START = "onDragStart",
+  ON_DRAG_ENTER = "onDragEnter",
+  ON_DRAG_MOVE = "onDragMove",
+  ON_DRAG_LEAVE = "onDragLeave",
   /** 拖拽释放 */
   ON_DROP = "onDrop",
   /** 获取焦点 */
@@ -305,6 +358,10 @@ export enum UIEventType {
   ON_SUBMIT = "onSubmit",
   /** 滚动事件 (List, Scroll 等) */
   ON_SCROLL = "onScroll",
+  ON_KEY_EVENT = "onKeyEvent",
+  ON_HOVER = "onHover",
+  ON_MOUSE = "onMouse",
+  ON_VISIBLE_AREA_CHANGE = "onVisibleAreaChange",
 }
 
 // ============================================================================
@@ -330,15 +387,12 @@ export interface LifecycleModelConfig {
   /** 最大跳转深度（防止无限循环） */
   maxNavigationDepth: number;
 
-  /** RQ1.5 中可独立关闭的通用生命周期 CFG 优化。 */
+  /** Hierarchical 的可选 Ability 可达裁剪；flat 不应用。 */
   optimizations: LifecycleOptimizationConfig;
 }
 
-/** M1/M0-OptFlat 共用的 CFG 优化；这些开关不改变事件集合。 */
+/** Hierarchical 的可达 Ability 裁剪；flat 保留全部收集对象。 */
 export interface LifecycleOptimizationConfig {
-  /** 用一个 scope head 直接分派到各回调，避免链式条件分派。 */
-  compactDispatcher: boolean;
-
   /** 仅保留入口 Ability 及静态可达的 startAbility 闭包。 */
   pruneUnreachableAbilities: boolean;
 }
@@ -444,31 +498,39 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleModelConfig = {
   lifecycleOrder: [
     AbilityLifecycleStage.CREATE,
     AbilityLifecycleStage.WINDOW_STAGE_CREATE,
+    UIExtensionLifecycleStage.SESSION_CREATE,
     AbilityLifecycleStage.WINDOW_STAGE_RESTORE,
+    AbilityLifecycleStage.WILL_FOREGROUND,
     AbilityLifecycleStage.FOREGROUND,
+    AbilityLifecycleStage.DID_FOREGROUND,
     AbilityLifecycleStage.CONTINUE,
     AbilityLifecycleStage.NEW_WANT,
     AbilityLifecycleStage.DUMP,
     AbilityLifecycleStage.SAVE_STATE,
+    AbilityLifecycleStage.SAVE_STATE_ASYNC,
+    AbilityLifecycleStage.COLLABORATE,
+    AbilityLifecycleStage.CONFIGURATION_UPDATE,
     AbilityLifecycleStage.SHARE,
     AbilityLifecycleStage.BACK_PRESSED,
+    AbilityLifecycleStage.WILL_BACKGROUND,
     AbilityLifecycleStage.BACKGROUND,
+    AbilityLifecycleStage.DID_BACKGROUND,
     AbilityLifecycleStage.PREPARE_TO_TERMINATE,
     AbilityLifecycleStage.PREPARE_TO_TERMINATE_ASYNC,
     AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY,
     AbilityLifecycleStage.WINDOW_STAGE_DESTROY,
+    UIExtensionLifecycleStage.SESSION_DESTROY,
+    UIExtensionLifecycleStage.SESSION_DESTORY,
     AbilityLifecycleStage.DESTROY,
     BackupExtensionLifecycleStage.BACKUP,
     BackupExtensionLifecycleStage.BACKUP_EX,
     BackupExtensionLifecycleStage.RESTORE,
     BackupExtensionLifecycleStage.RESTORE_EX,
     BackupExtensionLifecycleStage.PROCESS,
-    FormExtensionLifecycleStage.ADD_FORM,
-    FormExtensionLifecycleStage.UPDATE_FORM,
+    ...Object.values(FormExtensionLifecycleStage),
   ],
   maxNavigationDepth: 10,
   optimizations: {
-    compactDispatcher: true,
     pruneUnreachableAbilities: true,
   },
 };

@@ -42,7 +42,7 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 
 | 参数 | 默认值 | 实际作用 |
 | --- | ---: | --- |
-| `--lifecycle-model` | `flat` | 可选 `flat`、`opt-flat`、`hierarchical` |
+| `--lifecycle-model` | `flat` | 可选 `flat`、`hierarchical` |
 | `--max-access-path-length` | 5 | 空指针访问路径长度 |
 | `--max-propagation-depth` | 40 | 空指针事实传播深度；不约束资源检查 |
 | `--max-retention-states` | 20000 | 每个闭包/内存 Runner 的状态上限 |
@@ -53,7 +53,7 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 
 `--no-infer-types`、`--no-ui-callbacks`、`--no-navigation` 分别关闭类型推断、UI 回调提取、附加导航收集，可能降低覆盖。`--no-navigation` 不保证删除所有生命周期内部的路由/owner 推断。`--report-unresolved-returns` 开启未解析返回值的低置信度空指针候选。`--verbose` 显示建模日志。
 
-`--no-compact-lifecycle-dispatcher` 与 `--no-prune-unreachable-abilities` 用于关闭对应建模优化；是否使用 compact dispatcher 取决于模型，详见[生命周期模块](docs/analysis/lifecycle.md)。
+两种模型均固定使用 compact dispatcher。`--no-prune-unreachable-abilities` 只关闭 hierarchical 的可达 Ability 裁剪；flat 保留全部收集对象。详见[生命周期模块](docs/analysis/lifecycle.md)。
 
 ## 报告与退出码
 

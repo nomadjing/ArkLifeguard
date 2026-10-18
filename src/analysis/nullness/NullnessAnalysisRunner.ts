@@ -26,8 +26,7 @@ import {
 import {
     AbilityLifecycleStage,
     AbilityLifecycleMethodStage,
-    BackupExtensionLifecycleStage,
-    FormExtensionLifecycleStage,
+    DEFAULT_LIFECYCLE_CONFIG,
     LifecycleModelConfig,
 } from '../../lifecycle';
 import { NullnessFact } from './NullnessFact';
@@ -87,33 +86,13 @@ export interface NullnessSolverBreakdown {
     supplementalRootCount: number;
 }
 
-export const NULLNESS_LIFECYCLE_ORDER: AbilityLifecycleMethodStage[] = [
-    AbilityLifecycleStage.CREATE,
-    AbilityLifecycleStage.WINDOW_STAGE_CREATE,
-    AbilityLifecycleStage.WINDOW_STAGE_RESTORE,
-    AbilityLifecycleStage.FOREGROUND,
-    AbilityLifecycleStage.CONTINUE,
-    AbilityLifecycleStage.NEW_WANT,
-    AbilityLifecycleStage.DUMP,
-    AbilityLifecycleStage.SAVE_STATE,
-    AbilityLifecycleStage.SHARE,
-    AbilityLifecycleStage.BACK_PRESSED,
-    AbilityLifecycleStage.BACKGROUND,
-    // A foreground callback may run again on the same Ability instance after backgrounding.
-    AbilityLifecycleStage.FOREGROUND,
-    AbilityLifecycleStage.PREPARE_TO_TERMINATE,
-    AbilityLifecycleStage.PREPARE_TO_TERMINATE_ASYNC,
-    AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY,
-    AbilityLifecycleStage.WINDOW_STAGE_DESTROY,
-    AbilityLifecycleStage.DESTROY,
-    BackupExtensionLifecycleStage.BACKUP,
-    BackupExtensionLifecycleStage.BACKUP_EX,
-    BackupExtensionLifecycleStage.RESTORE,
-    BackupExtensionLifecycleStage.RESTORE_EX,
-    BackupExtensionLifecycleStage.PROCESS,
-    FormExtensionLifecycleStage.ADD_FORM,
-    FormExtensionLifecycleStage.UPDATE_FORM,
-];
+// Share callback coverage with the lifecycle generator, retaining foreground re-entry.
+export const NULLNESS_LIFECYCLE_ORDER: AbilityLifecycleMethodStage[] =
+    DEFAULT_LIFECYCLE_CONFIG.lifecycleOrder.flatMap<AbilityLifecycleMethodStage>(stage =>
+        stage === AbilityLifecycleStage.BACKGROUND
+            ? [stage, AbilityLifecycleStage.FOREGROUND]
+            : [stage]
+    );
 
 /** Runs nullness analysis from the lifecycle-aware DummyMain entry point. */
 export class NullnessAnalysisRunner {

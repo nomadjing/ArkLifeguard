@@ -41,7 +41,7 @@ import {
   Language,
   Local,
   ClassType,
-  NumberType,
+  ArkThisRef,
   ArkAssignStmt,
   ArkInvokeStmt,
   ArkInstanceInvokeExpr,
@@ -53,7 +53,7 @@ import {
   FileSignature,
   MethodSignature,
   ArkSignatureBuilder,
-  ValueUtil,
+  Type,
   CONSTRUCTOR_NAME,
   checkAndUpdateMethod,
 } from "../adapter/arkanalyzer";
@@ -65,6 +65,9 @@ import {
   AbilityInfo,
   ComponentInfo,
   ComponentLifecycleStage,
+  AbilityLifecycleStage,
+  AbilityLifecycleMethodStage,
+  ABILITY_END_STAGES,
   UICallbackInfo,
   UIEventType,
   LifecycleModelConfig,
@@ -333,7 +336,7 @@ export abstract class LifecycleModelCreator {
   }
 
   /**
-   * Apply the M0-OptFlat/M1 Ability reachability optimization. An unresolved
+   * Apply hierarchical Ability reachability pruning. An unresolved
    * startAbility target conservatively retains every collected Ability.
    */
   protected retainReachableModelElements(): void {
@@ -604,35 +607,54 @@ export abstract class LifecycleModelCreator {
     );
     this.dummyMain.setImplementationSignature(methodSignature);
     this.dummyMain.setLineCol(0);
+    this.dummyMain.setIsGeneratedFlag(true);
     checkAndUpdateMethod(this.dummyMain, dummyClass);
     dummyClass.addMethod(this.dummyMain);
   }
 
   protected abstract buildDummyMainCfg(): void;
 
-  protected addStaticInitialization(cfg: Cfg, entryBlock: BasicBlock): void {
-    let isFirst = true;
-
-    for (const method of this.scene.getStaticInitMethods()) {
-      const invokeExpr = new ArkStaticInvokeExpr(method.getSignature(), []);
-      const invokeStmt = new ArkInvokeStmt(invokeExpr);
-
-      if (isFirst) {
-        cfg.setStartingStmt(invokeStmt);
-        isFirst = false;
+  /** Window teardown starts before component cleanup and ends before Ability destruction. */
+  protected addEndInvocations(block: BasicBlock): void {
+    const invokeAbilityStage = (stage: AbilityLifecycleMethodStage) => {
+      for (const ability of this.abilities) {
+        const method = ability.lifecycleMethods.get(stage);
+        if (method) this.addMethodInvocation(
+          block, this.getOrCreateClassInstance(ability.arkClass), method,
+        );
       }
-
-      entryBlock.addStmt(invokeStmt);
+    };
+    if (this.config.lifecycleOrder.includes(AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY)) {
+      invokeAbilityStage(AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY);
     }
+    for (const stage of [
+      ComponentLifecycleStage.ABOUT_TO_DISAPPEAR,
+      ComponentLifecycleStage.DETACHED,
+    ]) {
+      for (const component of this.components) {
+        const method = component.lifecycleMethods.get(stage);
+        if (method) this.addMethodInvocation(
+          block, this.getOrCreateClassInstance(component.arkClass), method,
+        );
+      }
+    }
+    for (const stage of this.config.lifecycleOrder) {
+      if (ABILITY_END_STAGES.has(stage) &&
+          stage !== AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY) {
+        invokeAbilityStage(stage);
+      }
+    }
+  }
 
-    // 如果没有静态初始化方法，设置一个占位
-    if (isFirst) {
-      // 添加一个 count = 0 的语句作为起始
-      const countLocal = new Local("count", NumberType.getInstance());
-      const zero = ValueUtil.getOrCreateNumberConst(0);
-      const assignStmt = new ArkAssignStmt(countLocal, zero);
-      cfg.setStartingStmt(assignStmt);
-      entryBlock.addStmt(assignStmt);
+  protected addStaticInitialization(cfg: Cfg, entryBlock: BasicBlock): void {
+    const classType = new ClassType(this.dummyMain.getDeclaringArkClass().getSignature());
+    const localThis = new Local("this", classType);
+    const startingStmt = new ArkAssignStmt(localThis, new ArkThisRef(classType));
+    localThis.setDeclaringStmt(startingStmt);
+    entryBlock.addStmt(startingStmt);
+    cfg.setStartingStmt(startingStmt);
+    for (const method of this.scene.getStaticInitMethods()) {
+      entryBlock.addStmt(new ArkInvokeStmt(new ArkStaticInvokeExpr(method.getSignature(), [])));
     }
   }
 
@@ -721,16 +743,15 @@ export abstract class LifecycleModelCreator {
     block: BasicBlock,
     instanceLocal: Local,
     method: ArkMethod,
+    eventType?: UIEventType,
   ): void {
     // Step 1: 为方法参数创建 Local 变量并初始化
-    const paramLocals = this.createParameterLocals(method, block);
+    const paramLocals = this.createParameterLocals(method, block, eventType);
 
     // Step 2: 生成方法调用语句
-    const invokeExpr = new ArkInstanceInvokeExpr(
-      instanceLocal,
-      method.getSignature(),
-      paramLocals,
-    );
+    const invokeExpr = method.isStatic() || method.getDeclaringArkClass().isDefaultArkClass()
+      ? new ArkStaticInvokeExpr(method.getSignature(), paramLocals)
+      : new ArkInstanceInvokeExpr(instanceLocal, method.getSignature(), paramLocals);
     const invokeStmt = new ArkInvokeStmt(invokeExpr);
     block.addStmt(invokeStmt);
 
@@ -742,62 +763,25 @@ export abstract class LifecycleModelCreator {
     }
   }
 
-  /**
-   * 为方法参数创建 Local 变量并生成初始化语句
-   *
-   * 处理逻辑：
-   * - ClassType 参数：创建 new Xxx() 语句
-   * - 基本类型参数：创建默认值常量
-   * - 未知类型参数：跳过（不传递）
-   *
-   * @param method 目标方法
-   * @param block 添加语句的基本块
-   * @returns 参数 Local 数组
-   */
-  private createParameterLocals(method: ArkMethod, block: BasicBlock): Local[] {
-    const paramLocals: Local[] = [];
-    const parameters = method.getParameters();
-
-    // 如果方法没有参数，直接返回空数组
-    if (parameters.length === 0) {
-      return paramLocals;
-    }
-
-    for (let i = 0; i < parameters.length; i++) {
-      const param = parameters[i];
-      let paramType = param.getType();
-
-      // 如果参数类型未知，尝试从父类方法获取
-      if (!paramType) {
-        paramType = this.getParamTypeFromSuperClass(method, i);
-      }
-
-      // 如果仍然无法获取类型，跳过该参数
-      if (!paramType) {
-        console.log(
-          `[LifecycleModelCreator] Skipping param ${i} of ${method.getName()}: unknown type`,
-        );
-        continue;
-      }
-
-      // 创建参数 Local 变量
-      const paramLocal = new Local(`%param${this.tempLocalIndex++}`, paramType);
-
-      // 如果是 ClassType，生成 new 语句
+  /** Preserve every argument slot, even when ArkAnalyzer has no parameter type. */
+  private createParameterLocals(
+    method: ArkMethod,
+    block: BasicBlock,
+    eventType?: UIEventType,
+  ): Local[] {
+    return method.getParameters().map((param, index) => {
+      const paramType = param.getType() ??
+        this.getParamTypeFromSuperClass(method, index) ??
+        (index === 0 && eventType ? this.inferEventParamType(eventType) : undefined);
+      const local = new Local(`%param${this.tempLocalIndex++}`, paramType ?? undefined);
       if (paramType instanceof ClassType) {
-        const newExpr = new ArkNewExpr(paramType);
-        const assignStmt = new ArkAssignStmt(paramLocal, newExpr);
-        paramLocal.setDeclaringStmt(assignStmt);
-        block.addStmt(assignStmt);
-
-        // 尝试调用构造函数
-        this.tryInvokeConstructor(block, paramLocal, paramType);
+        const assignment = new ArkAssignStmt(local, new ArkNewExpr(paramType));
+        local.setDeclaringStmt(assignment);
+        block.addStmt(assignment);
+        this.tryInvokeConstructor(block, local, paramType);
       }
-
-      paramLocals.push(paramLocal);
-    }
-
-    return paramLocals;
+      return local;
+    });
   }
 
   /**
@@ -809,7 +793,7 @@ export abstract class LifecycleModelCreator {
   private getParamTypeFromSuperClass(
     method: ArkMethod,
     paramIndex: number,
-  ): any {
+  ): Type | null {
     const declaringClass = method.getDeclaringArkClass();
     const superClass = declaringClass.getSuperClass();
 
@@ -864,137 +848,13 @@ export abstract class LifecycleModelCreator {
     block.addStmt(invokeStmt);
   }
 
-  /**
-   * 添加 UI 回调调用语句（含参数生成）
-   *
-   * 工作流程：
-   * ```
-   * ┌─────────────────────────────────────────────────────────────────┐
-   * │            addUICallbackInvocation() 流程                       │
-   * ├─────────────────────────────────────────────────────────────────┤
-   * │                                                                 │
-   * │  输入: callback (如 Button.onClick -> handleClick)              │
-   * │         │                                                       │
-   * │         ▼                                                       │
-   * │  获取回调方法: callback.callbackMethod                          │
-   * │         │                                                       │
-   * │         ▼                                                       │
-   * │  为回调参数创建 Local（如 ClickEvent）:                         │
-   * │  ┌─────────────────────────────────────────────┐               │
-   * │  │  %event0 = new ClickEvent()                 │               │
-   * │  └─────────────────────────────────────────────┘               │
-   * │         │                                                       │
-   * │         ▼                                                       │
-   * │  生成回调调用语句:                                               │
-   * │  ┌─────────────────────────────────────────────┐               │
-   * │  │  component.handleClick(%event0)             │               │
-   * │  └─────────────────────────────────────────────┘               │
-   * │                                                                 │
-   * └─────────────────────────────────────────────────────────────────┘
-   * ```
-   *
-   * 支持的回调类型：
-   * - onClick(event: ClickEvent)
-   * - onTouch(event: TouchEvent)
-   * - onChange(value: string)
-   * - onAppear() / onDisAppear() - 无参数
-   */
+  /** UI and lifecycle calls share argument construction and invocation rules. */
   protected addUICallbackInvocation(
     block: BasicBlock,
     componentLocal: Local,
     callback: UICallbackInfo,
   ): void {
-    if (!callback.callbackMethod) {
-      return;
-    }
-
-    // Step 1: 为回调方法的参数创建 Local 变量并初始化
-    const paramLocals = this.createCallbackParameterLocals(callback, block);
-
-    // Step 2: 生成回调方法调用语句
-    const invokeExpr = new ArkInstanceInvokeExpr(
-      componentLocal,
-      callback.callbackMethod.getSignature(),
-      paramLocals,
-    );
-    const invokeStmt = new ArkInvokeStmt(invokeExpr);
-    block.addStmt(invokeStmt);
-
-    // 打印调试信息
-    const paramInfo =
-      paramLocals.length > 0
-        ? `(${paramLocals.map((l) => l.getName()).join(", ")})`
-        : "()";
-    console.log(
-      `[LifecycleModelCreator] ${callback.componentType}.${callback.eventType} -> ${callback.callbackMethod.getName()}${paramInfo}`,
-    );
-  }
-
-  /**
-   * 为 UI 回调方法的参数创建 Local 变量
-   *
-   * 常见的回调参数类型：
-   * - ClickEvent: onClick 事件
-   * - TouchEvent: onTouch 事件
-   * - string/number: onChange 等值变化事件
-   *
-   * @param callback UI 回调信息
-   * @param block 添加语句的基本块
-   * @returns 参数 Local 数组
-   */
-  private createCallbackParameterLocals(
-    callback: UICallbackInfo,
-    block: BasicBlock,
-  ): Local[] {
-    const paramLocals: Local[] = [];
-
-    if (!callback.callbackMethod) {
-      return paramLocals;
-    }
-
-    const parameters = callback.callbackMethod.getParameters();
-
-    // 如果回调方法没有参数，直接返回空数组
-    if (parameters.length === 0) {
-      return paramLocals;
-    }
-
-    for (let i = 0; i < parameters.length; i++) {
-      const param = parameters[i];
-      let paramType = param.getType();
-
-      // 如果参数类型未知，尝试根据事件类型推断
-      if (!paramType) {
-        const inferred = this.inferEventParamType(callback.eventType);
-        if (inferred) paramType = inferred;
-      }
-
-      // 如果仍然无法获取类型，跳过该参数
-      if (!paramType) {
-        console.log(
-          `[LifecycleModelCreator] Skipping callback param ${i}: unknown type`,
-        );
-        continue;
-      }
-
-      // 创建参数 Local 变量
-      const paramLocal = new Local(`%event${this.tempLocalIndex++}`, paramType);
-
-      // 如果是 ClassType，生成 new 语句
-      if (paramType instanceof ClassType) {
-        const newExpr = new ArkNewExpr(paramType);
-        const assignStmt = new ArkAssignStmt(paramLocal, newExpr);
-        paramLocal.setDeclaringStmt(assignStmt);
-        block.addStmt(assignStmt);
-
-        // 尝试调用构造函数
-        this.tryInvokeConstructor(block, paramLocal, paramType);
-      }
-
-      paramLocals.push(paramLocal);
-    }
-
-    return paramLocals;
+    this.addMethodInvocation(block, componentLocal, callback.callbackMethod, callback.eventType);
   }
 
   /**
@@ -1047,6 +907,14 @@ export abstract class LifecycleModelCreator {
       cfg.updateStmt2BlockMap(block);
       for (const stmt of block.getStmts()) {
         stmt.setCfg(cfg);
+        for (const value of [stmt.getDef(), ...stmt.getUses()]) {
+          if (value instanceof Local) {
+            this.dummyMain.getBody()!.addLocal(value.getName(), value);
+          }
+        }
+        for (const value of new Set(stmt.getUses())) {
+          if (value instanceof Local) value.addUsedStmt(stmt);
+        }
       }
     }
   }

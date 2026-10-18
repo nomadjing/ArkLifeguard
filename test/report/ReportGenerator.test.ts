@@ -23,8 +23,7 @@ const result: ProjectAnalysisResult = {
         runResourceAnalysis: true,
         lifecycleModel: 'flat',
         lifecycleOptimizations: {
-            compactDispatcher: true,
-            pruneUnreachableAbilities: true,
+            pruneUnreachableAbilities: false,
         },
         bounds: {
             maxAccessPathLength: 5,

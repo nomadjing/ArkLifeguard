@@ -44,7 +44,7 @@ function help(): void {
         '  --format <ir|source|both>  Output format; default: both',
         '  --sdk-root <path>          Use openharmony/ets and hms/ets below an SDK root',
         '  --sdk <ets-path>           Use an ETS SDK path; repeatable',
-        '  --model <flat|opt-flat|hierarchical>  Lifecycle model; default: flat',
+        '  --model <flat|hierarchical>  Lifecycle model; default: flat',
         '  --no-infer-types           Skip Scene type inference',
         '  -h, --help                 Show this help',
         '',
@@ -130,8 +130,8 @@ function parseArgs(args: string[]): Options {
     if (!['ir', 'source', 'both'].includes(format)) {
         throw new Error(`Invalid --format: ${format}; expected ir, source, or both`);
     }
-    if (!['flat', 'opt-flat', 'hierarchical'].includes(model)) {
-        throw new Error(`Invalid --model: ${model}; expected flat, opt-flat, or hierarchical`);
+    if (!['flat', 'hierarchical'].includes(model)) {
+        throw new Error(`Invalid --model: ${model}; expected flat or hierarchical`);
     }
     return { projectPath, format, sdkRoot, sdkPaths, inferTypes, model };
 }

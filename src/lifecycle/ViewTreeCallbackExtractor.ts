@@ -29,11 +29,14 @@ import {
   Scene,
   ArkClass,
   ArkMethod,
-  ArkField,
   ViewTreeNode,
+  ClassSignature,
   MethodSignature,
   ArkInstanceFieldRef,
   Constant,
+  FunctionType,
+  AliasType,
+  Stmt,
 } from "../adapter/arkanalyzer";
 //自定义模块导入
 import { UICallbackInfo, UIEventType, ComponentInfo } from "./LifecycleTypes";
@@ -45,47 +48,7 @@ import { UICallbackInfo, UIEventType, ComponentInfo } from "./LifecycleTypes";
 /**
  * UI 事件方法名称列表
  */
-const UI_EVENT_METHODS: string[] = [
-  "onClick",
-  "onTouch",
-  "onChange",
-  "onAppear",
-  "onDisAppear",
-  "onDragStart",
-  "onDragEnter",
-  "onDragMove",
-  "onDragLeave",
-  "onDrop",
-  "onKeyEvent",
-  "onFocus",
-  "onBlur",
-  "onHover",
-  "onMouse",
-  "onAreaChange",
-  "onVisibleAreaChange",
-  "onSelect",
-  "onSubmit",
-  "onScroll",
-];
-
-/**
- * 方法名到事件类型的映射
- */
-const METHOD_TO_EVENT_TYPE: Map<string, UIEventType> = new Map([
-  ["onClick", UIEventType.ON_CLICK],
-  ["onTouch", UIEventType.ON_TOUCH],
-  ["onChange", UIEventType.ON_CHANGE],
-  ["onAppear", UIEventType.ON_APPEAR],
-  ["onDisAppear", UIEventType.ON_DISAPPEAR],
-  ["onDragStart", UIEventType.ON_DRAG_START],
-  ["onDrop", UIEventType.ON_DROP],
-  ["onFocus", UIEventType.ON_FOCUS],
-  ["onBlur", UIEventType.ON_BLUR],
-  ["onAreaChange", UIEventType.ON_AREA_CHANGE],
-  ["onSelect", UIEventType.ON_SELECT],
-  ["onSubmit", UIEventType.ON_SUBMIT],
-  ["onScroll", UIEventType.ON_SCROLL],
-]);
+const UI_EVENT_METHODS = new Set<string>(Object.values(UIEventType));
 
 // ============================================================================
 // ViewTreeCallbackExtractor 类
@@ -129,9 +92,8 @@ export class ViewTreeCallbackExtractor {
       return this.extractFromComponentUnsafe(componentClass);
     } catch (error) {
       // ArkAnalyzer 1.0.90 may fail while resolving a ViewTree method whose
-      // signature contains mutually recursive generic types. Skipping only
-      // that component keeps lifecycle/nullness analysis conservative and
-      // prevents one framework model failure from aborting the whole project.
+      // signature contains mutually recursive generic types. Skip that tree
+      // rather than abort the project; its UI callbacks remain unavailable.
       if (!(error instanceof RangeError)) {
         throw error;
       }
@@ -215,6 +177,11 @@ export class ViewTreeCallbackExtractor {
     const nodeCallbacks = this.extractNodeCallbacks(node, componentClass);
     callbacks.push(...nodeCallbacks);
 
+    // Expanded custom-component trees are collected separately with their own
+    // receiver and Page ownership. Attributes on this node still belong here.
+    if (node.signature instanceof ClassSignature &&
+        node.signature.toString() !== componentClass.getSignature().toString()) return;
+
     // 递归处理子节点
     for (const child of node.children) {
       this.walkViewTree(child, callbacks, componentClass, visited);
@@ -242,27 +209,15 @@ export class ViewTreeCallbackExtractor {
       }
 
       // 尝试解析回调方法
-      const callbackMethod = this.resolveCallbackMethod(
-        attributeValue,
-        componentClass,
-      );
-      if (!callbackMethod) {
-        continue;
+      for (const callbackMethod of this.resolveCallbackMethods(attributeValue, componentClass)) {
+        callbacks.push({
+          componentType: node.name,
+          eventType: attributeName as UIEventType,
+          callbackMethod,
+          relatedStateValues: [...node.stateValues],
+          viewTreeNode: node,
+        });
       }
-
-      // 构建 UICallbackInfo
-      const callbackInfo: UICallbackInfo = {
-        componentType: node.name,
-        eventType: this.getEventType(attributeName),
-        callbackMethod: callbackMethod,
-        relatedStateValues: this.collectRelatedStateValues(
-          node,
-          attributeValue,
-        ),
-        viewTreeNode: node,
-      };
-
-      callbacks.push(callbackInfo);
     }
 
     return callbacks;
@@ -276,81 +231,29 @@ export class ViewTreeCallbackExtractor {
    * 判断属性名是否是事件属性
    */
   private isEventAttribute(attributeName: string): boolean {
-    return UI_EVENT_METHODS.includes(attributeName);
+    return UI_EVENT_METHODS.has(attributeName);
   }
 
-  /**
-   * 获取事件类型枚举
-   */
-  private getEventType(attributeName: string): UIEventType {
-    return METHOD_TO_EVENT_TYPE.get(attributeName) || UIEventType.ON_CLICK;
-  }
-
-  /**
-   * 解析回调方法
-   *
-   * 从 attribute 的值中解析出实际的回调方法
-   *
-   * 支持的回调形式：
-   * ```
-   * ┌─────────────────────────────────────────────────────────────────┐
-   * │                    回调方法解析流程                              │
-   * ├─────────────────────────────────────────────────────────────────┤
-   * │                                                                 │
-   * │  Button('Click').onClick(???)                                   │
-   * │                          │                                      │
-   * │      ┌───────────────────┼───────────────────┐                  │
-   * │      ▼                   ▼                   ▼                  │
-   * │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
-   * │  │MethodSig    │  │FieldRef    │  │ Constant    │             │
-   * │  │(方法签名)    │  │(this.xxx)  │  │('方法名')   │             │
-   * │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘             │
-   * │         │                │                │                     │
-   * │         ▼                ▼                ▼                     │
-   * │  scene.getMethod  class.getMethod  class.getMethodWithName     │
-   * │         │                │                │                     │
-   * │         └────────────────┴────────────────┘                     │
-   * │                          │                                      │
-   * │                          ▼                                      │
-   * │                    ArkMethod (回调方法)                          │
-   * │                                                                 │
-   * └─────────────────────────────────────────────────────────────────┘
-   * ```
-   *
-   * @param attributeValue [Stmt, 关联值数组]
-   * @param componentClass 所属 Component 类
-   * @returns 回调方法（如果能解析到）
-   */
-  private resolveCallbackMethod(
-    attributeValue: [any, (Constant | ArkInstanceFieldRef | MethodSignature)[]],
+  /** Resolve all targets, including typed function arguments retained in registration IR. */
+  private resolveCallbackMethods(
+    [stmt, values]: [Stmt, (Constant | ArkInstanceFieldRef | MethodSignature)[]],
     componentClass: ArkClass,
-  ): ArkMethod | null {
-    const [stmt, relatedValues] = attributeValue;
-
-    // 遍历所有关联值，尝试解析出回调方法
-    for (const value of relatedValues) {
-      const method = this.resolveFromSingleValue(value, componentClass);
-      if (method) {
-        console.log(
-          `[ViewTreeCallbackExtractor] Resolved callback: ${method.getName()}`,
-        );
-        return method;
+  ): ArkMethod[] {
+    const methods = new Map<string, ArkMethod>();
+    const add = (method: ArkMethod | null) => {
+      if (method) methods.set(method.getSignature().toString(), method);
+    };
+    for (const value of values) add(this.resolveFromSingleValue(value, componentClass));
+    for (const arg of stmt.getInvokeExpr()?.getArgs() ?? []) {
+      let type = arg.getType();
+      const visited = new Set<AliasType>();
+      while (type instanceof AliasType && !visited.has(type)) {
+        visited.add(type);
+        type = type.getOriginalType();
       }
+      if (type instanceof FunctionType) add(this.scene.getMethod(type.getMethodSignature()));
     }
-
-    // 如果关联值中没有找到，尝试从语句中解析（Lambda 情况）
-    const lambdaMethod = this.resolveLambdaFromStmt(stmt, componentClass);
-    if (lambdaMethod) {
-      console.log(
-        `[ViewTreeCallbackExtractor] Resolved lambda callback: ${lambdaMethod.getName()}`,
-      );
-      return lambdaMethod;
-    }
-
-    console.log(
-      `[ViewTreeCallbackExtractor] Failed to resolve callback from ${relatedValues.length} values`,
-    );
-    return null;
+    return [...methods.values()];
   }
 
   /**
@@ -494,86 +397,12 @@ export class ViewTreeCallbackExtractor {
   }
 
   /**
-   * 从语句中解析 Lambda 表达式
-   *
-   * 处理形式:
-   * ```typescript
-   * Button().onClick(() => {
-   *     this.count++;
-   * })
-   * ```
-   *
-   * Lambda 表达式可能被 ArkAnalyzer 转换为匿名方法或内联代码
-   */
-  private resolveLambdaFromStmt(
-    stmt: any,
-    componentClass: ArkClass,
-  ): ArkMethod | null {
-    // Lambda 的处理比较复杂，ArkAnalyzer 可能：
-    // 1. 为 Lambda 生成一个匿名方法（如 lambda$onClick$1）
-    // 2. 将 Lambda 内联到调用点
-
-    // 查找可能的匿名/Lambda 方法
-    // ArkAnalyzer 通常会给 Lambda 生成特殊名称
-    for (const method of componentClass.getMethods()) {
-      const methodName = method.getName();
-
-      // 检查是否是生成的 Lambda 方法
-      // 常见的 Lambda 方法命名模式
-      if (
-        methodName.includes("lambda") ||
-        methodName.includes("anonymous") ||
-        methodName.startsWith("$")
-      ) {
-        // TODO: 需要进一步验证这个 Lambda 是否与当前 stmt 关联
-        // 暂时不返回 Lambda 方法，因为无法确定关联性
-      }
-    }
-
-    // 当前简化处理：不解析 Lambda
-    // 完整实现需要分析 stmt 的结构来确定 Lambda 定义
-    return null;
-  }
-
-  /**
    * 获取父类
    */
   private getSuperClass(arkClass: ArkClass): ArkClass | null {
-    const superClassName = arkClass.getSuperClassName();
-    if (!superClassName || superClassName === "Object") {
-      return null;
-    }
-
-    // 从 Scene 中查找父类
-    for (const cls of this.scene.getClasses()) {
-      if (cls.getName() === superClassName) {
-        return cls;
-      }
-    }
-
-    return null;
+    return arkClass.getSuperClass();
   }
 
-  // ========================================================================
-  // 辅助方法（保留原有的）
-  // ========================================================================
-
-  /**
-   * 收集关联的状态变量
-   *
-   * @param node ViewTree 节点
-   * @param attributeValue 属性值
-   * @returns 状态变量数组
-   */
-  private collectRelatedStateValues(
-    node: ViewTreeNode,
-    attributeValue: [any, (Constant | ArkInstanceFieldRef | MethodSignature)[]],
-  ): ArkField[] {
-    // 从节点的 stateValues 中收集
-    const stateValues: ArkField[] = [];
-    node.stateValues.forEach((field) => stateValues.push(field));
-    return stateValues;
-  }
 }
 
 // ============================================================================

@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import 'arkanalyzer';
 import type { Scene } from 'arkanalyzer';
+import {
+    ArkInvokeStmt, ArkStaticInvokeExpr, FunctionType, Local, ViewTreeNode,
+} from '../../src/adapter/arkanalyzer';
+import { createLifecycleModelCreator } from '../../src/lifecycle';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import { ViewTreeCallbackExtractor } from '../../src/lifecycle/ViewTreeCallbackExtractor';
 import { UIEventType } from '../../src/lifecycle/LifecycleTypes';
@@ -62,6 +66,10 @@ describe('ViewTreeCallbackExtractor', () => {
 
         expect(callbacks.map(callback => callback.callbackMethod.getName()))
             .toContain('handleClick');
+        const parentCallbacks = new ViewTreeCallbackExtractor(scene)
+            .extractFromComponent(getClass(scene, 'HomePage'));
+        expect(parentCallbacks.map(callback => callback.callbackMethod.getSignature().toString()))
+            .not.toContain(callbacks[0].callbackMethod.getSignature().toString());
     });
 
     it('skips a component when ArkAnalyzer cannot render a recursive ViewTree signature', () => {
@@ -77,5 +85,44 @@ describe('ViewTreeCallbackExtractor', () => {
             .extractFromComponent(componentClass as any)).toEqual([]);
         expect(warning).toHaveBeenCalledWith(expect.stringContaining('RecursiveGenericComponent'));
         warning.mockRestore();
+    });
+
+    it('retains event names and emits a global callback as a static invocation', () => {
+        const scene = buildLifecycleScene('callback-shapes');
+        const creator = createLifecycleModelCreator(scene);
+        creator.create();
+        const callbacks = creator.getComponents()[0].uiCallbacks;
+        expect(callbacks.map(callback => [callback.eventType, callback.callbackMethod.getName()]))
+            .toEqual(expect.arrayContaining([
+                ['onClick', 'globalTap'], ['onDragEnter', 'handleDrag'],
+                ['onMouse', 'handleMouse'], ['onVisibleAreaChange', 'handleVisible'],
+            ]));
+        const call = creator.getDummyMain().getCfg()!.getStmts()
+            .map(stmt => stmt.getInvokeExpr())
+            .find(invoke => invoke?.getMethodSignature().getMethodSubSignature().getMethodName() === 'globalTap');
+        expect(call).toBeInstanceOf(ArkStaticInvokeExpr);
+    });
+
+    it('resolves multiple targets and typed registration arguments without duplicating a target', () => {
+        const scene = buildLifecycleScene('complex-ui');
+        const component = getClass(scene, 'HomePage');
+        const first = component.getMethodWithName('handleButtonClick')!;
+        const second = component.getMethodWithName('handleTouch')!;
+        const stmt = new ArkInvokeStmt(new ArkStaticInvokeExpr(first.getSignature(), [
+            new Local('callback', new FunctionType(second.getSignature())),
+        ]));
+        const root = {
+            name: 'Button', children: [], stateValues: new Set(),
+            attributes: new Map([['onHover', [stmt, [first.getSignature(), first.getSignature()]]]]),
+        } as unknown as ViewTreeNode;
+        const rootSpy = vi.spyOn(component.getViewTree()!, 'getRoot').mockReturnValue(root);
+        try {
+            const callbacks = new ViewTreeCallbackExtractor(scene).extractFromComponent(component);
+            expect(callbacks.map(callback => callback.callbackMethod.getName()))
+                .toEqual(['handleButtonClick', 'handleTouch']);
+            expect(callbacks.every(callback => callback.eventType === UIEventType.ON_HOVER)).toBe(true);
+        } finally {
+            rootSpy.mockRestore();
+        }
     });
 });

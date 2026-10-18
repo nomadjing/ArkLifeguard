@@ -41,6 +41,7 @@ import {
     AbilityLifecycleStage,
     BackupExtensionLifecycleStage,
     FormExtensionLifecycleStage,
+    UIExtensionLifecycleStage,
     ComponentLifecycleStage,
     NavigationType,
     PageInfo,
@@ -83,6 +84,9 @@ const ABILITY_LIFECYCLE_STAGE_BY_METHOD = new Map<string, AbilityLifecycleMethod
     ),
     ...Object.values(FormExtensionLifecycleStage).map(
         stage => [stage, stage] as [string, FormExtensionLifecycleStage]
+    ),
+    ...Object.values(UIExtensionLifecycleStage).map(
+        stage => [stage, stage] as [string, UIExtensionLifecycleStage]
     ),
 ]);
 
@@ -493,7 +497,9 @@ export class AbilityCollector {
         
         // 检查继承链
         let superClass = arkClass.getSuperClass();
-        while (superClass) {
+        const visited = new Set<ArkClass>([arkClass]);
+        while (superClass && !visited.has(superClass)) {
+            visited.add(superClass);
             if (ABILITY_BASE_CLASSES.includes(superClass.getSuperClassName())) {
                 return true;
             }
@@ -602,7 +608,10 @@ export class AbilityCollector {
         result: Map<S, ArkMethod>
     ): void {
         let currentClass: ArkClass | null = arkClass;
-        while (currentClass && !frameworkBaseNames.includes(currentClass.getName())) {
+        const visited = new Set<ArkClass>();
+        while (currentClass && !visited.has(currentClass) &&
+            !frameworkBaseNames.includes(currentClass.getName())) {
+            visited.add(currentClass);
             for (const method of currentClass.getMethods()) {
                 const stage = stageByMethod.get(method.getName());
                 if (stage !== undefined && !result.has(stage)) {

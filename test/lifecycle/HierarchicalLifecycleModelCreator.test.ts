@@ -78,7 +78,7 @@ function cfgShape(creator: LifecycleModelCreator) {
     };
 }
 
-function creatorFor(model: 'opt-flat' | 'hierarchical') {
+function creatorFor(model: 'flat' | 'hierarchical') {
     const creator = createLifecycleModelCreator(buildLifecycleScene(PROJECT), model);
     creator.create();
     return creator;
@@ -101,16 +101,16 @@ describe('unified hierarchical lifecycle model', () => {
     });
 
     it('keeps the callback set fixed while pruning only illegal direct cross-Page transitions', () => {
-        const optFlat = creatorFor('opt-flat');
+        const flat = creatorFor('flat');
         const hierarchical = creatorFor('hierarchical');
         const pageScope = creatorFor('hierarchical');
         const expectedCallbacks = [...HANDLERS].sort();
 
-        expect(callbackNames(optFlat)).toEqual(expectedCallbacks);
+        expect(callbackNames(flat)).toEqual(expectedCallbacks);
         expect(callbackNames(hierarchical)).toEqual(expectedCallbacks);
         expect(callbackNames(pageScope)).toEqual(expectedCallbacks);
 
-        expect(nextCallbackPairs(optFlat)).toHaveLength(16);
+        expect(nextCallbackPairs(flat)).toHaveLength(16);
         const hierarchicalPairs = nextCallbackPairs(hierarchical);
         expect(nextCallbackPairs(pageScope)).toEqual(hierarchicalPairs);
         expect(hierarchicalPairs).toEqual([
@@ -127,7 +127,7 @@ describe('unified hierarchical lifecycle model', () => {
             'navigateToDetails->navigateToDetails',
         ]);
 
-        for (const creator of [optFlat]) {
+        for (const creator of [flat]) {
             expect(creator.getLifecycleModelStatistics().pageTransitions).toMatchObject({
                 candidateCallbackTransitions: 16,
                 retainedCallbackTransitions: 16,
@@ -148,10 +148,10 @@ describe('unified hierarchical lifecycle model', () => {
     });
 
     it('audits raw and callback-normalized compact CFG structure', () => {
-        const optFlat = creatorFor('opt-flat');
+        const flat = creatorFor('flat');
         const hierarchical = creatorFor('hierarchical');
 
-        expect(cfgShape(optFlat)).toEqual({
+        expect(cfgShape(flat)).toEqual({
             blocks: 11,
             edges: 18,
             dispatchBlocks: 1,
@@ -161,28 +161,8 @@ describe('unified hierarchical lifecycle model', () => {
             edges: 28,
             dispatchBlocks: 7,
         });
-        expect(callbackNames(hierarchical)).toEqual(callbackNames(optFlat));
+        expect(callbackNames(hierarchical)).toEqual(callbackNames(flat));
         expect(nextCallbackPairs(hierarchical)).toHaveLength(11);
-    });
-
-    it('supports compact-dispatcher ablation without changing Page semantics', () => {
-        const compact = createLifecycleModelCreator(
-            buildLifecycleScene(PROJECT), 'hierarchical'
-        );
-        const expanded = createLifecycleModelCreator(
-            buildLifecycleScene(PROJECT),
-            'hierarchical',
-            { optimizations: { compactDispatcher: false } } as any
-        );
-        compact.create();
-        expanded.create();
-
-        expect(blocks(expanded).length).toBeGreaterThan(blocks(compact).length);
-        expect(callbackNames(expanded)).toEqual(callbackNames(compact));
-        expect(expanded.getLifecycleModelStatistics().pageTransitions)
-            .toEqual(compact.getLifecycleModelStatistics().pageTransitions);
-        expect(hasNextCallback(expanded, 'handleHomeTap', 'handleDetailsTap')).toBe(false);
-        expect(hasNextCallback(expanded, 'navigateToDetails', 'handleDetailsTap')).toBe(true);
     });
 
 });

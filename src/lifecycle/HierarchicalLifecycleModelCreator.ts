@@ -22,6 +22,9 @@ import {
   AbilityInfo,
   AbilityLifecycleMethodStage,
   AbilityLifecycleStage,
+  ABILITY_START_STAGES,
+  ABILITY_END_STAGES,
+  COMPONENT_LOOP_STAGES,
   ComponentInfo,
   ComponentLifecycleStage,
   LifecycleModelStatistics,
@@ -29,27 +32,6 @@ import {
   ScopeModelInfo,
   UICallbackInfo,
 } from "./LifecycleTypes";
-
-const ABILITY_START_STAGES = new Set<AbilityLifecycleMethodStage>([
-  AbilityLifecycleStage.CREATE,
-  AbilityLifecycleStage.WINDOW_STAGE_CREATE,
-]);
-const ABILITY_END_STAGES = new Set<AbilityLifecycleMethodStage>([
-  AbilityLifecycleStage.WINDOW_STAGE_WILL_DESTROY,
-  AbilityLifecycleStage.WINDOW_STAGE_DESTROY,
-  AbilityLifecycleStage.DESTROY,
-]);
-const COMPONENT_LOOP_STAGES: ComponentLifecycleStage[] = [
-  ComponentLifecycleStage.WILL_APPLY_THEME,
-  ComponentLifecycleStage.BUILD,
-  ComponentLifecycleStage.DID_BUILD,
-  ComponentLifecycleStage.PAGE_SHOW,
-  ComponentLifecycleStage.BACK_PRESS,
-  ComponentLifecycleStage.KEY_EVENT,
-  ComponentLifecycleStage.PAGE_HIDE,
-  ComponentLifecycleStage.ABOUT_TO_RECYCLE,
-  ComponentLifecycleStage.ABOUT_TO_REUSE,
-];
 
 interface PageScope {
   page: PageInfo;
@@ -138,8 +120,7 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
     );
 
     const returnBlock = new BasicBlock();
-    this.addComponentStage(returnBlock, ComponentLifecycleStage.ABOUT_TO_DISAPPEAR);
-    this.addAbilityStages(returnBlock, ABILITY_END_STAGES);
+    this.addEndInvocations(returnBlock);
     returnBlock.addStmt(new ArkReturnVoidStmt());
     cfg.addBlock(returnBlock);
     this.linkBlocks(abilityHead, returnBlock);
@@ -281,7 +262,7 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
         const hasPageNavigation = this.getAbilityCollector()
           .hasPageNavigation(callback.callbackMethod);
         const callbackBlock = this.createCallbackBlock(cfg, component, callback);
-        this.linkSelectableDispatch(cfg, scope.eventHead, callbackBlock);
+        this.linkBlocks(scope.eventHead, callbackBlock);
         if (targetScopes.length > 0) {
           // Static target resolution does not prove that navigation succeeds
           // at runtime. Conservatively keep the local continuation as well as
@@ -308,7 +289,7 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
     for (const component of components) {
       for (const callback of component.uiCallbacks) {
         const callbackBlock = this.createCallbackBlock(cfg, component, callback);
-        this.linkSelectableDispatch(cfg, fallbackHead, callbackBlock);
+        this.linkBlocks(fallbackHead, callbackBlock);
         this.linkBlocks(callbackBlock, fallbackReturnHead);
       }
     }
@@ -431,7 +412,7 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
   ): void {
     if (invocations.length === 0) return;
     const invokeBlock = this.createInvocationBlock(cfg, invocations);
-    this.linkSelectableDispatch(cfg, dispatcher, invokeBlock);
+    this.linkBlocks(dispatcher, invokeBlock);
     this.linkBlocks(invokeBlock, dispatcher);
   }
 
@@ -441,22 +422,8 @@ export class HierarchicalLifecycleModelCreator extends LifecycleModelCreator {
     invocations: Array<[Local, ArkMethod]>,
   ): BasicBlock {
     const invokeBlock = this.createInvocationBlock(cfg, invocations);
-    this.linkSelectableDispatch(cfg, dispatcher, invokeBlock);
+    this.linkBlocks(dispatcher, invokeBlock);
     return invokeBlock;
-  }
-
-  private linkSelectableDispatch(
-    cfg: Cfg,
-    dispatcher: BasicBlock,
-    invocation: BasicBlock,
-  ): void {
-    if (this.config.optimizations.compactDispatcher) {
-      this.linkBlocks(dispatcher, invocation);
-      return;
-    }
-    const condition = this.createDispatchHead(cfg, dispatcher);
-    this.linkBlocks(condition, invocation);
-    this.linkBlocks(condition, dispatcher);
   }
 
   private createInvocationBlock(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import 'arkanalyzer';
-import { BasicBlock } from '../../src/adapter/arkanalyzer';
+import { ArkAssignStmt, ArkIfStmt, ArkNewExpr, BasicBlock } from '../../src/adapter/arkanalyzer';
 import {
     createLifecycleModelCreator,
     DEFAULT_LIFECYCLE_MODEL_MODE,
@@ -87,9 +87,51 @@ describe('interchangeable lifecycle model entry', () => {
         expect(creator.getAbilities().map(ability => ability.name)).not.toContain(
             'TestAbility'
         );
+        expect(creator.getLifecycleModelStatistics().abilities.pruned).toBe(0);
     });
 
-    it.each(['bounded-unroll', 'bounded-opt-flat'])(
+    it('uses one compact dispatcher and a unique continuation for every event', () => {
+        const creator = createLifecycleModelCreator(buildLifecycleScene('simple'));
+        creator.create();
+        const cfg = creator.getDummyMain().getCfg()!;
+        const blocks = [...cfg.getBlocks()];
+        const heads = blocks.filter(block => block.getTail() instanceof ArkIfStmt);
+        expect(heads).toHaveLength(1);
+        const dispatcher = heads[0];
+        const entry = cfg.getStartingBlock()!;
+        const end = blocks.find(block => block.getSuccessors().length === 0)!;
+        const events = blocks.filter(block => block !== entry && block !== end && block !== dispatcher);
+        expect(events).toHaveLength(5);
+        expect(blocks).toHaveLength(8);
+        expect(blocks.reduce((count, block) => count + block.getSuccessors().length, 0)).toBe(12);
+        expect(entry.getSuccessors()).toEqual([dispatcher]);
+        expect(new Set(dispatcher.getSuccessors())).toEqual(new Set([...events, end]));
+        for (const event of events) {
+            expect(event.getPredecessors()).toEqual([dispatcher]);
+            expect(event.getSuccessors()).toEqual([dispatcher]);
+        }
+        expect([...creator.getDummyMain().getBody()!.getLocals().keys()]).not.toContain('count');
+    });
+
+    it('creates all retained instances before the first Ability start callback', () => {
+        const creator = createLifecycleModelCreator(buildLifecycleScene('ability-scope-nesting'));
+        creator.create();
+        const classes = new Set([...creator.getAbilities(), ...creator.getComponents()]
+            .map(item => item.signature.toString()));
+        const statements = creator.getDummyMain().getCfg()!.getStartingBlock()!.getStmts();
+        const allocations = statements.flatMap((stmt, index) => {
+            if (!(stmt instanceof ArkAssignStmt)) return [];
+            const rhs = stmt.getRightOp();
+            return rhs instanceof ArkNewExpr && classes.has(rhs.getClassType().getClassSignature().toString())
+                ? [index] : [];
+        });
+        const firstCreate = statements.findIndex(stmt => stmt.getInvokeExpr()
+            ?.getMethodSignature().getMethodSubSignature().getMethodName() === 'onCreate');
+        expect(allocations).toHaveLength(classes.size);
+        expect(firstCreate).toBeGreaterThan(Math.max(...allocations));
+    });
+
+    it.each(['bounded-unroll', 'opt-flat'])(
         'rejects the retired model %s through the factory', mode => {
             expect(() => createLifecycleModelCreator(
                 buildLifecycleScene('simple'),
@@ -115,52 +157,22 @@ describe('interchangeable lifecycle model entry', () => {
         expect(blocks.every(block => block.getStmts().length > 0)).toBe(true);
     });
 
-    it('provides an optimized flat baseline with the same Ability pruning as M1', () => {
-        const creators = ['opt-flat', 'hierarchical'] as const;
-        for (const mode of creators) {
-            const creator = createLifecycleModelCreator(
-                buildLifecycleScene('ability-scope-nesting'),
-                mode
-            );
-            creator.create();
-            expect(creator.getAbilities().map(ability => ability.name)).toEqual([
-                'EntryAbility',
-                'SecondAbility',
-            ]);
-            expect(creator.getLifecycleModelStatistics().abilities).toEqual({
-                collected: 3,
-                reachable: 2,
-                pruned: 1,
-            });
-        }
+    it('prunes unreachable Abilities only in the hierarchical model', () => {
+        const creator = createLifecycleModelCreator(buildLifecycleScene('ability-scope-nesting'), 'hierarchical');
+        creator.create();
+        expect(creator.getAbilities().map(ability => ability.name)).toEqual(['EntryAbility', 'SecondAbility']);
+        expect(creator.getLifecycleModelStatistics().abilities).toEqual({ collected: 3, reachable: 2, pruned: 1 });
     });
 
-    it('supports independent M1 optimization ablations', () => {
-        const create = (optimizations: {
-            compactDispatcher?: boolean;
-            pruneUnreachableAbilities?: boolean;
-        }, fixture = 'ability-scope-nesting') => {
-            const creator = createLifecycleModelCreator(
-                buildLifecycleScene(fixture),
-                'hierarchical',
-                { optimizations } as any
-            );
-            creator.create();
-            return creator;
-        };
-        const full = create({});
-        const noCompact = create({ compactDispatcher: false });
-        expect(noCompact.getDummyMain().getCfg()!.getBlocks().size)
-            .toBeGreaterThan(full.getDummyMain().getCfg()!.getBlocks().size);
-        expect([...noCompact.getDummyMain().getCfg()!.getBlocks()]
-            .flatMap(invokedNames).sort())
-            .toEqual([...full.getDummyMain().getCfg()!.getBlocks()]
-                .flatMap(invokedNames).sort());
-
-        const noPrune = create({ pruneUnreachableAbilities: false });
-        expect(noPrune.getAbilities().map(ability => ability.name))
-            .toContain('UnusedAbility');
-        expect(noPrune.getLifecycleModelStatistics().abilities.pruned).toBe(0);
+    it('can disable hierarchical Ability pruning', () => {
+        const creator = createLifecycleModelCreator(
+            buildLifecycleScene('ability-scope-nesting'),
+            'hierarchical',
+            { optimizations: { pruneUnreachableAbilities: false } },
+        );
+        creator.create();
+        expect(creator.getAbilities().map(ability => ability.name)).toContain('UnusedAbility');
+        expect(creator.getLifecycleModelStatistics().abilities.pruned).toBe(0);
     });
 
 });

@@ -56,12 +56,12 @@ describe('ArkLifeguard CLI', () => {
     });
 
     it.each(['--resource-engine', '--max-abilities-per-flow', '--max-navigation-hops',
-        '--max-callback-iterations'])(
+        '--max-callback-iterations', '--no-compact-lifecycle-dispatcher'])(
         'rejects the retired option %s instead of silently accepting it', async option => {
             expect(await runCLI(['node', 'arklifeguard', 'analyze', '/not/analyzed', option, 'new'])).toBe(1);
         });
 
-    it.each(['bounded-unroll', 'bounded-opt-flat'])(
+    it.each(['bounded-unroll', 'opt-flat'])(
         'rejects the retired lifecycle model %s', async model => {
             expect(await runCLI(['node', 'arklifeguard', 'analyze', '/not/analyzed',
                 '--lifecycle-model', model])).toBe(1);
@@ -164,6 +164,8 @@ describe('ArkLifeguard CLI', () => {
         expect(code).toBe(0);
         const report = JSON.parse(fs.readFileSync(lifecyclePath, 'utf8'));
         expect(report.reportKind).toBe('lifecycle-modeling-details');
+        expect(report.settings.lifecycleModel).toBe('flat');
+        expect(report.settings.optimizations).toEqual({ pruneUnreachableAbilities: false });
         expect(report.dummyMain.methodSignature).toContain('@extendedDummyMain');
         expect(report.dummyMain.edges).toBeGreaterThan(0);
         expect(report.lifecycleStatistics.abilities.collected).toBeGreaterThan(0);

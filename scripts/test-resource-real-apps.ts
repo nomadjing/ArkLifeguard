@@ -39,8 +39,7 @@ interface Options {
     outputPath?: string;
     timeoutMs: number;
     collectSolverStatistics: boolean;
-    lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
-    compactLifecycleDispatcher: boolean;
+    lifecycleModel: LifecycleModelMode;
     pruneUnreachableAbilities: boolean;
     limit?: number;
     listOnly: boolean;
@@ -83,9 +82,8 @@ interface RealAppsReport {
         sdkRoot: string;
         timeoutMs: number;
         collectSolverStatistics: boolean;
-        lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'>;
+        lifecycleModel: LifecycleModelMode;
         lifecycleOptimizations: {
-            compactDispatcher: boolean;
             pruneUnreachableAbilities: boolean;
         };
     };
@@ -190,8 +188,7 @@ function help(): void {
         '  --sdk-root <path>           SDK root containing openharmony/ets and hms/ets',
         '  --timeout-ms <n>            Hard per-project timeout; default: 180000',
         '  --ifds-stats                Collect aggregate IFDS solver statistics',
-        '  --lifecycle-model <mode>    flat, opt-flat or hierarchical; default: flat',
-        '  --no-compact-dispatcher     Disable compact lifecycle dispatch',
+        '  --lifecycle-model <mode>    flat or hierarchical; default: flat',
         '  --no-ability-prune          Retain unreachable Abilities',
         '  --list                      List projects without analyzing',
         '  -h, --help                  Show this help',
@@ -223,8 +220,7 @@ function parseArgs(args: string[]): Options {
     let outputPath: string | undefined;
     let timeoutMs = 180_000;
     let collectSolverStatistics = false;
-    let lifecycleModel: Extract<LifecycleModelMode, 'flat' | 'opt-flat' | 'hierarchical'> = 'flat';
-    let compactLifecycleDispatcher = true;
+    let lifecycleModel: LifecycleModelMode = 'flat';
     let pruneUnreachableAbilities = true;
     let limit: number | undefined;
     let listOnly = false;
@@ -269,18 +265,16 @@ function parseArgs(args: string[]): Options {
             collectSolverStatistics = true;
         } else if (arg === '--lifecycle-model') {
             const value = consume(arg);
-            if (value !== 'flat' && value !== 'opt-flat' && value !== 'hierarchical') {
-                throw new Error(`${arg} must be flat, opt-flat or hierarchical: ${value}`);
+            if (value !== 'flat' && value !== 'hierarchical') {
+                throw new Error(`${arg} must be flat or hierarchical: ${value}`);
             }
             lifecycleModel = value;
         } else if (arg.startsWith('--lifecycle-model=')) {
             const value = arg.slice('--lifecycle-model='.length);
-            if (value !== 'flat' && value !== 'opt-flat' && value !== 'hierarchical') {
-                throw new Error(`--lifecycle-model must be flat, opt-flat or hierarchical: ${value}`);
+            if (value !== 'flat' && value !== 'hierarchical') {
+                throw new Error(`--lifecycle-model must be flat or hierarchical: ${value}`);
             }
             lifecycleModel = value;
-        } else if (arg === '--no-compact-dispatcher') {
-            compactLifecycleDispatcher = false;
         } else if (arg === '--no-ability-prune') {
             pruneUnreachableAbilities = false;
         } else if (arg === '--list') {
@@ -303,7 +297,6 @@ function parseArgs(args: string[]): Options {
         timeoutMs,
         collectSolverStatistics,
         lifecycleModel,
-        compactLifecycleDispatcher,
         pruneUnreachableAbilities,
         limit,
         listOnly,
@@ -371,8 +364,7 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
             runResourceAnalysis: true,
             analyzeNavigation: false,
             lifecycleModel: options.lifecycleModel,
-            compactLifecycleDispatcher: options.compactLifecycleDispatcher,
-            pruneUnreachableAbilities: options.pruneUnreachableAbilities,
+            pruneUnreachableAbilities: options.lifecycleModel === 'hierarchical' && options.pruneUnreachableAbilities,
             collectSolverStatistics: options.collectSolverStatistics,
         }).analyze(projectPath);
         record.projectFiles = result.summary.projectFiles;
@@ -542,8 +534,7 @@ async function main(): Promise<void> {
             collectSolverStatistics: options.collectSolverStatistics,
             lifecycleModel: options.lifecycleModel,
             lifecycleOptimizations: {
-                compactDispatcher: options.compactLifecycleDispatcher,
-                pruneUnreachableAbilities: options.pruneUnreachableAbilities,
+                pruneUnreachableAbilities: options.lifecycleModel === 'hierarchical' && options.pruneUnreachableAbilities,
             },
         },
         summary: emptySummary(selected.length),
@@ -569,7 +560,6 @@ async function main(): Promise<void> {
             '--sdk-root', options.sdkRoot,
             '--lifecycle-model', options.lifecycleModel,
         ];
-        if (!options.compactLifecycleDispatcher) childArgs.push('--no-compact-dispatcher');
         if (!options.pruneUnreachableAbilities) childArgs.push('--no-ability-prune');
         if (options.collectSolverStatistics) childArgs.push('--ifds-stats');
         const child = spawnSync(process.execPath, childArgs, {

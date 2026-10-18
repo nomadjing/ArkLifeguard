@@ -28,7 +28,7 @@
  * ├── LifecycleTypes.ts             # 类型定义
  * ├── AbilityCollector.ts           # Ability/Component 收集器
  * ├── ViewTreeCallbackExtractor.ts  # UI 回调提取器
- * ├── FlatLifecycleModelCreator.ts  # Flat / optimized-flat
+ * ├── FlatLifecycleModelCreator.ts  # Compact flat
  * └── HierarchicalLifecycleModelCreator.ts # canonical hierarchy
  * ```
  * 
@@ -45,7 +45,7 @@
  * const dummyMain = creator.getDummyMain();
  * ```
  * 
- * Flat、optimized-flat 与 hierarchical 通过同一入口选择。
+ * Flat 与 hierarchical 通过同一入口选择。
  */
 
 // ============================================================================
@@ -57,6 +57,7 @@ export {
     AbilityLifecycleStage,
     BackupExtensionLifecycleStage,
     FormExtensionLifecycleStage,
+    UIExtensionLifecycleStage,
     AbilityLifecycleMethodStage,
     ComponentLifecycleStage,
     
@@ -87,7 +88,6 @@ export { ViewTreeCallbackExtractor, extractUICallbacks } from './ViewTreeCallbac
 export { LifecycleModelCreator } from './LifecycleModelCreator';
 export {
     FlatLifecycleModelCreator,
-    OptimizedFlatLifecycleModelCreator,
 } from './FlatLifecycleModelCreator';
 export { HierarchicalLifecycleModelCreator } from './HierarchicalLifecycleModelCreator';
 export {

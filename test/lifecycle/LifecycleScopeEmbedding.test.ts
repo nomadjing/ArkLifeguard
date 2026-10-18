@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import 'arkanalyzer';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import { HierarchicalLifecycleModelCreator } from '../../src/lifecycle/HierarchicalLifecycleModelCreator';
-import { OptimizedFlatLifecycleModelCreator } from '../../src/lifecycle/FlatLifecycleModelCreator';
+import { FlatLifecycleModelCreator } from '../../src/lifecycle/FlatLifecycleModelCreator';
 import type { BasicBlock } from '../../src/adapter/arkanalyzer';
 import { buildLifecycleScene } from '../helpers/buildScene';
 
@@ -79,8 +79,8 @@ describe('lifecycle scope embedding', () => {
             .toBeGreaterThan(0);
     });
 
-    it('keeps callbacks in one global scope in M0-OptFlat', () => {
-        const creator = new OptimizedFlatLifecycleModelCreator(
+    it('keeps callbacks in one global scope in flat', () => {
+        const creator = new FlatLifecycleModelCreator(
             buildLifecycleScene('ability-scope-nesting')
         );
         creator.create();

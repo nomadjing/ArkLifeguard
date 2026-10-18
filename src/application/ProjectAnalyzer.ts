@@ -43,7 +43,6 @@ export interface ProjectAnalysisOptions {
     maxRetentionStates?: number;
     maxRetentionCallDepth?: number;
     lifecycleModel?: LifecycleModelMode;
-    compactLifecycleDispatcher?: boolean;
     pruneUnreachableAbilities?: boolean;
     maxAccessPathLength?: number;
     maxPropagationDepth?: number;
@@ -89,7 +88,6 @@ export interface ProjectAnalysisResult {
         retentionBounds?: { maxStates: number; maxCallDepth: number };
         lifecycleModel: LifecycleModelMode;
         lifecycleOptimizations: {
-            compactDispatcher: boolean;
             pruneUnreachableAbilities: boolean;
         };
         bounds: {
@@ -201,7 +199,6 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     maxRetentionStates: 20000,
     maxRetentionCallDepth: 4,
     lifecycleModel: DEFAULT_LIFECYCLE_MODEL_MODE,
-    compactLifecycleDispatcher: DEFAULT_LIFECYCLE_CONFIG.optimizations.compactDispatcher,
     pruneUnreachableAbilities: DEFAULT_LIFECYCLE_CONFIG.optimizations.pruneUnreachableAbilities,
     maxAccessPathLength: 5,
     maxPropagationDepth: 40,
@@ -242,7 +239,6 @@ export class ProjectAnalyzer {
                 lifecycleOrder: NULLNESS_LIFECYCLE_ORDER,
                 enableViewTreeParsing: this.options.extractUICallbacks,
                 optimizations: {
-                    compactDispatcher: this.options.compactLifecycleDispatcher,
                     pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
                 },
             });
@@ -358,8 +354,8 @@ export class ProjectAnalyzer {
                 retentionBounds: { maxStates: this.options.maxRetentionStates, maxCallDepth: this.options.maxRetentionCallDepth },
                 lifecycleModel: this.options.lifecycleModel,
                 lifecycleOptimizations: {
-                    compactDispatcher: this.options.compactLifecycleDispatcher,
-                    pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
+                    pruneUnreachableAbilities: this.options.lifecycleModel === 'hierarchical' &&
+                        this.options.pruneUnreachableAbilities,
                 },
                 bounds: {
                     maxAccessPathLength: this.options.maxAccessPathLength,
