@@ -509,6 +509,20 @@
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
       "targetSdkVersion": null
+    },
+    {
+      "name": "TunBox",
+      "path": "projects/TunBox",
+      "repo": "https://github.com/xiaoli8571/TunBox.git",
+      "revision": "6cc11e0953c30611df6b6c7c736ddf4c27ab22fa",
+      "resolvedCommit": "6cc11e0953c30611df6b6c7c736ddf4c27ab22fa",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": "6.1.1(24)",
+      "targetSdkVersion": "26.0.0",
+      "sourceType": "snapshot",
+      "sourceRoot": "TunBox_HarmonyOS",
+      "sourceManifest": "TunBox.source-manifest.json",
+      "sourceScope": "Production ArkTS/TypeScript and configuration snapshot; excludes tests, native implementations, binaries, images, and generated duplicate TypeScript."
     }
   ]
 }

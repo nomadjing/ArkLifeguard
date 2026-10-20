@@ -24,11 +24,3 @@
 | [内存保留](analysis/memory.md) | 生命周期后的强引用根可达性 | 不测堆增长；附属对象归属和重复实例存在近似 |
 
 CLI 默认四类检查、`flat` 模型；资源直接使用规则 IFDS。API 默认仅开启空指针与资源。主报告 schema 为 3，各模块有显式启用/完成状态。
-
-## 研究方案
-
-| 文档 | 内容 |
-| --- | --- |
-| [页面状态机研究判断](analysis/lifecycle-page-state-research.md) | Hidden/Visible 对资源分析的潜在收益、边界与推进门槛；尚未实现 |
-| [生命周期精化实验计划](lifecycle-refinement-experiment-plan.md) | 人工补全 owner/route 与状态约束的对照实验、标注流程、判定标准及后续 LLM 实验；尚未实施 |
-| [规则驱动的 Agent 辅助方案](agent-assisted-rule-analysis.md) | 资源合同补全与验证后的复用设计 |

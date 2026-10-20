@@ -34,7 +34,7 @@
     "sync:real-apps": "vite-node scripts/sync-harmony-real-apps.ts"
   },
   "dependencies": {
-    "arkanalyzer": "1.0.90",
+    "arkanalyzer": "^1.0.91",
     "commander": "13.1.0"
   },
   "devDependencies": {
