@@ -20,6 +20,54 @@ declare function schedule(callback: () => void): void;
 export class FlowCases {
     private field?: Handle;
 
+    static replace(_handle: Handle): Handle {
+        return new Handle();
+    }
+
+    static identity(handle: Handle): Handle {
+        return handle;
+    }
+
+    static overwriteByReturn(): void {
+        let handle = Handle.open();
+        handle = FlowCases.replace(handle);
+        handle.release();
+    }
+
+    static preserveReturnedAlias(): void {
+        let handle = Handle.open();
+        handle = FlowCases.identity(handle);
+        handle.release();
+    }
+
+    static preserveOtherAlias(): void {
+        let handle = Handle.open();
+        const alias = handle;
+        handle = FlowCases.replace(handle);
+        alias.release();
+    }
+
+    static choose(handle: Handle, keep: boolean): Handle {
+        if (keep) return handle;
+        return new Handle();
+    }
+
+    static conditionalReturnedAlias(keep: boolean): void {
+        let handle = Handle.open();
+        handle = FlowCases.choose(handle, keep);
+        handle.release();
+    }
+
+    static reassignParameter(handle: Handle): void {
+        handle = Handle.open();
+    }
+
+    static parameterAssignmentIsLocal(): void {
+        const handle = Handle.open();
+        FlowCases.reassignParameter(handle);
+        handle.release();
+    }
+
     store(): void {
         this.field = Handle.open();
     }
@@ -32,6 +80,23 @@ export class FlowCases {
         const owner = new FlowCases();
         owner.store();
         owner.releaseField();
+    }
+
+    static releaseOwner(owner: FlowCases): void {
+        owner.releaseField();
+    }
+
+    static releaseThroughOwnerParameter(): void {
+        const owner = new FlowCases();
+        owner.store();
+        FlowCases.releaseOwner(owner);
+    }
+
+    static releaseDifferentOwner(): void {
+        const owner = new FlowCases();
+        const other = new FlowCases();
+        owner.store();
+        FlowCases.releaseOwner(other);
     }
 
     static leakAcrossMethods(): void {

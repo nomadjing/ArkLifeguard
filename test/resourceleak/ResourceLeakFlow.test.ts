@@ -83,6 +83,34 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('releaseFactoryResult').diagnostics).toEqual([]);
     });
 
+    it('does not release an old allocation through a replaced call-result handle', () => {
+        const result = run('overwriteByReturn');
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toMatchObject([{ reason: 'overwritten', confidence: 'high' }]);
+        expect(result.diagnostics).toHaveLength(1);
+        expect(run('preserveReturnedAlias').diagnostics).toEqual([]);
+        expect(run('preserveOtherAlias').diagnostics).toEqual([]);
+    });
+
+    it('retains the leaking return branch when another branch returns the old resource', () => {
+        const result = run('conditionalReturnedAlias');
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toMatchObject([{ reason: 'partially-released' }]);
+        expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it('does not transfer a callee parameter reassignment to the caller local', () => {
+        const result = run('parameterAssignmentIsLocal');
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toHaveLength(1);
+        const allocationLine = method('reassignParameter').getCfg()!.getStmts()
+            .find(stmt => stmt.getInvokeExpr()?.getMethodSignature().getMethodSubSignature()
+                .getMethodName() === 'open')!.getOriginPositionInfo().getLineNo();
+        expect(result.diagnostics[0]).toMatchObject({
+            allocation: { line: allocationLine }, reason: 'unreleased',
+        });
+    });
+
     it('distinguishes wrong release, overwrite and partial release', () => {
         expect(run('wrongRelease').diagnostics.map(item => item.reason)).toEqual(['wrong-release']);
         expect(run('overwritten').diagnostics.map(item => item.reason)).toEqual(['overwritten']);
@@ -107,6 +135,27 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('releaseAcrossMethods').diagnostics).toEqual([]);
         expect(run('leakAcrossMethods').diagnostics.map(item => item.reason))
             .toEqual(['unreleased']);
+    });
+
+    it('rebases an owner field onto a parameter without conflating owners', () => {
+        const released = run('releaseThroughOwnerParameter');
+        expect(released.status).toBe('success');
+        expect(released.diagnostics).toEqual([]);
+        const leaking = run('releaseDifferentOwner');
+        expect(leaking.status).toBe('success');
+        expect(leaking.diagnostics).toMatchObject([{ reason: 'unreleased' }]);
+        expect(leaking.diagnostics).toHaveLength(1);
+    });
+
+    it('preserves multiple contracts for one full API signature', () => {
+        const shared = { ...rules[0], id: 'SharedHandleContract' };
+        const analyze = (name: string) => new ResourceRunner(scene, [rules[0], shared])
+            .runWithDummyMain(method(name));
+        const leaking = analyze('leak');
+        expect(leaking.status).toBe('success');
+        expect(leaking.diagnostics.map(item => item.ruleId).sort())
+            .toEqual(['HandleNotReleased', 'SharedHandleContract']);
+        expect(analyze('releaseAlias').diagnostics).toEqual([]);
     });
 
     it('keeps unknown ownership uncertain and honors explicit nullification rules', () => {

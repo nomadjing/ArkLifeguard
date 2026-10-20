@@ -29,7 +29,9 @@ import type { ResourceApi, ResourceHandleLocation, ResourceRule } from './rules/
 /** Rule-driven IFDS transfer functions. No global mutable allocation/release map is used. */
 export class ResourceProblem extends DataflowProblem<ResourceFact> {
     private readonly zero = ResourceFact.zeroFact();
-    private readonly rules: readonly ResourceRule[];
+    private readonly rulesById = new Map<string, ResourceRule>();
+    private readonly allocators = new Map<string, { rule: ResourceRule; api: ResourceApi }[]>();
+    private readonly releasers = new Map<string, { rule: ResourceRule; api: ResourceApi }[]>();
     private readonly objectIds = new WeakMap<object, number>();
     private readonly factKeys = new WeakMap<ResourceFact, string>();
     private readonly factHashes = new WeakMap<ResourceFact, number>();
@@ -57,8 +59,16 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 }
             }
             ids.add(rule.id);
+            this.rulesById.set(rule.id, rule);
+            for (const [apis, index] of [[rule.allocators, this.allocators],
+                [rule.releasers, this.releasers]] as const) {
+                for (const api of apis) {
+                    const entries = index.get(api.methodSignature) ?? [];
+                    entries.push({ rule, api });
+                    index.set(api.methodSignature, entries);
+                }
+            }
         }
-        this.rules = rules;
     }
 
     getNormalFlowFunction(srcStmt: Stmt, _tgtStmt: Stmt): FlowFunction<ResourceFact> {
@@ -91,9 +101,19 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 const frame = fact.frames.at(-1);
                 if (frame?.callSite === callStmt) {
                     const handles = this.mapCalleeHandlesToCaller(exitStmt, callStmt, fact.handles);
-                    // A caller's aliases survive pass-by-value parameter assignments.
+                    // Parameters are passed by value, but the call result overwrites
+                    // its destination. Only an aliased return can restore that handle.
+                    const returnedAlias = exitStmt instanceof ArkReturnStmt &&
+                        hasResourceHandle(fact.handles, this.unwrap(exitStmt.getOp()));
+                    const destination = callStmt instanceof ArkAssignStmt ? callStmt.getLeftOp() : undefined;
+                    const restored = uniqueResourceHandles([...frame.callerHandles, ...handles])
+                        .filter(handle => !destination || returnedAlias ||
+                            resourceValueKey(handle) !== resourceValueKey(destination));
+                    const overwritten = restored.length === 0 && !!destination &&
+                        hasResourceHandle(frame.callerHandles, destination) && fact.state === 'allocated';
                     return new Set([fact.derive({
-                        handles: uniqueResourceHandles([...frame.callerHandles, ...handles]),
+                        handles: restored,
+                        ...(overwritten ? { event: 'overwritten', eventSite: callStmt } as const : {}),
                         frames: fact.frames.slice(0, -1),
                     })]);
                 }
@@ -191,35 +211,33 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
     private transfer(stmt: Stmt, fact: ResourceFact): Set<ResourceFact> {
         if (fact.isZero()) {
             const result = new Set([fact]);
-            for (const rule of this.rules) {
-                for (const allocator of rule.allocators) {
-                    if (!this.matchesApi(stmt, allocator)) continue;
-                    const allocated = ResourceFact.allocate(rule.id, stmt,
-                        allocator.acquisition === 'callback' ? undefined
-                            : this.handleAt(stmt, allocator.handleLocation));
-                    result.add(allocator.acquisition === 'promise' && allocated.handles.length
-                        ? allocated.derive({ state: 'pending' }) : allocated);
-                }
+            const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
+            for (const { rule, api } of this.allocators.get(signature ?? '') ?? []) {
+                const allocated = ResourceFact.allocate(rule.id, stmt,
+                    api.acquisition === 'callback' ? undefined : this.handleAt(stmt, api.handleLocation));
+                result.add(api.acquisition === 'promise' && allocated.handles.length
+                    ? allocated.derive({ state: 'pending' }) : allocated);
             }
             return result;
         }
         if (fact.state === 'released' || fact.state === 'escaped') return new Set([fact]);
-        const rule = this.rules.find(item => item.id === fact.ruleId)!;
-        for (const releaser of rule.releasers) {
-            if (!this.matchesApi(stmt, releaser)) continue;
-            const handle = this.handleAt(stmt, releaser.handleLocation);
+        const rule = this.rulesById.get(fact.ruleId)!;
+        const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
+        const releases = this.releasers.get(signature ?? '') ?? [];
+        // A signature can participate in several contracts. Preserve matching-rule
+        // precedence and all entries rather than allowing last-write-wins indexing.
+        for (const { rule: owner, api } of releases) {
+            if (owner.id !== rule.id) continue;
+            const handle = this.handleAt(stmt, api.handleLocation);
             if (handle && this.matchesHandle(fact.handles, handle, rule)) {
                 return new Set([fact.derive({ state: 'released', eventSite: stmt })]);
             }
         }
-        for (const other of this.rules) {
-            if (other.id === rule.id) continue;
-            for (const releaser of other.releasers) {
-                if (!this.matchesApi(stmt, releaser)) continue;
-                const handle = this.handleAt(stmt, releaser.handleLocation);
-                if (handle && hasResourceHandle(fact.handles, handle)) {
-                    return new Set([fact.derive({ event: 'wrong-release', eventSite: stmt })]);
-                }
+        for (const { rule: owner, api } of releases) {
+            if (owner.id === rule.id) continue;
+            const handle = this.handleAt(stmt, api.handleLocation);
+            if (handle && hasResourceHandle(fact.handles, handle)) {
+                return new Set([fact.derive({ event: 'wrong-release', eventSite: stmt })]);
             }
         }
         if (stmt instanceof ArkAssignStmt && !stmt.getInvokeExpr()) {
@@ -282,13 +300,9 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return new Set([fact]);
     }
 
-    private matchesApi(stmt: Stmt, api: ResourceApi): boolean {
-        return stmt.getInvokeExpr()?.getMethodSignature().toString() === api.methodSignature;
-    }
-
     private isRuleApi(stmt: Stmt): boolean {
-        return this.rules.some(rule => [...rule.allocators, ...rule.releasers]
-            .some(api => this.matchesApi(stmt, api)));
+        const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
+        return signature !== undefined && (this.allocators.has(signature) || this.releasers.has(signature));
     }
 
     private handleAt(stmt: Stmt, location: ResourceHandleLocation): Value | undefined {
@@ -327,9 +341,12 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         const mapped: Value[] = [];
         for (let index = 0; index < invoke.getArgs().length; index++) {
             const argument = invoke.getArgs()[index];
-            if (!hasResourceHandle(handles, argument)) continue;
             const parameter = this.getParameterLocal(method, index);
-            if (parameter) mapped.push(parameter);
+            if (!parameter) continue;
+            for (const handle of handles) {
+                const rebased = this.rebase(handle, argument, parameter);
+                if (rebased) mapped.push(rebased);
+            }
         }
         if (invoke instanceof ArkInstanceInvokeExpr) {
             const receiver = invoke.getBase();
@@ -355,8 +372,13 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         if (method) {
             for (let index = 0; index < invoke.getArgs().length; index++) {
                 const parameter = this.getParameterLocal(method, index);
-                if (parameter && hasResourceHandle(handles, parameter)) {
-                    result.push(invoke.getArgs()[index]);
+                if (!parameter) continue;
+                for (const handle of handles) {
+                    // Reassigning a parameter does not reassign the caller's local.
+                    // Only fields of that object carry writes back across the call.
+                    if (!(handle instanceof ArkInstanceFieldRef)) continue;
+                    const rebased = this.rebase(handle, parameter, invoke.getArgs()[index]);
+                    if (rebased) result.push(rebased);
                 }
             }
         }

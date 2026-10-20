@@ -475,32 +475,40 @@ export abstract class LifecycleModelCreator {
     components: readonly ComponentInfo[],
   ): LifecycleModelStatistics['pageTransitions'] {
     const collector = this.abilityCollector;
-    const registrations = components.flatMap(component =>
-      component.uiCallbacks.map(callback => ({ component, callback }))
-    );
-    const candidateCallbackTransitions = registrations.length ** 2;
-    const boundCallbacks = registrations.filter(({ component }) =>
-      collector.getPagesForComponent(component).length > 0
-    ).length;
-    const fallbackCallbacks = registrations.length - boundCallbacks;
-    let conservativeFallbackTransitions = 0;
+    // Resolve ownership once per component and count targets with identical Page sets.
+    const pagesByComponent = new Map(components.map(component => [
+      component, new Set(collector.getPagesForComponent(component).map(page => page.id)),
+    ]));
+    const targetGroups = new Map<string, { pages: Set<string>; count: number }>();
+    let totalCallbacks = 0;
+    let boundCallbacks = 0;
+    for (const component of components) {
+      const pages = pagesByComponent.get(component)!;
+      const count = component.uiCallbacks.length;
+      totalCallbacks += count;
+      if (pages.size > 0) boundCallbacks += count;
+      if (count === 0) continue;
+      const key = JSON.stringify([...pages].sort());
+      const group = targetGroups.get(key);
+      if (group) group.count += count;
+      else targetGroups.set(key, { pages, count });
+    }
+    const candidateCallbackTransitions = totalCallbacks ** 2;
+    const fallbackCallbacks = totalCallbacks - boundCallbacks;
+    const conservativeFallbackTransitions = candidateCallbackTransitions - boundCallbacks ** 2;
     let legalNavigationTransitions = 0;
-    for (const source of registrations) {
-      const sourcePages = collector.getPagesForComponent(source.component);
-      const navigationPages = new Set(
-        collector.getNavigationTargetPages(source.callback.callbackMethod)
-          .map(page => page.id),
-      );
-      for (const target of registrations) {
-        const targetPages = collector.getPagesForComponent(target.component);
-        if (sourcePages.length === 0 || targetPages.length === 0) {
-          conservativeFallbackTransitions++;
-        }
-        if (targetPages.some(page => navigationPages.has(page.id)) &&
-          !sourcePages.some(sourcePage =>
-            targetPages.some(targetPage => targetPage.id === sourcePage.id)
-          )) {
-          legalNavigationTransitions++;
+    for (const component of components) {
+      const sourcePages = pagesByComponent.get(component)!;
+      for (const callback of component.uiCallbacks) {
+        const navigationPages = new Set(
+          collector.getNavigationTargetPages(callback.callbackMethod).map(page => page.id),
+        );
+        if (navigationPages.size === 0) continue;
+        for (const { pages, count } of targetGroups.values()) {
+          if ([...pages].some(page => navigationPages.has(page)) &&
+              ![...sourcePages].some(page => pages.has(page))) {
+            legalNavigationTransitions += count;
+          }
         }
       }
     }
@@ -532,22 +540,27 @@ export abstract class LifecycleModelCreator {
         owners.add(abilityKey);
       }
     }
-    const registrations = components.flatMap(component => {
-      const owners = ownersByComponent.get(component.signature.toString()) ??
-        new Set<string>();
-      return component.uiCallbacks.map(() => owners);
-    });
-    const candidateCallbackTransitions = registrations.length ** 2;
+    const groups = new Map<string, { owners: Set<string>; count: number }>();
+    let totalCallbacks = 0;
+    let boundCallbacks = 0;
+    for (const component of components) {
+      const owners = ownersByComponent.get(component.signature.toString()) ?? new Set<string>();
+      const count = component.uiCallbacks.length;
+      totalCallbacks += count;
+      if (owners.size > 0) boundCallbacks += count;
+      if (owners.size === 0 || count === 0) continue;
+      const key = JSON.stringify([...owners].sort());
+      const group = groups.get(key);
+      if (group) group.count += count;
+      else groups.set(key, { owners, count });
+    }
+    const candidateCallbackTransitions = totalCallbacks ** 2;
+    const conservativeFallbackTransitions = candidateCallbackTransitions - boundCallbacks ** 2;
     let prunedCrossAbilityTransitions = 0;
-    let conservativeFallbackTransitions = 0;
-    for (const sourceOwners of registrations) {
-      for (const targetOwners of registrations) {
-        if (sourceOwners.size === 0 || targetOwners.size === 0) {
-          conservativeFallbackTransitions++;
-          continue;
-        }
-        if (![...sourceOwners].some(owner => targetOwners.has(owner))) {
-          prunedCrossAbilityTransitions++;
+    for (const source of groups.values()) {
+      for (const target of groups.values()) {
+        if (![...source.owners].some(owner => target.owners.has(owner))) {
+          prunedCrossAbilityTransitions += source.count * target.count;
         }
       }
     }

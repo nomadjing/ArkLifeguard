@@ -58,7 +58,10 @@ export class ResourceRunner {
         }
         try {
             const cfg = dummyMain.getCfg();
-            const entry = cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
+            // Match CfgIndex.getStartPointOf: incoming summaries use the first
+            // statement after parameter bindings as the method entry identity.
+            const entry = cfg?.getStartingBlock()?.getStmts()[dummyMain.getParameters().length]
+                ?? cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
             if (!entry) throw new Error('资源分析入口没有 CFG 语句');
             const problem = new ResourceProblem(entry, dummyMain, this.rules);
             const solver = new ResourceSolver(problem, this.scene, { collectStatistics: this.collectStatistics });
