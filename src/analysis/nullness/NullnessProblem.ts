@@ -63,12 +63,15 @@ import {
     keepOnlyNull,
     keepOnlyUndefined,
     mayBeNull,
+    nullnessFromAlternatives,
     mayBeUndefined,
     removeNull,
     removeNullish,
     removeUndefined,
 } from './NullnessFact';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
+import { NullnessSourceSemantics, NULL, UNDEFINED, SourceAccess } from './NullnessSourceSemantics';
+import type { BasicBlock, Cfg } from '../../adapter/arkanalyzer';
 import { haveSameCallableIdentity, tryRenderArkType } from './ArkAnalyzerCompatibility';
 
 export interface NullnessAnalysisConfig {
@@ -116,16 +119,18 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     private readonly zeroFact = NullnessFact.getZeroFact();
     private readonly config: Required<NullnessAnalysisConfig>;
     private readonly nullDereferences: NullDereferenceDiagnostic[] = [];
-    private readonly dereferenceSyntaxCache = new WeakMap<Stmt, DereferenceSyntax>();
+    private readonly statementInfo = new WeakMap<Stmt, NullnessStatementInfo>();
+    private readonly diagnosticsByLocation = new Map<string, NullDereferenceDiagnostic[]>();
+    private readonly cfgIndices = new WeakMap<Cfg, Map<Stmt, BasicBlock>>();
     private readonly staticNullFacts: NullnessFact[] = [];
     private readonly staticDereferenceSites: Array<{ path: NullnessAccessPath; stmt: Stmt }> = [];
-    private readonly relationalGuardCache = new WeakMap<ArkMethod, Map<string, boolean>>();
 
     constructor(
         private readonly entryPoint: Stmt,
         private readonly entryMethod: ArkMethod,
         config: NullnessAnalysisConfig = {},
-        private readonly libraryRegistry: NullnessLibraryRegistry = NullnessLibraryRegistry.createDefault()
+        private readonly libraryRegistry: NullnessLibraryRegistry = NullnessLibraryRegistry.createDefault(),
+        private readonly sourceSemantics: NullnessSourceSemantics = new NullnessSourceSemantics()
     ) {
         super();
         this.config = {
@@ -866,14 +871,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             return fact;
         }
 
-        // Project predicates such as `isInPlayReadyState()` often encode a
-        // class invariant rather than testing the nullable resource directly.
-        // Recognize only the narrow, source-backed pattern implemented below.
-        if (value instanceof ArkInstanceInvokeExpr && expectedTruth &&
-            this.projectReadyPredicateEstablishesNonNull(value, fact, branchStmt)) {
-            return null;
-        }
-
         // A truthy value cannot be null or undefined.  ArkIR commonly keeps
         // guards such as `if (value)` as a Local, or as a temporary Local whose
         // defining assignment reads a field.  Nullness facts only represent the
@@ -1028,9 +1025,9 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         if (!cfg) {
             return undefined;
         }
-        const blocks = [...cfg.getBlocks()];
-        const sourceBlock = blocks.find(block => block.getStmts().includes(srcStmt));
-        const targetBlock = blocks.find(block => block.getStmts().includes(tgtStmt));
+        const index = this.getCfgIndex(cfg);
+        const sourceBlock = index.get(srcStmt);
+        const targetBlock = index.get(tgtStmt);
         if (!sourceBlock || !targetBlock) {
             return undefined;
         }
@@ -1048,116 +1045,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     }
 
     private isLoweredTruthinessGuard(stmt: ArkIfStmt): boolean {
-        const originalText = typeof stmt.getOriginalText === 'function'
-            ? stmt.getOriginalText()
-            : undefined;
-        if (!originalText) return true;
-        const conditionHeader = originalText.split('{', 1)[0];
-        return !/(?:===|!==|==|!=)/.test(stripCommentsAndLiterals(conditionHeader));
-    }
-
-    /**
-     * Models a common class protocol: a monotonic resource is created once,
-     * while an `is...ReadyState` predicate excludes the initial not-ready
-     * state.  This is intentionally stricter than a name heuristic: the class
-     * must contain a definite non-null write, no later nullish reset, and a
-     * state initializer distinct from every state accepted by the predicate.
-     */
-    private projectReadyPredicateEstablishesNonNull(
-        invokeExpr: ArkInstanceInvokeExpr,
-        fact: NullnessFact,
-        branchStmt: ArkIfStmt
-    ): boolean {
-        const methodName = invokeExpr.getMethodSignature()
-            .getMethodSubSignature().getMethodName();
-        if (!/^is[A-Z]\w*ReadyState$/.test(methodName)) return false;
-
-        const receiverPath = this.canonicalAccessPath(
-            NullnessAccessPath.fromValue(invokeExpr.getBase()),
-            new Set()
-        );
-        const factPath = this.canonicalAccessPath(fact.accessPath, new Set());
-        if (receiverPath.isEmpty() || factPath.isEmpty() ||
-            !receiverPath.isPrefixOf(factPath) ||
-            factPath.fields.length !== receiverPath.fields.length + 1) {
-            return false;
-        }
-        const resourceField = factPath.fields.at(-1)!.getFieldName();
-        const declaringClass = branchStmt.getCfg()?.getDeclaringMethod()
-            .getDeclaringArkClass();
-        const predicate = declaringClass?.getMethods().find(method =>
-            method.getName() === methodName
-        );
-        if (!declaringClass || !predicate) return false;
-
-        let methodCache = this.relationalGuardCache.get(predicate);
-        if (!methodCache) {
-            methodCache = new Map<string, boolean>();
-            this.relationalGuardCache.set(predicate, methodCache);
-        }
-        const cached = methodCache.get(resourceField);
-        if (cached !== undefined) return cached;
-
-        const predicateCode = predicate.getCode() ?? '';
-        const comparisons = [...predicateCode.matchAll(
-            /this\.([A-Za-z_$][\w$]*)\s*===\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+|['"][^'"]+['"])/g
-        )];
-        const stateFields = new Set(comparisons.map(match => match[1]));
-        if (comparisons.length === 0 || stateFields.size !== 1) {
-            methodCache.set(resourceField, false);
-            return false;
-        }
-
-        const stateField = comparisons[0][1];
-        const acceptedStates = new Set(comparisons.map(match => match[2]));
-        const classCode = declaringClass.getCode() ?? '';
-        const stateInitializer = classCode.match(new RegExp(
-            `(?:private\\s+|protected\\s+|public\\s+)?${escapeRegExp(stateField)}` +
-            `\\s*(?::[^=\\n]+)?=\\s*([^;\\n]+)`
-        ))?.[1]?.trim();
-        if (!stateInitializer || acceptedStates.has(stateInitializer)) {
-            methodCache.set(resourceField, false);
-            return false;
-        }
-
-        let hasDefiniteWrite = false;
-        let hasNullishReset = false;
-        for (const method of declaringClass.getMethods(true)) {
-            for (const block of method.getCfg()?.getBlocks() ?? []) {
-                for (const stmt of block.getStmts()) {
-                    if (!(stmt instanceof ArkAssignStmt)) continue;
-                    const leftPath = this.canonicalAccessPath(
-                        NullnessAccessPath.fromValue(stmt.getLeftOp()),
-                        new Set()
-                    );
-                    if (leftPath.base?.getName() !== 'this' ||
-                        leftPath.fields.length !== 1 ||
-                        leftPath.fields[0].getFieldName() !== resourceField) {
-                        continue;
-                    }
-                    const rightOp = stmt.getRightOp();
-                    const nullishKind = this.getLiteralNullnessKind(rightOp);
-                    if (nullishKind) {
-                        if (!method.getName().startsWith('%instInit')) {
-                            hasNullishReset = true;
-                        }
-                        continue;
-                    }
-                    const renderedType = tryRenderArkType(rightOp.getType());
-                    if (renderedType === null) {
-                        continue;
-                    }
-                    const typeName = renderedType.toLowerCase();
-                    if (!/(?:^|[| ])(?:null|undefined|unknown|any)(?:$|[| ])/.test(typeName)) {
-                        hasDefiniteWrite = true;
-                    }
-                }
-            }
-        }
-
-        const establishesNonNull = hasDefiniteWrite && !hasNullishReset;
-        methodCache.set(resourceField, establishesNonNull);
-        return establishesNonNull;
+        return !this.sourceSemantics.isEqualityCondition(stmt);
     }
 
     private propagateAssignment(stmt: ArkAssignStmt, fact: NullnessFact): Set<NullnessFact> {
@@ -1237,64 +1125,18 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         if (fact.isUnresolvedEvidence() && !this.config.reportUnresolvedReturns) {
             return;
         }
-        const fieldReceivers = stmt.getUses()
-            .filter((value): value is ArkInstanceFieldRef => value instanceof ArkInstanceFieldRef)
-            .map(fieldRef => NullnessAccessPath.fromValue(fieldRef.getBase()));
-        const invokeReceivers = stmt.getUses()
-            .filter((value): value is ArkInstanceInvokeExpr => value instanceof ArkInstanceInvokeExpr)
-            .map(invokeExpr => NullnessAccessPath.fromValue(invokeExpr.getBase()));
-        const arrayReceivers = stmt.getUses()
-            .filter((value): value is ArkArrayRef => value instanceof ArkArrayRef)
-            .map(arrayRef => NullnessAccessPath.fromValue(arrayRef.getBase()));
-        const invoke = stmt.getInvokeExpr();
-        const nonNullArgumentPaths = invoke
-            ? this.libraryRegistry.getNonNullArgumentIndices(stmt)
-                .map(index => invoke.getArgs()[index])
-                .filter((value): value is Value => value !== undefined)
-                .map(value => NullnessAccessPath.fromValue(value))
-                .filter(path => !path.isEmpty())
-            : [];
-        const dereferencedPaths = [...fieldReceivers, ...invokeReceivers, ...arrayReceivers];
-        const isReceiverDereference = dereferencedPaths.some(path =>
-            this.accessPathsAlias(path, fact.accessPath)
+        const info = this.getStatementInfo(stmt);
+        const isReceiverDereference = info.receivers.some(receiver =>
+            this.accessPathsAlias(receiver.path, fact.accessPath) &&
+            this.isReportableSourceUse(stmt, receiver.path, receiver.member, undefined, fact)
         );
-        const isNonNullArgumentUse = nonNullArgumentPaths.some(path =>
-            this.accessPathsAlias(path, fact.accessPath)
+        const isNonNullArgumentUse = info.arguments.some(argument =>
+            this.accessPathsAlias(argument.path, fact.accessPath) &&
+            this.isReportableSourceUse(stmt, argument.path, null, argument.index, fact)
         );
-        if ((!isReceiverDereference && !isNonNullArgumentUse) ||
-            (isReceiverDereference && !this.shouldReportDereference(stmt, fact))) {
-            return;
-        }
-        if (isReceiverDereference &&
-            this.isBareTemplateInterpolationCoercion(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isSourceShortCircuitGuarded(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isSourceConditionallyAssignedAndGuarded(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isSourceOptionalCallGuarded(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isSourceOptionalLocalGuarded(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isLexicallyContainedInOptionalCallGuard(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isLexicallyContainedInOptionalLocalGuard(stmt, fact.accessPath)) {
-            return;
-        }
-        if (this.isLexicallyContainedInTruthyGuard(stmt, fact.accessPath)) {
-            return;
-        }
+        if (!isReceiverDereference && !isNonNullArgumentUse) return;
         if (stmt instanceof ArkIfStmt &&
             this.isDereferenceProtectedByShortCircuit(stmt.getConditionExpr(), fact, stmt)) {
-            return;
-        }
-        if (this.isProvenNonNullByDominatingGuard(stmt, fact)) {
             return;
         }
         if (this.isInitializedByEveryConcreteSubclass(stmt, fact)) {
@@ -1304,13 +1146,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         const sourceStmt = fact.origin.stmt as Stmt;
         const sourceLocation = this.getLocation(sourceStmt);
         const dereferenceLocation = this.getLocation(stmt);
-        if (this.nullDereferences.some(diagnostic =>
-            this.sameLocation(diagnostic.dereferenceLocation, dereferenceLocation) &&
-            this.accessPathsAlias(diagnostic.accessPath, fact.accessPath))) {
-            return;
-        }
-
-        this.nullDereferences.push({
+        this.recordDiagnostic({
             kind: 'null-dereference',
             nullness: fact.kind,
             accessPath: fact.accessPath,
@@ -1340,54 +1176,25 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
      * left operand, even when no explicit nullish assignment is reachable.
      */
     private checkLateNullGuard(stmt: Stmt): void {
-        const originalText = stmt.getOriginalText?.();
-        if (!originalText || !originalText.includes('||')) return;
-        const source = stripCommentsAndLiterals(originalText);
-        const assertionPattern = /((?:this\s*\.\s*)?[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)!(?!=)\s*(?:\.|\[|\()/g;
-        for (const match of source.matchAll(assertionPattern)) {
-            const sourceName = match[1].replace(/\s+/g, '');
-            const tail = source.slice((match.index ?? 0) + match[0].length);
-            const escapedName = escapeRegExp(sourceName).replace(/\\\./g, '\\s*\\.\\s*');
-            const guardedAfterDereference = new RegExp(
-                `\\|\\|[\\s\\S]*(?:${escapedName}\\s*(?:===|==)\\s*(null|undefined)|` +
-                `(null|undefined)\\s*(?:===|==)\\s*${escapedName})`
-            ).exec(`||${tail}`);
-            if (!guardedAfterDereference) continue;
-
-            const guardedValue = guardedAfterDereference[1] ?? guardedAfterDereference[2];
-            const candidates = stmt.getUses().flatMap(value => {
-                if (value instanceof ArkInstanceFieldRef || value instanceof ArkArrayRef) {
-                    return [NullnessAccessPath.fromValue(value.getBase())];
-                }
-                if (value instanceof ArkInstanceInvokeExpr) {
-                    return [NullnessAccessPath.fromValue(value.getBase())];
-                }
-                return [];
-            }).map(path => this.canonicalAccessPath(path, new Set()));
-            const accessPath = candidates.find(path => {
-                const rendered = path.toString().replace(/\s+/g, '');
-                return rendered === sourceName || rendered.endsWith(`.${sourceName}`) ||
-                    sourceName.endsWith(`.${rendered}`);
-            });
-            if (!accessPath || accessPath.isEmpty()) continue;
-
-            const location = this.getLocation(stmt);
-            if (this.nullDereferences.some(diagnostic =>
-                this.sameLocation(diagnostic.dereferenceLocation, location) &&
-                this.accessPathsAlias(diagnostic.accessPath, accessPath))) {
-                continue;
-            }
-            const kind = guardedValue === 'null'
-                ? NullnessKind.MaybeNull
-                : NullnessKind.MaybeUndefined;
-            this.nullDereferences.push({
+        const info = this.getStatementInfo(stmt);
+        for (const access of info.accesses) {
+            if (!access.asserted || !access.checkedLater || access.optional ||
+                (access.excluded & access.checkedLater) === access.checkedLater) continue;
+            const receiver = info.receivers.find(receiver =>
+                receiver.member === access.member &&
+                this.canonicalAccessPath(receiver.path, new Set()).toString() === access.receiver);
+            if (!receiver) continue;
+            const accessPath = this.canonicalAccessPath(receiver.path, new Set());
+            const kind = access.checkedLater === NULL ? NullnessKind.MaybeNull
+                : access.checkedLater === UNDEFINED ? NullnessKind.MaybeUndefined : NullnessKind.MaybeNullish;
+            this.recordDiagnostic({
                 kind: 'null-dereference',
                 nullness: kind,
                 accessPath,
                 sourceStmt: stmt,
                 dereferenceStmt: stmt,
-                sourceLocation: location,
-                dereferenceLocation: location,
+                sourceLocation: info.location,
+                dereferenceLocation: info.location,
                 description: `Potential nullish dereference of ${accessPath.toString()} before its null check`,
                 confidence: 'high',
             });
@@ -1441,19 +1248,66 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             if (!alternatives.null && !alternatives.undefined) return null;
             alternatives.nonNull = true;
         }
-        if (alternatives.null && alternatives.undefined) return NullnessKind.MaybeNullish;
-        if (alternatives.null) {
-            return alternatives.nonNull ? NullnessKind.MaybeNull : NullnessKind.Null;
-        }
-        return alternatives.nonNull ? NullnessKind.MaybeUndefined : NullnessKind.Undefined;
+        const kind = nullnessFromAlternatives(alternatives);
+        return kind === 'non-null' ? null : kind;
     }
 
-    private sameLocation(
-        left: NullnessSourceLocation,
-        right: NullnessSourceLocation
-    ): boolean {
-        return left.filePath === right.filePath && left.line === right.line &&
-            left.col === right.col;
+    private recordDiagnostic(diagnostic: NullDereferenceDiagnostic): void {
+        const location = diagnostic.dereferenceLocation;
+        const key = JSON.stringify([location.filePath, location.line, location.col]);
+        const bucket = this.diagnosticsByLocation.get(key) ?? [];
+        if (bucket.some(existing => this.accessPathsAlias(existing.accessPath, diagnostic.accessPath))) return;
+        bucket.push(diagnostic);
+        this.diagnosticsByLocation.set(key, bucket);
+        this.nullDereferences.push(diagnostic);
+    }
+
+    private getStatementInfo(stmt: Stmt): NullnessStatementInfo {
+        const cached = this.statementInfo.get(stmt);
+        if (cached) return cached;
+        const receivers: NullnessStatementInfo['receivers'] = [];
+        for (const value of stmt.getUses?.() ?? []) {
+            if (value instanceof ArkInstanceFieldRef || value instanceof ArkArrayRef ||
+                value instanceof ArkInstanceInvokeExpr) {
+                const member = value instanceof ArkInstanceFieldRef ? value.getFieldSignature().getFieldName()
+                    : value instanceof ArkInstanceInvokeExpr
+                        ? value.getMethodSignature().getMethodSubSignature().getMethodName() : null;
+                receivers.push({ path: NullnessAccessPath.fromValue(value.getBase()), member });
+            }
+        }
+        const invoke = stmt.getInvokeExpr();
+        const args = this.libraryRegistry.getNonNullArgumentIndices(stmt).flatMap(index => {
+            const value = invoke?.getArgs()[index];
+            return value ? [{ path: NullnessAccessPath.fromValue(value), index }] : [];
+        });
+        const result = { receivers, arguments: args, accesses: this.sourceSemantics.getAccesses(stmt),
+            location: this.getLocation(stmt) };
+        this.statementInfo.set(stmt, result);
+        return result;
+    }
+
+    private isReportableSourceUse(stmt: Stmt, path: NullnessAccessPath, member: string | null,
+        argumentIndex: number | undefined, fact: NullnessFact): boolean {
+        const info = this.getStatementInfo(stmt);
+        const canonical = this.canonicalAccessPath(path, new Set()).toString();
+        const matches = info.accesses.filter(access => access.argumentIndex === argumentIndex &&
+            (argumentIndex !== undefined || access.member === member || (member === null && access.indexed)) &&
+            (access.receiver === canonical || access.receiver === null));
+        if (!matches.length) return true; // No precise source mapping: keep the IR evidence.
+        const nullish = (mayBeNull(fact.kind) ? NULL : 0) | (mayBeUndefined(fact.kind) ? UNDEFINED : 0);
+        return matches.some(access => !access.optional && !access.coercion &&
+            (nullish & ~access.excluded) !== 0 &&
+            (argumentIndex !== undefined || access.asserted ||
+                fact.origin?.kind === NullnessOriginKind.NullableReturn ||
+                !info.location.filePath.endsWith('.ets')));
+    }
+
+    private isOptionalChainStmt(stmt: Stmt): boolean {
+        const right = stmt instanceof ArkAssignStmt ? stmt.getRightOp() : undefined;
+        if (!(right instanceof ArkInstanceFieldRef)) return false;
+        const canonical = this.canonicalAccessPath(NullnessAccessPath.fromValue(right.getBase()), new Set()).toString();
+        return this.getStatementInfo(stmt).accesses.some(access => access.optional &&
+            access.receiver === canonical && access.member === right.getFieldSignature().getFieldName());
     }
 
     /** Preserve static-field effects across lifecycle callbacks with partial order. */
@@ -1472,16 +1326,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
 
     private recordStaticDereferenceSite(stmt: Stmt): void {
         if (typeof stmt.getUses !== 'function') return;
-        const receivers = stmt.getUses().flatMap(value => {
-            if (value instanceof ArkInstanceFieldRef || value instanceof ArkArrayRef) {
-                return [NullnessAccessPath.fromValue(value.getBase())];
-            }
-            if (value instanceof ArkInstanceInvokeExpr) {
-                return [NullnessAccessPath.fromValue(value.getBase())];
-            }
-            return [];
-        });
-        for (const receiver of receivers) {
+        for (const { path: receiver } of this.getStatementInfo(stmt).receivers) {
             const canonical = this.canonicalAccessPath(receiver, new Set());
             if (!canonical.isStaticFieldRef() || this.staticDereferenceSites.some(site =>
                 site.stmt === stmt && site.path.equals(canonical))) {
@@ -1496,81 +1341,16 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         }
     }
 
-    /**
-     * Recover the positive (Must-NonNull) side of a dominating guard. This is
-     * needed when ArkIR reloads a guarded field into a fresh temporary after the
-     * branch, because that temporary can otherwise acquire a stale nullish fact.
-     */
-    private isProvenNonNullByDominatingGuard(stmt: Stmt, fact: NullnessFact): boolean {
-        const cfg = stmt.getCfg();
-        if (!cfg) return false;
-        const blocks = [...cfg.getBlocks()];
-        const targetBlock = blocks.find(block => block.getStmts().includes(stmt));
-        if (!targetBlock) return false;
-
-        for (const block of blocks) {
-            const branchStmt = block.getTail();
-            if (!(branchStmt instanceof ArkIfStmt)) continue;
-
-            // Repeated calls to a getter-like project helper receive different
-            // SSA temporaries. Recover the source-level invariant established by
-            // `if (getValue(...)?.field) { getValue(...)!.field... }`.
-            if (this.isPositiveStableCallGuard(branchStmt, fact.accessPath)) {
-                const branchSource = branchStmt.getOriginalText?.();
-                const targetSource = stmt.getOriginalText?.()?.trim();
-                // ArkUI builder lowering can connect both CFG successors to the
-                // same synthetic builder block. Source containment still
-                // preserves the lexical fact that the target is inside the
-                // guarded body.
-                if (branchSource && targetSource && branchSource.includes(targetSource)) {
-                    return true;
-                }
+    private getCfgIndex(cfg: Cfg) {
+        let index = this.cfgIndices.get(cfg);
+        if (!index) {
+            index = new Map<Stmt, BasicBlock>();
+            for (const block of cfg.getBlocks()) {
+                for (const stmt of block.getStmts()) index.set(stmt, block);
             }
-
-            const successors = block.getSuccessors();
-            if (successors.length !== 2 || successors[0] === successors[1]) continue;
-
-            if (this.isPositiveStableCallGuard(branchStmt, fact.accessPath)) {
-                const safeReachesTarget = this.blockReaches(successors[0], targetBlock);
-                const unsafeReachesTarget = this.blockReaches(successors[1], targetBlock);
-                if (safeReachesTarget && !unsafeReachesTarget) {
-                    return true;
-                }
-            }
-
-            const narrowed = successors.map(successor => {
-                const head = successor.getHead();
-                return head ? this.narrowFactOnBranch(branchStmt, head, fact) : fact;
-            });
-            const safeIndex = narrowed[0] === null && narrowed[1] !== null
-                ? 0
-                : narrowed[1] === null && narrowed[0] !== null
-                    ? 1
-                    : -1;
-            if (safeIndex < 0) continue;
-
-            const safeReachesTarget = this.blockReaches(successors[safeIndex], targetBlock);
-            const unsafeReachesTarget = this.blockReaches(successors[1 - safeIndex], targetBlock);
-            if (safeReachesTarget && !unsafeReachesTarget) {
-                return true;
-            }
+            this.cfgIndices.set(cfg, index);
         }
-        return false;
-    }
-
-    private blockReaches(start: { getSuccessors(): unknown[] }, target: unknown): boolean {
-        const workList: Array<{ getSuccessors(): unknown[] }> = [start];
-        const visited = new Set<unknown>();
-        while (workList.length > 0) {
-            const current = workList.pop()!;
-            if (current === target) return true;
-            if (visited.has(current)) continue;
-            visited.add(current);
-            for (const successor of current.getSuccessors()) {
-                workList.push(successor as { getSuccessors(): unknown[] });
-            }
-        }
-        return false;
+        return index;
     }
 
     /** Compare SSA temporaries and field reloads through their defining assignments. */
@@ -1660,294 +1440,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         });
     }
 
-    /**
-     * ArkIR currently emits the member read in `value && value.member` before
-     * the logical-and temporary.  Recover this source-level evaluation order so
-     * that the synthetic eager read is not diagnosed.  Only a direct local-name
-     * guard in the same source expression is accepted.
-     */
-    private isSourceShortCircuitGuarded(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        if (!accessPath.isLocal() || accessPath.fields.length !== 0) {
-            return false;
-        }
-        const name = accessPath.base?.getName();
-        const originalText = typeof stmt.getOriginalText === 'function'
-            ? stmt.getOriginalText()
-            : undefined;
-        if (!name || !originalText) {
-            return false;
-        }
-        const source = stripCommentsAndLiterals(originalText);
-        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const truthyAnd = new RegExp(
-            `\\b${escapedName}\\b\\s*&&[\\s\\S]*\\b${escapedName}\\b\\s*(?:\\.|\\[|\\()`
-        ).test(source);
-        if (truthyAnd) return true;
-
-        const comparedAnd = new RegExp(
-            `\\b${escapedName}\\b\\s*(?:!==|!=)\\s*(?:undefined|null)\\s*&&[\\s\\S]*` +
-            `\\b${escapedName}\\b\\s*(?:\\.|\\[|\\()`
-        ).test(source);
-        if (comparedAnd) return true;
-
-        const falsyOr = new RegExp(
-            `!\\s*\\b${escapedName}\\b\\s*\\|\\|[\\s\\S]*` +
-            `\\b${escapedName}\\b\\s*(?:\\.|\\[|\\()`
-        ).test(source);
-        if (falsyOr) return true;
-
-        // The right-hand side of `!(value instanceof T) || value.member`
-        // runs only when the instanceof predicate is true. ArkIR currently
-        // materializes `value.member` before the final logical-or node, so the
-        // normal edge-sensitive narrowing cannot protect this synthetic read.
-        return new RegExp(
-            `!\\s*\\(\\s*${escapedName}\\s+instanceof\\s+[^)]+\\)\\s*\\|\\|[\\s\\S]*` +
-            `\\b${escapedName}\\b\\s*(?:\\.|\\[|\\()`
-        ).test(source);
-    }
-
-    /** Suppress ArkIR's eager reads inside a source-level optional-call guard. */
-    private isSourceOptionalCallGuarded(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        const methodName = this.getStableCallMethodName(accessPath, new Set());
-        const originalText = typeof stmt.getOriginalText === 'function'
-            ? stmt.getOriginalText()
-            : undefined;
-        if (!methodName || !originalText) return false;
-        const header = stripCommentsAndLiterals(originalText).split('{', 1)[0];
-        const escaped = methodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escaped}\\s*\\([^)]*\\)\\s*\\?\\.`).test(header);
-    }
-
-    private isSourceOptionalLocalGuarded(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        if (!accessPath.isLocal()) return false;
-        const name = accessPath.base?.getName();
-        const originalText = stmt.getOriginalText?.();
-        if (!name || !originalText) return false;
-        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escaped}\\b\\s*\\?\\.`).test(
-            stripCommentsAndLiterals(originalText).split('{', 1)[0]
-        );
-    }
-
-    /**
-     * Recover the last truthy assignment in a lowered source-level `||` guard.
-     * This is deliberately restricted to a condition whose earlier alternatives
-     * are all dispatched by the ternary chain before the asserted access.
-     */
-    private isSourceConditionallyAssignedAndGuarded(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        const canonical = this.canonicalAccessPath(accessPath, new Set());
-        const name = canonical.base?.getName();
-        const targetSource = stmt.getOriginalText?.();
-        const cfg = stmt.getCfg();
-        if (!name || name.startsWith('%') || !targetSource || !cfg) return false;
-        const escaped = escapeRegExp(name);
-        const sourceCandidates = new Set<string>([targetSource]);
-        for (const block of cfg.getBlocks()) {
-            for (const candidate of block.getStmts()) {
-                const source = candidate.getOriginalText?.();
-                if (source?.includes(targetSource)) sourceCandidates.add(source);
-            }
-        }
-        for (const source of sourceCandidates) {
-            const assignment = new RegExp(`\\(\\s*${escaped}\\s*=`, 'g');
-            let match: RegExpExecArray | null;
-            while ((match = assignment.exec(source)) !== null) {
-                const ifIndex = source.lastIndexOf('if', match.index);
-                if (ifIndex < 0) continue;
-                const bodyMatch = /\)\s*\{/.exec(source.slice(match.index));
-                if (!bodyMatch) continue;
-                const bodyStart = match.index + bodyMatch.index + bodyMatch[0].length;
-                const dereference = new RegExp(
-                    `\\b${escaped}\\b\\s*!(?!=)\\s*(?:\\.|\\[)`
-                ).exec(source.slice(bodyStart));
-                if (!dereference) continue;
-                const condition = source.slice(ifIndex, bodyStart);
-                const alternatives = condition.split(/\|\|/);
-                const targetAlternative = alternatives.findIndex(alternative =>
-                    new RegExp(`\\b${escaped}\\s*=`).test(alternative)
-                );
-                if (targetAlternative < 1 || targetAlternative !== alternatives.length - 1) {
-                    continue;
-                }
-                const bodyPrefix = source.slice(
-                    bodyStart,
-                    bodyStart + dereference.index
-                ).replace(/\s+/g, ' ');
-                const earlierAlternativesAreDispatched = alternatives
-                    .slice(0, targetAlternative)
-                    .every(alternative => {
-                        const assignedName = /\(\s*([A-Za-z_$][\w$]*)\s*=(?!=)/
-                            .exec(alternative)?.[1];
-                        if (assignedName) {
-                            return new RegExp(`\\b${escapeRegExp(assignedName)}\\b\\s*\\?`)
-                                .test(bodyPrefix);
-                        }
-                        const comparison = /([A-Za-z_$][\w$]*\s*={2,3}\s*['"][^'"]+['"])/
-                            .exec(alternative)?.[1];
-                        return comparison !== undefined && bodyPrefix.includes(
-                            comparison.replace(/\s+/g, ' ')
-                        );
-                    });
-                if (earlierAlternativesAreDispatched) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private isPositiveStableCallGuard(
-        branchStmt: ArkIfStmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        const methodName = this.getStableCallMethodName(accessPath, new Set());
-        const originalText = branchStmt.getOriginalText?.();
-        if (!methodName || !originalText) return false;
-        const header = stripCommentsAndLiterals(originalText).split('{', 1)[0];
-        const escaped = methodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const guardedCall = new RegExp(
-            `\\b${escaped}\\s*\\([^)]*\\)\\s*(?:\\?\\.|\\)|&&)`
-        ).test(header);
-        const guardedGetter = new RegExp(
-            `(?:\\bthis\\s*\\.\\s*)?\\b${escaped}\\b\\s*(?:\\?\\.|\\)|&&)`
-        ).test(header);
-        const negated = new RegExp(
-            `!\\s*(?:(?:this\\s*\\.\\s*)?${escaped}\\b|${escaped}\\s*\\()`
-        ).test(header);
-        return (guardedCall || guardedGetter) && !negated;
-    }
-
-    /**
-     * ArkUI DSL `If.create/If.branch` nodes do not form ordinary CFG branches.
-     * Their statements nevertheless retain nested source text. Use the smallest
-     * enclosing source fragment containing both the optional getter guard and
-     * the target expression, which recovers the lexical guard without treating
-     * the entire component build method as protected.
-     */
-    private isLexicallyContainedInOptionalCallGuard(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        const methodName = this.getStableCallMethodName(accessPath, new Set());
-        const targetSource = stmt.getOriginalText?.()?.trim();
-        const cfg = stmt.getCfg();
-        if (!methodName || !targetSource || !cfg) return false;
-        const escaped = methodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const guardPattern = new RegExp(
-            `\\b${escaped}\\s*\\([^)]*\\)\\s*\\?\\.`
-        );
-        let smallestEnclosing: string | null = null;
-        for (const block of cfg.getBlocks()) {
-            for (const candidate of block.getStmts()) {
-                const source = candidate.getOriginalText?.();
-                if (!source || source === targetSource ||
-                    !source.includes(targetSource) || !guardPattern.test(source)) {
-                    continue;
-                }
-                if (!smallestEnclosing || source.length < smallestEnclosing.length) {
-                    smallestEnclosing = source;
-                }
-            }
-        }
-        return smallestEnclosing !== null;
-    }
-
-    private isLexicallyContainedInOptionalLocalGuard(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        if (!accessPath.isLocal()) return false;
-        const name = accessPath.base?.getName();
-        const targetSource = stmt.getOriginalText?.()?.trim();
-        const cfg = stmt.getCfg();
-        if (!name || !targetSource || !cfg) return false;
-        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const guardPattern = new RegExp(`\\b${escaped}\\b\\s*\\?\\.`);
-        let smallestEnclosing: string | null = null;
-        for (const block of cfg.getBlocks()) {
-            for (const candidate of block.getStmts()) {
-                const source = candidate.getOriginalText?.();
-                if (!source || source === targetSource ||
-                    !source.includes(targetSource) || !guardPattern.test(source)) {
-                    continue;
-                }
-                if (!smallestEnclosing || source.length < smallestEnclosing.length) {
-                    smallestEnclosing = source;
-                }
-            }
-        }
-        return smallestEnclosing !== null;
-    }
-
-    /** Recover truthiness guards around ArkUI's synthetic If nodes. */
-    private isLexicallyContainedInTruthyGuard(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        const targetSource = stmt.getOriginalText?.()?.trim();
-        const cfg = stmt.getCfg();
-        const canonical = this.canonicalAccessPath(accessPath, new Set());
-        const rendered = canonical.toString().replace(/\s+/g, '');
-        if (!targetSource || !cfg || !rendered || rendered.startsWith('%')) return false;
-        const escaped = escapeRegExp(rendered).replace(/\\\./g, '\\s*\\.\\s*');
-        const guardPattern = new RegExp(
-            `\\bif\\s*\\(\\s*${escaped}(?:\\s*\\)|\\s*&&)`
-        );
-        for (const block of cfg.getBlocks()) {
-            for (const candidate of block.getStmts()) {
-                const source = candidate.getOriginalText?.();
-                if (!source || source.trim() === targetSource ||
-                    !source.includes(targetSource)) {
-                    continue;
-                }
-                const header = stripCommentsAndLiterals(source).split('{', 1)[0];
-                if (guardPattern.test(header)) return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * ArkIR lowers a bare `${value}` interpolation to an implicit string
-     * conversion call. That conversion accepts nullish values and is not a
-     * source-level property, index or method dereference.
-     */
-    private isBareTemplateInterpolationCoercion(
-        stmt: Stmt,
-        accessPath: NullnessAccessPath
-    ): boolean {
-        const source = stmt.getOriginalText?.();
-        if (!source || !source.includes('`') || !source.includes('${')) return false;
-        const canonical = this.canonicalAccessPath(accessPath, new Set());
-        if (!canonical.isLocal()) return false;
-        const name = canonical.base?.getName();
-        if (!name || name.startsWith('%')) return false;
-        const escaped = escapeRegExp(name);
-        const bareInterpolation = new RegExp(`\\$\\{\\s*${escaped}\\s*\\}`, 'g');
-        if (!bareInterpolation.test(source)) return false;
-        bareInterpolation.lastIndex = 0;
-        const remainingSource = source.replace(bareInterpolation, '');
-        // The same spelling may also occur as literal text (`value: ${value}`).
-        // Reject suppression only when the source still contains a semantic
-        // access through that identifier.
-        const sourceDereference = new RegExp(
-            `\\b${escaped}\\b\\s*(?:!(?!=)\\s*)?(?:\\.|\\[|\\()`
-        );
-        return !sourceDereference.test(remainingSource);
-    }
-
     /** Suppress an abstract base-field default overwritten by every concrete constructor. */
     private isInitializedByEveryConcreteSubclass(
         stmt: Stmt,
@@ -2012,86 +1504,9 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return declaringClass.getFieldWithName(fieldName)?.hasDecorator('Require') ?? false;
     }
 
-    /** Trace an SSA temporary back to a getter-like call used as its root. */
-    private getStableCallMethodName(
-        accessPath: NullnessAccessPath,
-        visited: Set<Local>
-    ): string | null {
-        const base = accessPath.base;
-        if (!(base instanceof Local) || visited.has(base)) return null;
-        visited.add(base);
-        const declaringStmt = base.getDeclaringStmt();
-        if (!(declaringStmt instanceof ArkAssignStmt)) return null;
-        const invoke = declaringStmt.getInvokeExpr();
-        if (invoke) {
-            const rawMethodName = invoke.getMethodSignature()
-                .getMethodSubSignature().getMethodName();
-            const getterName = /^Get-(.+)$/.exec(rawMethodName)?.[1];
-            return getterName ?? (/^(?:get|is|has|find|peek|resolve)/.test(rawMethodName)
-                ? rawMethodName
-                : null);
-        }
-        const rightPath = NullnessAccessPath.fromValue(declaringStmt.getRightOp());
-        return rightPath.isEmpty()
-            ? null
-            : this.getStableCallMethodName(rightPath, visited);
-    }
-
-    private isOptionalChainStmt(stmt: Stmt): boolean {
-        const originalText = typeof stmt.getOriginalText === 'function'
-            ? stmt.getOriginalText()
-            : undefined;
-        return originalText !== undefined &&
-            /\?\s*\./.test(stripCommentsAndLiterals(originalText));
-    }
-
-    private shouldReportDereference(stmt: Stmt, fact: NullnessFact): boolean {
-        const syntax = this.getDereferenceSyntax(stmt);
-        if (syntax === DereferenceSyntax.NonNullAssertion) return true;
-        if (syntax === DereferenceSyntax.OptionalChain) return false;
-
-        // Project implementations can contradict their declared return type
-        // (for example a method declared as HtmlTag that explicitly returns
-        // null). The compiler then accepts a plain dereference, so the concrete
-        // body-derived nullable-return evidence must remain reportable.
-        if (fact.origin?.kind === NullnessOriginKind.NullableReturn) return true;
-
-        // ArkTS rejects a nullable receiver used by a plain dereference. For
-        // source-backed .ets statements, reserve the NPD report for the
-        // explicit `!` that bypasses this compiler check. Synthetic statements
-        // and non-ArkTS inputs stay visible because their source syntax cannot
-        // be used as a sound report filter.
-        const filePath = this.getLocation(stmt).filePath;
-        return syntax === DereferenceSyntax.SyntheticOrUnknown || !filePath.endsWith('.ets');
-    }
-
-    private getDereferenceSyntax(stmt: Stmt): DereferenceSyntax {
-        const cached = this.dereferenceSyntaxCache.get(stmt);
-        if (cached !== undefined) return cached;
-
-        const originalText = typeof stmt.getOriginalText === 'function'
-            ? stmt.getOriginalText()
-            : undefined;
-        let syntax = DereferenceSyntax.SyntheticOrUnknown;
-        if (originalText) {
-            const source = stripCommentsAndLiterals(originalText);
-            // Prefer `!` when one source expression contains both `?.` and a
-            // later assertion, e.g. `value?.field!.method()`.
-            // TODO: use per-access source ranges if ArkIR exposes them; one
-            // original expression may currently back several lowered accesses.
-            if (/!(?!=)\s*(?:\.|\[|\()/.test(source)) {
-                syntax = DereferenceSyntax.NonNullAssertion;
-            } else if (/\?\s*\./.test(source)) {
-                syntax = DereferenceSyntax.OptionalChain;
-            } else {
-                syntax = DereferenceSyntax.PlainDereference;
-            }
-        }
-        this.dereferenceSyntaxCache.set(stmt, syntax);
-        return syntax;
-    }
-
     private getLocation(stmt: Stmt): NullnessSourceLocation {
+        const cached = this.statementInfo.get(stmt);
+        if (cached) return cached.location;
         const position = stmt.getOriginPositionInfo();
         let filePath = 'unknown';
         try {
@@ -2141,26 +1556,14 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     }
 }
 
-enum DereferenceSyntax {
-    NonNullAssertion,
-    OptionalChain,
-    PlainDereference,
-    SyntheticOrUnknown,
-}
-
 function isFalsySentinel(value: Value): value is NumberConstant | StringConstant {
     return (value instanceof NumberConstant && value.getValue() === '0') ||
         (value instanceof StringConstant && value.getValue() === '');
 }
 
-function escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Remove text that could contain a non-null-looking `!` or optional chain. */
-function stripCommentsAndLiterals(source: string): string {
-    return source.replace(
-        /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g,
-        match => match.replace(/[^\r\n]/g, ' ')
-    );
+interface NullnessStatementInfo {
+    receivers: Array<{ path: NullnessAccessPath; member: string | null }>;
+    arguments: Array<{ path: NullnessAccessPath; index: number }>;
+    accesses: readonly SourceAccess[];
+    location: NullnessSourceLocation;
 }

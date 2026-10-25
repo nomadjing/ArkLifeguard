@@ -20,8 +20,6 @@ import type { ResourceRule } from './rules/ResourceRule';
 import { UNSUPPORTED_RESOURCE_API_FAMILIES } from './rules/ResourceCapabilities';
 import { resolveHarmonyResourceRules } from './rules/HarmonyResourceRules';
 
-class ResourceSolver extends DataflowSolver<ResourceFact> {}
-
 interface ExitFact {
     readonly fact: ResourceFact;
     readonly exit: Stmt;
@@ -64,7 +62,7 @@ export class ResourceRunner {
                 ?? cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
             if (!entry) throw new Error('资源分析入口没有 CFG 语句');
             const problem = new ResourceProblem(entry, dummyMain, this.rules);
-            const solver = new ResourceSolver(problem, this.scene, { collectStatistics: this.collectStatistics });
+            const solver = new DataflowSolver(problem, this.scene, { collectStatistics: this.collectStatistics });
             solver.solve();
             const byStatement = new Map<Stmt, ResourceFact[]>();
             for (const edge of solver.getPathEdgeSet()) {

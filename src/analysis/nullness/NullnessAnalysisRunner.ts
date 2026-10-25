@@ -35,6 +35,8 @@ import {
     NullnessAnalysisConfig,
     NullnessProblem,
 } from './NullnessProblem';
+import { findRecursiveMethods } from '../../ifds/CallResolver';
+import { NullnessSourceSemantics } from './NullnessSourceSemantics';
 import { NullnessSolver } from './NullnessSolver';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
 import type { IFDSSolverStatistics } from '../../ifds';
@@ -162,11 +164,13 @@ export class NullnessAnalysisRunner {
 
             const libraryRegistry = this.config.libraryRegistry ??
                 NullnessLibraryRegistry.createDefault(this.scene);
+            const sourceSemantics = new NullnessSourceSemantics();
             const problem = new NullnessProblem(
                 entryStmt,
                 dummyMain,
                 this.config.problem,
-                libraryRegistry
+                libraryRegistry,
+                sourceSemantics
             );
             const supplementalRoots = new Set<ArkMethod>();
             if (this.config.analyzeModuleInitializers !== false) {
@@ -192,9 +196,13 @@ export class NullnessAnalysisRunner {
             // last root finishes, which makes large projects peak at the sum of
             // all root-state spaces. Sequential roots preserve the same union of
             // diagnostics/reached facts while allowing contextual edges to die.
-            const solver = new NullnessSolver(problem, this.scene, [], {
+            // The scene is fixed during this run; share SCC membership across independent roots.
+            const recursiveMethods = problem.getConfig().recursiveSccWidening
+                ? findRecursiveMethods(this.scene)
+                : undefined;
+            const solver = new NullnessSolver(problem, this.scene, {
                 collectStatistics: this.config.collectSolverStatistics,
-            });
+            }, recursiveMethods);
             solver.solve();
             const mainStatistics = solver.getStatistics();
             const supplementalStatistics: IFDSSolverStatistics[] = [];
@@ -216,13 +224,14 @@ export class NullnessAnalysisRunner {
                     supplementalEntry,
                     method,
                     this.config.problem,
-                    libraryRegistry
+                    libraryRegistry,
+                    sourceSemantics
                 );
                 const supplementalSolver = new NullnessSolver(
                     supplementalProblem,
                     this.scene,
-                    [],
-                    { collectStatistics: this.config.collectSolverStatistics }
+                    { collectStatistics: this.config.collectSolverStatistics },
+                    recursiveMethods
                 );
                 supplementalSolver.solve();
                 const rootStatistics = supplementalSolver.getStatistics();

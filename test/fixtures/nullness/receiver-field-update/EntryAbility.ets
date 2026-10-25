@@ -19,7 +19,7 @@ export default class EntryAbility extends UIAbility {
     this.initializeSafe();
     this.optional?.close(); // NPD_NOT_EXPECTED: optional call has no normal callee edge when receiver is null
     if (this.isGuardedReadyState()) {
-      this.guarded!.close(); // NPD_NOT_EXPECTED: ready-state predicate establishes class invariant
+      this.guarded!.close(); // Model limitation: the ready-state class invariant is not inferred from the predicate name.
     }
     this.observeWithoutUpdating();
     this.unsafe!.close(); // NPD_EXPECTED: unchanged receiver field remains null

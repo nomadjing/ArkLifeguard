@@ -28,11 +28,14 @@ describe('Nullness receiver-field updates across calls', () => {
         const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
 
         expect(result.success, result.error).toBe(true);
-        expect(result.diagnostics).toHaveLength(1);
-        expect(result.diagnostics[0].sourceStmt.getOriginalText()).toContain(
+        // A ready-state class invariant is no longer inferred from method names.
+        expect(result.diagnostics).toHaveLength(2);
+        const unsafe = result.diagnostics.find(diagnostic =>
+            diagnostic.dereferenceStmt.getOriginalText()?.includes('this.unsafe!.close()'))!;
+        expect(unsafe.sourceStmt.getOriginalText()).toContain(
             'unsafe:'
         );
-        expect(result.diagnostics[0].dereferenceStmt.getOriginalText()).toContain(
+        expect(unsafe.dereferenceStmt.getOriginalText()).toContain(
             'this.unsafe!.close()'
         );
         expect(result.diagnostics.some(diagnostic =>
@@ -44,6 +47,6 @@ describe('Nullness receiver-field updates across calls', () => {
         )).toBe(false);
         expect(result.diagnostics.some(diagnostic =>
             diagnostic.dereferenceStmt.getOriginalText()?.includes('this.guarded!.close()')
-        )).toBe(false);
+        )).toBe(true);
     });
 });

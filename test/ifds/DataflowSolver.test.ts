@@ -246,7 +246,7 @@ describe('IFDS migration smoke tests', () => {
         expect(cfg).toBeDefined();
 
         const problem = new IdentityProblem(cfg!.getStartingStmt(), method!);
-        const solver = new IdentitySolver(problem, scene);
+        const solver = new DataflowSolver(problem, scene);
         solver.solve();
 
         const reachedStatements = new Set(
@@ -254,6 +254,7 @@ describe('IFDS migration smoke tests', () => {
         );
         for (const stmt of cfg!.getStmts()) {
             expect(reachedStatements.has(stmt), stmt.toString()).toBe(true);
+            expect(solver.getReachedFacts().get(stmt)).toEqual(['ZERO']);
         }
     });
 
@@ -452,6 +453,31 @@ describe('IFDS migration smoke tests', () => {
             new Scene()
         );
         expect(solver.getStatistics()).toBeUndefined();
+    });
+
+    it('collects distinct reached facts across caller contexts and preserves hash collisions', () => {
+        const node = {} as Stmt;
+        const otherNode = {} as Stmt;
+        const solver = new SemanticIdentitySolver(
+            new SemanticIdentityProblem(node, {} as ArkMethod),
+            new Scene()
+        );
+        const enqueue = (context: string, target: Stmt, value: string): void => {
+            solver.enqueueForTest(new PathEdge(
+                new PathEdgePoint(node, { value: context }),
+                new PathEdgePoint(target, { value })
+            ));
+        };
+        enqueue('ROOT_1', node, 'AA');
+        enqueue('ROOT_2', node, 'AA');
+        enqueue('ROOT_2', node, 'BB');
+        enqueue('ROOT_1', otherNode, 'AA');
+
+        expect(solver.getPathEdgeSet().size).toBe(4);
+        const reached = solver.getReachedFacts();
+        expect(reached.size).toBe(2);
+        expect(reached.get(node)?.map(fact => fact.value)).toEqual(['AA', 'BB']);
+        expect(reached.get(otherNode)?.map(fact => fact.value)).toEqual(['AA']);
     });
 
     it('applies a new summary to every existing caller context', () => {

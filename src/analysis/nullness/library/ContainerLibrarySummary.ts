@@ -26,6 +26,7 @@ import {
     NullnessAccessPath,
     NullnessFact,
     NullnessKind,
+    nullnessFromAlternatives,
     NullnessOriginKind,
 } from '../NullnessFact';
 import { NullnessLibrarySummary } from './NullnessLibrarySummary';
@@ -493,14 +494,7 @@ function inferReturnNullness(type: Type): InferredReturnNullness {
     };
     collectTypeAlternatives(type, alternatives, new Set<Type>());
     if (alternatives.unknown) return 'unknown';
-    if (alternatives.null && alternatives.undefined) return NullnessKind.MaybeNullish;
-    if (alternatives.null) {
-        return alternatives.nonNull ? NullnessKind.MaybeNull : NullnessKind.Null;
-    }
-    if (alternatives.undefined) {
-        return alternatives.nonNull ? NullnessKind.MaybeUndefined : NullnessKind.Undefined;
-    }
-    return 'non-null';
+    return nullnessFromAlternatives(alternatives);
 }
 
 function collectTypeAlternatives(

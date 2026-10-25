@@ -101,6 +101,16 @@ export enum NullnessKind {
     MaybeNullish = 'maybe-nullish',
 }
 
+/** Shared classification for body-derived and declared return alternatives. */
+export function nullnessFromAlternatives(alternatives: {
+    null: boolean; undefined: boolean; nonNull: boolean;
+}): NullnessKind | 'non-null' {
+    if (alternatives.null && alternatives.undefined) return NullnessKind.MaybeNullish;
+    if (alternatives.null) return alternatives.nonNull ? NullnessKind.MaybeNull : NullnessKind.Null;
+    if (alternatives.undefined) return alternatives.nonNull ? NullnessKind.MaybeUndefined : NullnessKind.Undefined;
+    return 'non-null';
+}
+
 /** Whether the abstract value represented by a kind may contain null. */
 export function mayBeNull(kind: NullnessKind): boolean {
     return kind === NullnessKind.Null ||

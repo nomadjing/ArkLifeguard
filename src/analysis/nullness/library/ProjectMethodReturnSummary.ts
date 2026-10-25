@@ -17,9 +17,10 @@ import {
     NullnessAccessPath,
     NullnessFact,
     NullnessKind,
+    nullnessFromAlternatives,
     NullnessOriginKind,
 } from '../NullnessFact';
-import { resolveProjectMethods } from '../ProjectMethodResolver';
+import { resolveProjectMethods } from '../../../ifds/CallResolver';
 import { NullnessLibrarySummary } from './NullnessLibrarySummary';
 
 interface ReturnAlternatives {
@@ -107,7 +108,7 @@ export class ProjectMethodReturnSummary implements NullnessLibrarySummary {
         }
 
         const contract = alternatives.sourceStmt
-            ? { kind: this.toKind(alternatives), sourceStmt: alternatives.sourceStmt }
+            ? { kind: nullnessFromAlternatives(alternatives), sourceStmt: alternatives.sourceStmt }
             : null;
         this.callCache.set(callStmt, contract);
         return contract;
@@ -185,7 +186,7 @@ export class ProjectMethodReturnSummary implements NullnessLibrarySummary {
             !alternatives.undefined &&
             !alternatives.nonNull
         )
-            ? { kind: this.toKind(alternatives), sourceStmt: alternatives.sourceStmt }
+            ? { kind: nullnessFromAlternatives(alternatives), sourceStmt: alternatives.sourceStmt }
             : null;
         this.methodCache.set(method, contract);
         return contract;
@@ -418,16 +419,5 @@ export class ProjectMethodReturnSummary implements NullnessLibrarySummary {
         // Explicit null/undefined returns in the same method remain visible and
         // form MaybeNull/MaybeUndefined together with this branch.
         alternatives.nonNull = true;
-    }
-
-    private toKind(alternatives: ReturnAlternatives): NullnessKind | 'non-null' {
-        if (alternatives.null && alternatives.undefined) return NullnessKind.MaybeNullish;
-        if (alternatives.null) {
-            return alternatives.nonNull ? NullnessKind.MaybeNull : NullnessKind.Null;
-        }
-        if (alternatives.undefined) {
-            return alternatives.nonNull ? NullnessKind.MaybeUndefined : NullnessKind.Undefined;
-        }
-        return 'non-null';
     }
 }

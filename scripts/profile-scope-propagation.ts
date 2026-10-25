@@ -141,7 +141,7 @@ function main(): void {
         maxAccessPathLength: 5,
         maxPropagationDepth: 40,
     }, libraryRegistry);
-    const solver = new NullnessSolver(problem, scene, [], { collectStatistics: true });
+    const solver = new NullnessSolver(problem, scene, { collectStatistics: true });
     solver.solve();
     const reached = solver.getReachedFacts();
     const solverStatistics = solver.getStatistics();

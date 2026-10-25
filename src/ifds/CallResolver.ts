@@ -264,3 +264,71 @@ export class CallResolver {
         return definitions;
     }
 }
+
+/**
+ * Find recursive project methods using direct signatures and imported/top-level
+ * fallback resolution. This graph does not add CHA or callback-dispatch edges.
+ * The result can be reused across roots while the scene remains unchanged.
+ */
+export function findRecursiveMethods(scene: Scene): Set<ArkMethod> {
+    const graph = new Map<ArkMethod, Set<ArkMethod>>();
+    for (const method of scene.getMethods()) {
+        const cfg = method.getCfg();
+        if (!cfg) continue;
+        const targets = new Set<ArkMethod>();
+        for (const block of cfg.getBlocks()) {
+            for (const stmt of block.getStmts()) {
+                const invoke = stmt.getInvokeExpr();
+                if (!invoke) continue;
+                const direct = scene.getMethod(invoke.getMethodSignature());
+                if (direct?.getCfg()) targets.add(direct);
+                if (!direct) {
+                    for (const resolved of resolveProjectMethods(scene, stmt)) {
+                        if (resolved.getCfg()) targets.add(resolved);
+                    }
+                }
+            }
+        }
+        graph.set(method, targets);
+    }
+
+    const recursive = new Set<ArkMethod>();
+    const indices = new Map<ArkMethod, number>();
+    const lowLinks = new Map<ArkMethod, number>();
+    const stack: ArkMethod[] = [];
+    const onStack = new Set<ArkMethod>();
+    let nextIndex = 0;
+
+    const visit = (method: ArkMethod): void => {
+        const index = nextIndex++;
+        indices.set(method, index);
+        lowLinks.set(method, index);
+        stack.push(method);
+        onStack.add(method);
+        for (const target of graph.get(method) ?? []) {
+            if (!graph.has(target)) continue;
+            if (!indices.has(target)) {
+                visit(target);
+                lowLinks.set(method, Math.min(lowLinks.get(method)!, lowLinks.get(target)!));
+            } else if (onStack.has(target)) {
+                lowLinks.set(method, Math.min(lowLinks.get(method)!, indices.get(target)!));
+            }
+        }
+        if (lowLinks.get(method) !== indices.get(method)) return;
+        const component: ArkMethod[] = [];
+        let member: ArkMethod;
+        do {
+            member = stack.pop()!;
+            onStack.delete(member);
+            component.push(member);
+        } while (member !== method);
+        if (component.length > 1 || graph.get(method)?.has(method)) {
+            for (const recursiveMethod of component) recursive.add(recursiveMethod);
+        }
+    };
+
+    for (const method of graph.keys()) {
+        if (!indices.has(method)) visit(method);
+    }
+    return recursive;
+}

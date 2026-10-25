@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import 'arkanalyzer';
 import { ArkMethod, Scene, SceneConfig, Stmt } from '../../src/adapter/arkanalyzer';
 import { ArkInterproceduralCFG, DataflowProblem, DataflowSolver } from '../../src/ifds';
-import { NullnessInterproceduralCFG } from '../../src/analysis/nullness/NullnessInterproceduralCFG';
+import { findRecursiveMethods } from '../../src/ifds/CallResolver';
 
 class ReachabilityProblem extends DataflowProblem<string> {
     constructor(private readonly entry: ArkMethod) { super(); }
@@ -16,7 +16,6 @@ class ReachabilityProblem extends DataflowProblem<string> {
     getEntryMethod() { return this.entry; }
     factEqual(left: string, right: string) { return left === right; }
 }
-class ReachabilitySolver extends DataflowSolver<string> {}
 
 describe('enhanced call resolution', () => {
     let scene: Scene;
@@ -43,59 +42,59 @@ describe('enhanced call resolution', () => {
         expect(scene.getMethod(signature, true)?.getCfg()).toBeUndefined();
     });
 
-    for (const [name, create] of [
-        ['generic', () => new ArkInterproceduralCFG(scene)],
-        ['nullness', () => new NullnessInterproceduralCFG(scene)],
-    ] as const) {
-        it.each([
-            ['runIgnored', ['ignore']],
-            ['runUsed', ['invokeSecond', 'used']],
-            ['runForward', ['forward', 'used']],
-            ['runRecursive', ['recursiveB', 'used']],
-            ['runRecursiveIgnore', ['recursiveIgnore']],
-            ['runSdk', ['unused', 'used']],
-            ['runSdkStatement', ['unused', 'used']],
-            ['runForwardToSdk', ['forwardToSdk', 'unused', 'used']],
-            ['runPointer', ['invokeSecond', 'used']],
-            ['runPointerAlias', ['used']],
-            ['runSameTarget', ['sameTarget']],
-            ['runReassignedPointer', ['unused', 'used']],
-            ['runCrossClassSdk', ['first', 'second']],
-        ])(`${name}: resolves %s without inventing unused callback edges`, (entryName, expected) => {
-            const icfg = create();
-            icfg.initialize(method(entryName as string));
-            const stmt = call(entryName as string);
-            expect(icfg.isCallStatement(stmt)).toBe(true);
-            expect([...icfg.getCalleesOfCallAt(stmt)].map(m => m.getName()).sort())
-                .toEqual([...expected].sort());
-        });
+    it('identifies self recursion and mutually recursive methods without including callers', () => {
+        expect([...findRecursiveMethods(scene)].map(m => m.getName()).sort())
+            .toEqual(['recursiveA', 'recursiveB', 'recursiveIgnore']);
+    });
 
-        it(`${name}: preserves virtual targets and unions their invoked parameters`, () => {
-            const icfg = create();
-            icfg.initialize(method('runVirtual'));
-            expect([...icfg.getCalleesOfCallAt(call('runVirtual'))]
-                .map(m => `${m.getDeclaringArkClass().getName()}.${m.getName()}`).sort())
-                .toEqual(['%dflt.used', 'Base.dispatch', 'Derived.dispatch']);
-        });
+    it.each([
+        ['runIgnored', ['ignore']],
+        ['runUsed', ['invokeSecond', 'used']],
+        ['runForward', ['forward', 'used']],
+        ['runRecursive', ['recursiveB', 'used']],
+        ['runRecursiveIgnore', ['recursiveIgnore']],
+        ['runSdk', ['unused', 'used']],
+        ['runSdkStatement', ['unused', 'used']],
+        ['runForwardToSdk', ['forwardToSdk', 'unused', 'used']],
+        ['runPointer', ['invokeSecond', 'used']],
+        ['runPointerAlias', ['used']],
+        ['runSameTarget', ['sameTarget']],
+        ['runReassignedPointer', ['unused', 'used']],
+        ['runCrossClassSdk', ['first', 'second']],
+    ])(`resolves %s without inventing unused callback edges`, (entryName, expected) => {
+        const icfg = new ArkInterproceduralCFG(scene);
+        icfg.initialize(method(entryName as string));
+        const stmt = call(entryName as string);
+        expect(icfg.isCallStatement(stmt)).toBe(true);
+        expect([...icfg.getCalleesOfCallAt(stmt)].map(m => m.getName()).sort())
+            .toEqual([...expected].sort());
+    });
 
-        it(`${name}: caches queries without changing IR and clears caches on initialize`, () => {
-            const icfg = create();
-            const entry = method('runUsed');
-            icfg.initialize(entry);
-            const stmt = call('runUsed');
-            const expression = stmt.getInvokeExpr()!;
-            const argumentsBefore = [...expression.getArgs()];
-            const irBefore = stmt.toString();
-            const first = icfg.getCalleesOfCallAt(stmt);
-            expect(icfg.getCalleesOfCallAt(stmt)).toBe(first);
-            expect(stmt.toString()).toBe(irBefore);
-            expect(expression.getArgs()).toEqual(argumentsBefore);
-            icfg.initialize(entry);
-            const second = icfg.getCalleesOfCallAt(stmt);
-            expect(second).not.toBe(first);
-            expect(second).toEqual(first);
-        });
-    }
+    it(`preserves virtual targets and unions their invoked parameters`, () => {
+        const icfg = new ArkInterproceduralCFG(scene);
+        icfg.initialize(method('runVirtual'));
+        expect([...icfg.getCalleesOfCallAt(call('runVirtual'))]
+            .map(m => `${m.getDeclaringArkClass().getName()}.${m.getName()}`).sort())
+            .toEqual(['%dflt.used', 'Base.dispatch', 'Derived.dispatch']);
+    });
+
+    it(`caches queries without changing IR and clears caches on initialize`, () => {
+        const icfg = new ArkInterproceduralCFG(scene);
+        const entry = method('runUsed');
+        icfg.initialize(entry);
+        const stmt = call('runUsed');
+        const expression = stmt.getInvokeExpr()!;
+        const argumentsBefore = [...expression.getArgs()];
+        const irBefore = stmt.toString();
+        const first = icfg.getCalleesOfCallAt(stmt);
+        expect(icfg.getCalleesOfCallAt(stmt)).toBe(first);
+        expect(stmt.toString()).toBe(irBefore);
+        expect(expression.getArgs()).toEqual(argumentsBefore);
+        icfg.initialize(entry);
+        const second = icfg.getCalleesOfCallAt(stmt);
+        expect(second).not.toBe(first);
+        expect(second).toEqual(first);
+    });
 
     it.each([
         ['runIgnored', [], ['unused', 'used']],
@@ -103,7 +102,7 @@ describe('enhanced call resolution', () => {
         ['runForward', ['used'], ['unused']],
         ['runSdk', ['unused', 'used'], []],
     ])('IFDS reaches only the expected callback bodies for %s', (entryName, included, excluded) => {
-        const solver = new ReachabilitySolver(new ReachabilityProblem(method(entryName as string)), scene);
+        const solver = new DataflowSolver(new ReachabilityProblem(method(entryName as string)), scene);
         solver.solve();
         const reached = new Set([...solver.getPathEdgeSet()]
             .map(edge => edge.edgeEnd.node.getCfg()!.getDeclaringMethod().getName()));

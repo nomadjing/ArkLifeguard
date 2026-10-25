@@ -31,7 +31,7 @@ import { createSolverStatistics, DataflowSolverOptions, IFDSSolverStatistics } f
  * This program is roughly an implementation of the paper:
  * Practical Extensions to the IFDS Algorithm.
  */
-export abstract class DataflowSolver<D> {
+export class DataflowSolver<D> {
     protected problem: DataflowProblem<D>;
     protected zeroFact: D;
     private readonly icfg: InterproceduralCFG;
@@ -360,6 +360,34 @@ export abstract class DataflowSolver<D> {
             return edge;
         }
         return this.deferredWorkList.pop();
+    }
+
+    /** Collect semantically distinct end facts per statement across all caller contexts. */
+    public getReachedFacts(): Map<Stmt, D[]> {
+        const reached = new Map<Stmt, D[]>();
+        const reachedIndex = new Map<Stmt, Map<number, D[]>>();
+        for (const edge of this.pathEdgeStore.values()) {
+            const stmt = edge.edgeEnd.node;
+            const fact = edge.edgeEnd.fact;
+            const facts = reached.get(stmt) ?? [];
+            let factBuckets = reachedIndex.get(stmt);
+            if (!factBuckets) {
+                factBuckets = new Map<number, D[]>();
+                reachedIndex.set(stmt, factBuckets);
+            }
+            const hash = this.problem.factHash(fact);
+            const bucket = factBuckets.get(hash);
+            if (!bucket?.some(existing => this.problem.factEqual(existing, fact))) {
+                facts.push(fact);
+                reached.set(stmt, facts);
+                if (bucket) {
+                    bucket.push(fact);
+                } else {
+                    factBuckets.set(hash, [fact]);
+                }
+            }
+        }
+        return reached;
     }
 
     public getPathEdgeSet(): Set<PathEdge<D>> {
