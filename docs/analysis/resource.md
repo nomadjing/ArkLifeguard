@@ -49,15 +49,17 @@ API 通过 `resourceRules` 或直接 `ResourceRunner` 注入 [ResourceRule](../.
 
 [ResourceProblem](../../src/analysis/resourceleak/ResourceProblem.ts) 实现 normal/call/return/bypass 流，映射局部别名、参数、工厂返回和接收者字段。局部键包含方法作用域，避免不同方法临时变量混淆。
 
-创建/释放调用按规则合同直接处理；已知直接被调摘要负责对应资源路径，避免 unchanged bypass 把已经释放的事实重新带回。Promise 获取先记 pending，`await` 可映射到兑现句柄；未建模回调/外部转交保守返回未知所有权。
+创建/释放调用按规则合同直接处理；已知直接被调摘要负责对应资源路径，避免 unchanged bypass 把已经释放的事实重新带回。Promise 获取先记 pending，`await` 和内建 Promise 的 `.then` 成功回调可映射到兑现句柄；闭包捕获按词法环境映射同一资源。未建模回调/外部转交保守返回未知所有权。
+
+释放契约检查是否存在释放行为：数据流确认同一分配点的资源在任一可达路径（包括被调函数或回调）调用匹配的 `releasers`，即履行契约。不要求每条分支、异常或异步调度路径都保证释放，也不因释放前的操作可能失败或释放接口自身抛异常而报告。释放其他对象、不可达的释放、错误释放 API 和完全缺少释放仍保留对应义务。异常流不因失败的申请调用创建资源，也不把尚未返回的值当作成功赋值。
 
 内部资源调用帧深度固定为 4，超界降级为未知。工程的 `maxPropagationDepth` 只约束空指针；资源不接受 Ability 数或导航跳数传播参数。
 
 ## 诊断与覆盖
 
-[ResourceRunner](../../src/analysis/resourceleak/ResourceRunner.ts) 从求解后的 return/throw 出口收集候选，按规则和分配点合并多出口。优先选择创建方法本身的出口作为边界证据；这是义务出口判定，不能将所有诊断边界描述成真实对象销毁时刻。
+[ResourceRunner](../../src/analysis/resourceleak/ResourceRunner.ts) 先从求解事实汇总同一规则、同一分配点的释放证据，再从没有释放证据的 return/throw 出口收集候选，按规则和分配点合并多出口。优先选择创建方法本身的出口作为边界证据；这是义务出口判定，不能将所有诊断边界描述成真实对象销毁时刻。
 
-候选理由为 `unreleased`、`partially-released`、`overwritten`、`wrong-release`、`unknown-ownership`，附分配点、边界和关键位置证据。方法返回/接收者字段转交按当前模型处理；没有完整多容器/多实例所有权证明。
+候选理由为 `unreleased`、`overwritten`、`wrong-release`、`unknown-ownership`，附分配点、边界和关键位置证据。`partially-released` 保留为结果类型兼容值；存在匹配释放的分配点不再产生候选。方法返回/接收者字段转交按当前模型处理；没有完整多容器/多实例所有权证明。判定以分配点为抽象单位，不保证同一分配点的每次运行实例都释放。
 
 `coverage` 分别统计全部/入口可达的创建与释放调用。`unresolvedRuleIds` 表示 SDK 绑定失败。创建调用未到达时的零候选，不是该调用被证明安全。统计开启时，完整 API 在 `solverStatistics` 中提供 IFDS 指标，CLI 通过 `--ifds-stats` 单独输出；主用户报告省略指标。
 

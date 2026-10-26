@@ -1,6 +1,7 @@
 import {
     ArkArrayRef,
     ArkInstanceFieldRef,
+    ClosureFieldRef,
     GlobalRef,
     Local,
     Stmt,
@@ -72,6 +73,9 @@ export function resourceValueKey(value: Value): string {
     }
     if (value instanceof ArkInstanceFieldRef) {
         return `field:${resourceValueKey(value.getBase())}:${value.getFieldSignature().toString()}`;
+    }
+    if (value instanceof ClosureFieldRef) {
+        return `capture:${resourceValueKey(value.getBase())}:${value.getFieldName()}`;
     }
     if (value instanceof ArkArrayRef) {
         return `array:${resourceValueKey(value.getBase())}:${value.toString()}`;

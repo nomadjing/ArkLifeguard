@@ -20,6 +20,119 @@ declare function schedule(callback: () => void): void;
 export class FlowCases {
     private field?: Handle;
 
+    static finallyReturn(): number {
+        const handle = Handle.open();
+        try { return 1; } finally { handle.release(); }
+    }
+
+    static finallyCallChain(): void {
+        try { FlowCases.finallyReturn(); } catch (error) { const caught = 1; }
+    }
+
+    static ordinaryCallBeforeRelease(): void {
+        const handle = Handle.open();
+        try { FlowCases.normalOperation(); } catch (error) { return; }
+        handle.release();
+    }
+
+    static normalOperation(): void { const value = 1; }
+
+    static finallyThrow(): void {
+        const handle = Handle.open();
+        try { throw new Error('failure'); } finally { handle.release(); }
+    }
+
+    static finallyCatchReturn(flag: boolean): number {
+        const handle = Handle.open();
+        try {
+            if (flag) return 1;
+            throw new Error('failure');
+        } catch (error) {
+            return 2;
+        } finally { handle.release(); }
+    }
+
+    static finallyNested(): number {
+        const handle = Handle.open();
+        try {
+            try { return 1; } finally { const marker = 1; }
+        } finally { handle.release(); }
+    }
+
+    static finallyNestedThrow(): void {
+        const handle = Handle.open();
+        try {
+            try { throw new Error('failure'); } finally { const marker = 1; }
+        } finally { handle.release(); }
+    }
+
+    static finallyFactory(): Handle {
+        const handle = Handle.open();
+        try { return handle; } finally { const marker = 1; }
+    }
+
+    static finallyFactoryCaller(): void {
+        const handle = FlowCases.finallyFactory();
+        handle.release();
+    }
+
+    static finallyOverride(): Handle {
+        const handle = Handle.open();
+        try { return handle; } finally { return new Handle(); }
+    }
+
+    static finallyThrowOverridesReturn(): Handle {
+        const handle = Handle.open();
+        try { return handle; } finally { throw new Error('overridden return'); }
+    }
+
+    static finallyThrowOverridesReturnCaller(): void {
+        const handle = FlowCases.finallyThrowOverridesReturn();
+        handle.release();
+    }
+
+    static finallySnapshot(): Handle {
+        let handle = Handle.open();
+        try { return handle; } finally { handle = new Handle(); }
+    }
+
+    static finallySnapshotCaller(): void {
+        const handle = FlowCases.finallySnapshot();
+        handle.release();
+    }
+
+    static finallyOverridesThrow(): Handle {
+        const handle = Handle.open();
+        try { throw new Error('overridden'); } finally { return handle; }
+    }
+
+    static finallyOverridesThrowCaller(): void {
+        const handle = FlowCases.finallyOverridesThrow();
+        handle.release();
+    }
+
+    static finallyBranchFactory(flag: boolean): Handle {
+        try {
+            if (flag) return Handle.open();
+            return Handle.open();
+        } finally { const marker = 1; }
+    }
+
+    static finallyBranchCaller(flag: boolean): void {
+        const handle = FlowCases.finallyBranchFactory(flag);
+        handle.release();
+    }
+
+    static finallyMissingCleanup(): number {
+        const handle = Handle.open();
+        try { return 1; } finally { const marker = 1; }
+    }
+
+    static finallyConditional(flag: boolean): number {
+        const handle = Handle.open();
+        try { return 1; } finally { if (flag) handle.release(); }
+    }
+
     static replace(_handle: Handle): Handle {
         return new Handle();
     }
@@ -176,12 +289,12 @@ export class FlowCases {
     }
 
     static optionalCallbackRelease(): void {
-        const handle = Handle.open();
+        const handle: Handle = Handle.open();
         schedule(() => handle.release());
     }
 
     static promiseCallbackRelease(): void {
-        const handle = Handle.open();
+        const handle: Handle = Handle.open();
         Promise.resolve().then(() => handle.release());
     }
 

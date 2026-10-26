@@ -8,6 +8,8 @@ import {
     Stmt,
 } from '../../adapter/arkanalyzer';
 import { DataflowSolver } from '../../ifds/DataflowSolver';
+import { ArkInterproceduralCFG } from '../../ifds/icfg/ArkInterproceduralCFG';
+import type { InterproceduralCFG } from '../../ifds/icfg/InterproceduralCFG';
 import { ResourceFact, hasResourceHandle } from './ResourceFact';
 import { ResourceProblem } from './ResourceProblem';
 import type {
@@ -61,8 +63,10 @@ export class ResourceRunner {
             const entry = cfg?.getStartingBlock()?.getStmts()[dummyMain.getParameters().length]
                 ?? cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
             if (!entry) throw new Error('资源分析入口没有 CFG 语句');
-            const problem = new ResourceProblem(entry, dummyMain, this.rules);
-            const solver = new DataflowSolver(problem, this.scene, { collectStatistics: this.collectStatistics });
+            const icfg = new ArkInterproceduralCFG(this.scene);
+            const problem = new ResourceProblem(entry, dummyMain, this.rules,
+                stmt => icfg.getNormalSuccessors(stmt));
+            const solver = new DataflowSolver(problem, this.scene, { collectStatistics: this.collectStatistics }, icfg);
             solver.solve();
             const byStatement = new Map<Stmt, ResourceFact[]>();
             for (const edge of solver.getPathEdgeSet()) {
@@ -78,7 +82,7 @@ export class ResourceRunner {
                 entryMethod,
                 unsupportedApiFamilies: UNSUPPORTED_RESOURCE_API_FAMILIES,
                 ruleIds: this.rules.map(rule => rule.id),
-                diagnostics: this.collectDiagnostics(byStatement, dummyMain),
+                diagnostics: this.collectDiagnostics(byStatement, dummyMain, icfg),
                 reachedStatements: byStatement.size,
                 reachedFacts: [...byStatement.values()].reduce((sum, facts) => sum + facts.length, 0),
                 unresolvedRuleIds: this.unresolvedRuleIds,
@@ -124,8 +128,18 @@ export class ResourceRunner {
     private collectDiagnostics(
         byStatement: ReadonlyMap<Stmt, readonly ResourceFact[]>,
         entryMethod: ArkMethod,
+        icfg: InterproceduralCFG,
     ): ResourceDiagnostic[] {
         const groups = new Map<string, ExitFact[]>();
+        const released = new Map<string, Set<Stmt>>();
+        for (const facts of byStatement.values()) {
+            for (const fact of facts) {
+                if (fact.state !== 'released' || !fact.allocationSite) continue;
+                const sites = released.get(fact.ruleId) ?? new Set<Stmt>();
+                sites.add(fact.allocationSite);
+                released.set(fact.ruleId, sites);
+            }
+        }
         const ids = new Map<Stmt, number>();
         const siteId = (site: Stmt): number => {
             let id = ids.get(site);
@@ -138,10 +152,14 @@ export class ResourceRunner {
         for (const [exit, facts] of byStatement) {
             if (!(exit instanceof ArkReturnStmt || exit instanceof ArkReturnVoidStmt ||
                 exit instanceof ArkThrowStmt)) continue;
+            if (!icfg.isExitStatement(exit)) continue;
             const method = exit.getCfg()?.getDeclaringMethod();
             if (!method) continue;
             for (const fact of facts) {
                 if (fact.isZero() || !fact.allocationSite || fact.frames.length > 0) continue;
+                // The contract asks for a reachable matching release, not cleanup
+                // on every normal/exceptional path. Include releases inside callees.
+                if (released.get(fact.ruleId)?.has(fact.allocationSite)) continue;
                 if (this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
                 // Multiple lifecycle exits are evidence for one allocation, not independent leaks.
                 const key = `${fact.ruleId}|${siteId(fact.allocationSite)}`;
@@ -161,11 +179,7 @@ export class ResourceRunner {
                 item.fact.allocationSite?.getCfg()?.getDeclaringMethod()) ?? items[0];
             const chosen = (preferred(leaks) ?? preferred(unknowns))!;
             const { fact, exit } = chosen;
-            const partiallyReleased = leaks.length > 0 &&
-                group.some(item => item.fact.state === 'released');
-            const reason: ResourceLeakReason = partiallyReleased
-                ? 'partially-released'
-                : fact.state === 'unknown' || fact.state === 'pending'
+            const reason: ResourceLeakReason = fact.state === 'unknown' || fact.state === 'pending'
                     ? 'unknown-ownership'
                     : fact.event === 'overwritten'
                         ? 'overwritten'

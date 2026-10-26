@@ -29,11 +29,18 @@ export abstract class DataflowProblem<D> {
         return this.identityFlowFunction();
     }
 
-    /** Preserve caller-owned facts when a call completes exceptionally. */
+    /** Apply exceptional completion effects before leaving a method without a handler. */
+    getExceptionalExitFlowFunction(_srcStmt: Stmt): FlowFunction<D> {
+        return this.identityFlowFunction();
+    }
+
+    /** Preserve caller-owned facts when a call completes exceptionally.
+     * fromCallee distinguishes an actual callee summary from a declared pre-entry failure. */
     getCallToExceptionalReturnFlowFunction(
         _srcStmt: Stmt,
         _handlerStmt: Stmt,
-        _callees?: ReadonlySet<ArkMethod>
+        _callees?: ReadonlySet<ArkMethod>,
+        _fromCallee?: boolean,
     ): FlowFunction<D> {
         return this.identityFlowFunction();
     }

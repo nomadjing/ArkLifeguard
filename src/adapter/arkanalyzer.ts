@@ -13,6 +13,7 @@ export {
   ViewTreeNode,
   Stmt,
   ArkAssignStmt,
+  ArkAliasTypeDefineStmt,
   ArkIfStmt,
   ArkInvokeStmt,
   ArkReturnStmt,

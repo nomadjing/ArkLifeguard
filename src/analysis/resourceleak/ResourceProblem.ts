@@ -5,13 +5,23 @@ import {
     ArkCastExpr,
     ArkInstanceFieldRef,
     ArkInstanceInvokeExpr,
+    ArkIfStmt,
     ArkMethod,
     ArkParameterRef,
     ArkReturnStmt,
     ArkStaticFieldRef,
     GlobalRef,
     ArkThisRef,
+    ArkUnopExpr,
     Local,
+    ClassType,
+    ClosureFieldRef,
+    FunctionType,
+    LexicalEnvType,
+    NumberType,
+    NumberConstant,
+    RelationalBinaryOperator,
+    UnaryOperator,
     NullConstant,
     Stmt,
     UndefinedConstant,
@@ -42,6 +52,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         private readonly entryPoint: Stmt,
         private readonly entryMethod: ArkMethod,
         rules: readonly ResourceRule[],
+        private readonly normalSuccessors: (stmt: Stmt) => readonly Stmt[] = () => [],
     ) {
         super();
         const ids = new Set<string>();
@@ -71,8 +82,62 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         }
     }
 
-    getNormalFlowFunction(srcStmt: Stmt, _tgtStmt: Stmt): FlowFunction<ResourceFact> {
-        return { getDataFacts: fact => this.transfer(srcStmt, fact) };
+    getNormalFlowFunction(srcStmt: Stmt, tgtStmt: Stmt): FlowFunction<ResourceFact> {
+        return { getDataFacts: fact => {
+            if (srcStmt instanceof ArkIfStmt && fact.state === 'allocated' && !fact.isZero()) {
+                const truth = this.validHandleCondition(srcStmt, fact);
+                // Use the solver's actual successors, including cloned finally paths.
+                const successors = this.normalSuccessors(srcStmt);
+                if (truth !== undefined && successors.length === 2 &&
+                    successors[truth ? 1 : 0] === tgtStmt) return new Set();
+            }
+            return this.transfer(srcStmt, fact);
+        } };
+    }
+
+    private validHandleCondition(stmt: ArkIfStmt, fact: ResourceFact): boolean | undefined {
+        const rule = this.rulesById.get(fact.ruleId)!;
+        if (!rule.handleValidity) return undefined;
+        const condition = stmt.getConditionExpr();
+        let value = condition.getOp1();
+        let sentinel = condition.getOp2();
+        let operator = condition.getOperator();
+        if (!this.matchesHandle(fact.handles, value, rule)) {
+            [value, sentinel] = [sentinel, value];
+            if (!this.matchesHandle(fact.handles, value, rule)) return undefined;
+            const reversed: Partial<Record<string, RelationalBinaryOperator>> = {
+                '<': RelationalBinaryOperator.GreaterThan, '<=': RelationalBinaryOperator.GreaterThanOrEqual,
+                '>': RelationalBinaryOperator.LessThan, '>=': RelationalBinaryOperator.LessThanOrEqual,
+            };
+            operator = reversed[operator] ?? operator;
+        }
+        const equal = operator === RelationalBinaryOperator.Equality ||
+            operator === RelationalBinaryOperator.StrictEquality;
+        const unequal = operator === RelationalBinaryOperator.InEquality ||
+            operator === RelationalBinaryOperator.StrictInequality;
+        if (sentinel instanceof NullConstant || sentinel instanceof UndefinedConstant) {
+            return equal ? false : unequal ? true : undefined;
+        }
+        // Negative literals are lowered to a compiler temporary (`%0 = -1`).
+        if (sentinel instanceof Local && /^%\d+$/.test(sentinel.getName())) {
+            const declaration = sentinel.getDeclaringStmt();
+            if (declaration instanceof ArkAssignStmt) sentinel = declaration.getRightOp();
+        }
+        const negative = sentinel instanceof ArkUnopExpr && sentinel.getOperator() === UnaryOperator.Neg;
+        const literal = negative ? (sentinel as ArkUnopExpr).getOp() : sentinel;
+        if (!(literal instanceof NumberConstant)) return undefined;
+        const number = Number(literal.getValue()) * (negative ? -1 : 1);
+        // ArkAnalyzer lowers object truthiness to `object != 0`. Numeric fd 0 is valid!
+        if (number === 0 && value.getType() instanceof ClassType) {
+            return equal ? false : unequal ? true : undefined;
+        }
+        if (rule.handleValidity !== 'non-negative' || !(value.getType() instanceof NumberType)) return undefined;
+        if (number < 0 && (equal || unequal)) return unequal;
+        if (operator === RelationalBinaryOperator.GreaterThanOrEqual && number <= 0) return true;
+        if (operator === RelationalBinaryOperator.GreaterThan && number < 0) return true;
+        if (operator === RelationalBinaryOperator.LessThan && number <= 0) return false;
+        if (operator === RelationalBinaryOperator.LessThanOrEqual && number < 0) return false;
+        return undefined;
     }
 
     getCallFlowFunction(srcStmt: Stmt, method: ArkMethod): FlowFunction<ResourceFact> {
@@ -80,18 +145,65 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
             getDataFacts: fact => {
                 if (fact.isZero()) return new Set([fact]);
                 if (this.isRuleApi(srcStmt)) return new Set();
-                if (!this.isDirectCallee(srcStmt, method)) return new Set();
                 if (fact.frames.length >= this.maxCallDepth) {
                     return new Set();
                 }
-                const mapped = this.mapCallerHandlesToCallee(srcStmt, method, fact.handles);
+                const direct = this.isDirectCallee(srcStmt, method);
+                const mapped = direct
+                    ? this.mapCallerHandlesToCallee(srcStmt, method, fact.handles)
+                    : this.mapCallbackHandles(srcStmt, method, fact);
                 if (mapped.length === 0) return new Set();
                 return new Set([fact.derive({
                     handles: mapped,
+                    state: !direct && this.promiseResultParameter(srcStmt, method, fact) ? 'allocated' : fact.state,
                     frames: [...fact.frames, { callSite: srcStmt, callerHandles: fact.handles }],
                 })]);
             },
         };
+    }
+
+    getExceptionalFlowFunction(srcStmt: Stmt, _handlerStmt: Stmt): FlowFunction<ResourceFact> {
+        return this.getExceptionalExitFlowFunction(srcStmt);
+    }
+
+    getExceptionalExitFlowFunction(srcStmt: Stmt): FlowFunction<ResourceFact> {
+        // Do not run the normal transfer: a failed allocator never creates a resource.
+        return { getDataFacts: fact => {
+            const right = srcStmt instanceof ArkAssignStmt ? srcStmt.getRightOp() : undefined;
+            if (fact.state === 'pending' && right instanceof ArkAwaitExpr &&
+                hasResourceHandle(fact.handles, right.getPromise())) return new Set();
+            return new Set([this.releaseAt(srcStmt, fact) ?? fact]);
+        } };
+    }
+
+    getCallToExceptionalReturnFlowFunction(
+        srcStmt: Stmt, _handlerStmt: Stmt, callees?: ReadonlySet<ArkMethod>, fromCallee = false,
+    ): FlowFunction<ResourceFact> {
+        return { getDataFacts: fact => {
+            if (fromCallee && !fact.isZero() && !this.isRuleApi(srcStmt) && [...(callees ?? [])].some(method =>
+                method.getCfg() && this.isDirectCallee(srcStmt, method) &&
+                this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0)) {
+                // The actual callee summary owns these handles; an identity bypass would undo cleanup.
+                return new Set();
+            }
+            return new Set([this.releaseAt(srcStmt, fact) ?? fact]);
+        } };
+    }
+
+    getExceptionalExitToReturnFlowFunction(_exitStmt: Stmt, _handlerStmt: Stmt, callStmt: Stmt): FlowFunction<ResourceFact> {
+        return { getDataFacts: fact => {
+            if (fact.isZero()) return new Set([fact]);
+            // Uncaught intermediate calls keep the original throw payload. Restore the
+            // matching caller's aliases and discard all unwound resource frames at once.
+            for (let index = fact.frames.length - 1; index >= 0; index--) {
+                const frame = fact.frames[index];
+                if (frame.callSite === callStmt) return new Set([fact.derive({
+                    handles: frame.callerHandles, frames: fact.frames.slice(0, index),
+                })]);
+            }
+            // Resources allocated inside the callee still carry their own obligation.
+            return new Set([fact]);
+        } };
     }
 
     getExitToReturnFlowFunction(exitStmt: Stmt, _returnSite: Stmt, callStmt: Stmt): FlowFunction<ResourceFact> {
@@ -226,13 +338,8 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         const releases = this.releasers.get(signature ?? '') ?? [];
         // A signature can participate in several contracts. Preserve matching-rule
         // precedence and all entries rather than allowing last-write-wins indexing.
-        for (const { rule: owner, api } of releases) {
-            if (owner.id !== rule.id) continue;
-            const handle = this.handleAt(stmt, api.handleLocation);
-            if (handle && this.matchesHandle(fact.handles, handle, rule)) {
-                return new Set([fact.derive({ state: 'released', eventSite: stmt })]);
-            }
-        }
+        const released = this.releaseAt(stmt, fact);
+        if (released) return new Set([released]);
         for (const { rule: owner, api } of releases) {
             if (owner.id === rule.id) continue;
             const handle = this.handleAt(stmt, api.handleLocation);
@@ -305,6 +412,20 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return signature !== undefined && (this.allocators.has(signature) || this.releasers.has(signature));
     }
 
+    private releaseAt(stmt: Stmt, fact: ResourceFact): ResourceFact | undefined {
+        if (fact.isZero() || fact.state === 'released' || fact.state === 'escaped') return undefined;
+        const rule = this.rulesById.get(fact.ruleId)!;
+        const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
+        for (const { rule: owner, api } of this.releasers.get(signature ?? '') ?? []) {
+            if (owner.id !== rule.id) continue;
+            const handle = this.handleAt(stmt, api.handleLocation);
+            if (handle && this.matchesHandle(fact.handles, handle, rule)) {
+                return fact.derive({ state: 'released', eventSite: stmt });
+            }
+        }
+        return undefined;
+    }
+
     private handleAt(stmt: Stmt, location: ResourceHandleLocation): Value | undefined {
         const invoke = stmt.getInvokeExpr();
         if (!invoke) return undefined;
@@ -333,6 +454,49 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
     private isDirectCallee(stmt: Stmt, method: ArkMethod): boolean {
         const invoked = stmt.getInvokeExpr()?.getMethodSignature();
         return !!invoked && invoked.toString() === method.getSignature().toString();
+    }
+
+    private mapCallbackHandles(stmt: Stmt, method: ArkMethod, fact: ResourceFact): Value[] {
+        const invoke = stmt.getInvokeExpr();
+        if (!invoke) return [];
+        const mapped: Value[] = [];
+        // Captures are linked by lexical-environment identity, never by an
+        // unscoped variable name or by the spelling of a release method.
+        for (const binding of method.getCfg()?.getStartingBlock()?.getStmts() ?? []) {
+            if (!(binding instanceof ArkAssignStmt)) continue;
+            const capture = binding.getRightOp();
+            if (!(capture instanceof ClosureFieldRef)) continue;
+            const environment = capture.getBase().getType();
+            if (!(environment instanceof LexicalEnvType)) continue;
+            const source = environment.getClosures().find(local => local.getName() === capture.getFieldName());
+            if (!source) continue;
+            for (const handle of fact.handles) {
+                const rebased = this.rebase(handle, source, capture);
+                if (rebased) mapped.push(rebased);
+            }
+        }
+        const parameter = this.promiseResultParameter(stmt, method, fact);
+        if (parameter) mapped.push(parameter);
+        return uniqueResourceHandles(mapped);
+    }
+
+    private promiseResultParameter(stmt: Stmt, method: ArkMethod, fact: ResourceFact): Local | null {
+        const invoke = stmt.getInvokeExpr();
+        if (!invoke) return null;
+        // Only the built-in Promise fulfillment callback receives the resource
+        // represented by a pending allocator result. Rejection handlers do not.
+        const owner = invoke.getMethodSignature().getDeclaringClassSignature();
+        const callback = invoke.getArgs()[0]?.getType();
+        if (fact.state === 'pending' && invoke instanceof ArkInstanceInvokeExpr &&
+            owner.getClassName() === 'Promise' && owner.getDeclaringFileSignature().getProjectName() === 'built-in' &&
+            invoke.getMethodSignature().getMethodSubSignature().getMethodName() === 'then' &&
+            hasResourceHandle(fact.handles, invoke.getBase()) && callback instanceof FunctionType &&
+            callback.getMethodSignature().toString() === method.getSignature().toString()) {
+            const offset = this.getParameterLocal(method, 0)?.getType() instanceof LexicalEnvType ? 1 : 0;
+            const parameter = this.getParameterLocal(method, offset);
+            return parameter;
+        }
+        return null;
     }
 
     private mapCallerHandlesToCallee(stmt: Stmt, method: ArkMethod, handles: readonly Value[]): Value[] {

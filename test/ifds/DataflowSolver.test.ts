@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import 'arkanalyzer';
 import {
     ArkMethod,
+    ArkCaughtExceptionRef,
     ArkThrowStmt,
     Scene,
     SceneConfig,
@@ -380,6 +381,35 @@ describe('IFDS migration smoke tests', () => {
 
         expect(reachedStatements.has(catchEntry!)).toBe(false);
     });
+
+    it.each(['defaultCalls', 'defaultReads', 'defaultAwait'])(
+        'does not invent exceptions in %s', name => {
+            const scene = buildScene('exception-flow');
+            const method = scene.getMethods().find(candidate => candidate.getName() === name)!;
+            const cfg = method.getCfg()!;
+            const handler = cfg.getStmts().find(stmt => stmt.getUses().some(value => value instanceof ArkCaughtExceptionRef))!;
+            expect(handler).toBeDefined();
+            const icfg = new ArkInterproceduralCFG(scene);
+            const solver = new IdentitySolver(new IdentityProblem(cfg.getStartingStmt(), method), scene, {}, icfg);
+            solver.solve();
+            const continuation = icfg.getHandlerContinuation(handler);
+            expect([...solver.getPathEdgeSet()].some(edge => edge.edgeEnd.node === continuation)).toBe(false);
+        },
+    );
+
+    it.each(['documentedCall', 'documentedAwait', 'documentedThroughCall', 'alternateContract'])(
+        'honors declared interface exceptions in %s', name => {
+            const scene = buildScene('exception-flow');
+            const method = scene.getMethods().find(candidate => candidate.getName() === name)!;
+            const cfg = method.getCfg()!;
+            const handler = cfg.getStmts().find(stmt => stmt.getUses().some(value => value instanceof ArkCaughtExceptionRef))!;
+            expect(handler).toBeDefined();
+            const icfg = new ArkInterproceduralCFG(scene);
+            const solver = new IdentitySolver(new IdentityProblem(cfg.getStartingStmt(), method), scene, {}, icfg);
+            solver.solve();
+            expect([...solver.getPathEdgeSet()].some(edge => edge.edgeEnd.node === icfg.getHandlerContinuation(handler))).toBe(true);
+        },
+    );
 
     it('does not fall through after an uncaught throw', () => {
         const scene = buildScene('exception-flow');

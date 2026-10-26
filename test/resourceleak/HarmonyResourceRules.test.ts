@@ -41,6 +41,64 @@ describe('HarmonyOS SDK resource rules', () => {
         expect(run('fileWrongObject').diagnostics).toHaveLength(1);
     });
 
+    it.each(['fileReleaseFailureCaught', 'fileReleaseFailureAwait', 'fileReleaseFailureFromHelper',
+        'fileReleaseFailureFromMiddle', 'fileFailedReplacementKeepsHandle'])
+    ('discharges cleanup duty when the matching release throws: %s', name => {
+        const result = run(name);
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each(['fileWrapperFailsBeforeClose', 'fileMiddleFailsBeforeClose', 'fileUnreachableClose'])
+    ('retains obligations for resources whose release was not called: %s', name => {
+        const result = run(name);
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toHaveLength(1);
+        expect(result.diagnostics[0].confidence).toBe('high');
+    });
+
+    it.each(['fileReleaseFailureSkipsOther', 'fileWorkFailsBeforeClose', 'fileCalleeAllocationFailsBeforeClose',
+        'fileDescriptorZeroLeak', 'fileDescriptorTruthyLeak', 'fileConditionalRelease', 'fileioZeroLeak'])
+    ('accepts reachable release without requiring cleanup on every path: %s', name => {
+        const result = run(name);
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it('maps Promise fulfillment and captured handles without releasing other resources', () => {
+        expect(run('resultThenRelease').diagnostics).toEqual([]);
+        expect(run('fileCallbackRelease').diagnostics).toEqual([]);
+        for (const name of ['resultThenLeak', 'resultThenWrongObject', 'resultCatchWrongObject', 'fileCallbackWrongObject']) {
+            const result = run(name);
+            expect(result.status, name).toBe('success');
+            expect(result.diagnostics, name).toHaveLength(1);
+        }
+    });
+
+    it.each(['fileGuardedDescriptor', 'fileGuardedDescriptorReturn', 'fileGuardedDescriptorThrow',
+        'fileInvalidDescriptorReturn', 'fileGuardedObject', 'fileGuardedTruthyObject',
+        'fileGuardedAwait', 'sourceGuardedObject', 'fileioGuardedDescriptor'])
+    ('prunes invalid-handle paths after successful acquisition: %s', name => {
+        const result = run(name);
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toEqual([]);
+    });
+
+    it.each(['fileDescriptorOverwritten', 'fileGuardedOtherObject'])
+    ('retains feasible missing cleanup: %s', name => {
+        const result = run(name);
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it('accepts reachable cleanup even without a handle-validity contract', () => {
+        const method = scene.getMethods().find(method =>
+            method.getDeclaringArkClass().getName() === 'PlatformCases' &&
+            method.getName() === 'fileGuardedDescriptor');
+        const rules = resolveHarmonyResourceRules(scene).rules.map(rule => ({ ...rule, handleValidity: undefined }));
+        expect(new ResourceRunner(scene, rules).runWithDummyMain(method!).diagnostics).toEqual([]);
+    });
+
     it('propagates fulfilled handles without calling the Promise itself a resource', () => {
         expect(run('fileAwaitRelease').diagnostics).toEqual([]);
         expect(run('pixelAwaitRelease').diagnostics).toEqual([]);

@@ -12,6 +12,7 @@ interface Definition {
     readonly allocators: readonly Selector[];
     readonly releasers: readonly Selector[];
     readonly handleProperties?: readonly string[];
+    readonly handleValidity?: ResourceRule['handleValidity'];
 }
 const returns: ResourceHandleLocation = { kind: 'return' };
 const base: ResourceHandleLocation = { kind: 'base' };
@@ -24,10 +25,10 @@ export const HARMONY_RESOURCE_DEFINITIONS: readonly Definition[] = [
     { id: 'HttpRequestNotDestroyed',
         allocators: [api('@ohos.net.http', '%dflt', ['createHttp'], returns)],
         releasers: [api('@ohos.net.http', 'HttpRequest', ['destroy'])] },
-    { id: 'FileNotClosed', handleProperties: ['fd'],
+    { id: 'FileNotClosed', handleProperties: ['fd'], handleValidity: 'non-negative',
         allocators: [api('@ohos.file.fs', '%dflt', ['openSync', 'open'], returns)],
         releasers: [api('@ohos.file.fs', '%dflt', ['closeSync', 'close'], param)] },
-    { id: 'FileIONotClosed',
+    { id: 'FileIONotClosed', handleValidity: 'non-negative',
         allocators: [api('@ohos.fileio', '%dflt', ['openSync', 'open'], returns)],
         releasers: [api('@ohos.fileio', '%dflt', ['closeSync', 'close'], param)] },
     { id: 'ImageSourceNotReleased',
@@ -109,7 +110,8 @@ export function resolveHarmonyResourceRules(scene: Scene): HarmonyResourceRuleRe
             unresolvedRuleIds.push(definition.id);
         } else {
             rules.push({ id: definition.id, scope: 'resource', allocators, releasers,
-                handleProperties: definition.handleProperties });
+                handleProperties: definition.handleProperties,
+                handleValidity: definition.handleValidity ?? 'non-null' });
         }
     }
     return { rules, unresolvedRuleIds };

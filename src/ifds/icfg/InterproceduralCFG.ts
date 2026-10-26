@@ -13,6 +13,8 @@ export interface InterproceduralCFG {
     getExceptionalSuccessors(stmt: Stmt): readonly Stmt[];
     getHandlerContinuation(handler: Stmt): Stmt;
 
+    /** The statement itself can fail: explicit throw or a declared API exception.
+     * Callee-body throws propagate through exceptional summaries separately. */
     mayThrow(stmt: Stmt): boolean;
     isCallStatement(stmt: Stmt): boolean;
     isExitStatement(stmt: Stmt): boolean;
@@ -20,6 +22,7 @@ export interface InterproceduralCFG {
     getAllCalleeMethods(call: Stmt): Set<ArkMethod>;
     getCalleesOfCallAt(call: Stmt): Set<ArkMethod>;
     getReturnSiteOfCallAt(call: Stmt): Stmt | null;
+    /** Structural caller handlers, also used for actual throws inside callees. */
     getExceptionalReturnSitesOfCallAt(call: Stmt): readonly Stmt[];
     getStartPointOf(method: ArkMethod): Stmt | null;
     getStartPointOfCaller(call: Stmt): Stmt | null;

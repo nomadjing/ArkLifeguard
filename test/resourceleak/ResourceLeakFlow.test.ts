@@ -79,6 +79,32 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('releaseInCallee').diagnostics).toEqual([]);
     });
 
+    it('runs finally before returning or propagating a caught/uncaught throw', () => {
+        for (const name of ['finallyReturn', 'finallyThrow', 'finallyCatchReturn', 'finallyNested', 'finallyNestedThrow']) {
+            const result = run(name);
+            expect(result.status, name).toBe('success');
+            expect(result.diagnostics, name).toEqual([]);
+        }
+    });
+
+    it('preserves returned resource identity across finally and caller cleanup', () => {
+        for (const name of ['finallyFactoryCaller', 'finallySnapshotCaller', 'finallyOverridesThrowCaller', 'finallyBranchCaller']) {
+            expect(run(name).diagnostics, name).toEqual([]);
+        }
+        expect(run('finallyOverride').diagnostics).toHaveLength(1);
+        expect(run('finallyThrowOverridesReturnCaller').diagnostics).toHaveLength(1);
+    });
+
+    it('accepts reachable conditional cleanup but reports missing cleanup', () => {
+        expect(run('finallyMissingCleanup').diagnostics).toHaveLength(1);
+        expect(run('finallyConditional').diagnostics).toEqual([]);
+    });
+
+    it('does not resurrect allocated resources through invented caller exceptions', () => {
+        expect(run('finallyCallChain').diagnostics).toEqual([]);
+        expect(run('ordinaryCallBeforeRelease').diagnostics).toEqual([]);
+    });
+
     it('maps a returned resource back to its caller', () => {
         expect(run('releaseFactoryResult').diagnostics).toEqual([]);
     });
@@ -92,11 +118,10 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('preserveOtherAlias').diagnostics).toEqual([]);
     });
 
-    it('retains the leaking return branch when another branch returns the old resource', () => {
+    it('accepts release of the returned resource on a reachable branch', () => {
         const result = run('conditionalReturnedAlias');
         expect(result.status).toBe('success');
-        expect(result.diagnostics).toMatchObject([{ reason: 'partially-released' }]);
-        expect(result.diagnostics).toHaveLength(1);
+        expect(result.diagnostics).toEqual([]);
     });
 
     it('does not transfer a callee parameter reassignment to the caller local', () => {
@@ -111,10 +136,10 @@ describe('new resource-leak IFDS flow', () => {
         });
     });
 
-    it('distinguishes wrong release, overwrite and partial release', () => {
+    it('distinguishes wrong release and overwrite while accepting partial release', () => {
         expect(run('wrongRelease').diagnostics.map(item => item.reason)).toEqual(['wrong-release']);
         expect(run('overwritten').diagnostics.map(item => item.reason)).toEqual(['overwritten']);
-        expect(run('partial').diagnostics.map(item => item.reason)).toEqual(['partially-released']);
+        expect(run('partial').diagnostics).toEqual([]);
     });
 
     it('keeps two allocation sites separate', () => {
@@ -169,13 +194,9 @@ describe('new resource-leak IFDS flow', () => {
         }]);
     });
 
-    it('keeps optional callback release uncertain', () => {
-        expect(run('optionalCallbackRelease').diagnostics).toMatchObject([{
-            reason: 'unknown-ownership', confidence: 'low',
-        }]);
-        expect(run('promiseCallbackRelease').diagnostics).toMatchObject([{
-            reason: 'unknown-ownership', confidence: 'low',
-        }]);
+    it('accepts matching release in reachable callbacks', () => {
+        expect(run('optionalCallbackRelease').diagnostics).toEqual([]);
+        expect(run('promiseCallbackRelease').diagnostics).toEqual([]);
         expect(run('releaseThenCallback').diagnostics).toEqual([]);
     });
 

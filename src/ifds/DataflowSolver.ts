@@ -181,7 +181,6 @@ export class DataflowSolver<D> {
         }
         const callerEdges = this.summaryStore.getIncoming(methodEntryPoint);
         if (!callerEdges) return;
-
         for (const callerEdge of callerEdges) {
             this.applyExceptionalSummaryToCaller(callerEdges, callerEdge, exceptionalExitPoint);
         }
@@ -191,8 +190,7 @@ export class DataflowSolver<D> {
         const callEdgePoint = callerEdge.edgeEnd;
         const handlers = this.icfg.getExceptionalReturnSitesOfCallAt(callEdgePoint.node);
         if (handlers.length === 0) {
-            // No handler in this method: retain the original throw site and payload
-            // while moving the exceptional completion one stack frame outwards.
+            // Retain the original throw site and payload until a caller handles it.
             this.processExceptionalExit(callerEdge.edgeStart, exceptionalExitPoint);
             return;
         }
@@ -202,7 +200,8 @@ export class DataflowSolver<D> {
             const exitFlow = this.problem.getExceptionalExitToReturnFlowFunction(exceptionalExitPoint.node, handler, callEdgePoint.node);
             this.addExceptionalCallSummaries(callerEdges, callEdgePoint, handlerTarget, exitFlow.getDataFacts(exceptionalExitPoint.fact));
 
-            const callerFlow = this.problem.getCallToExceptionalReturnFlowFunction(callEdgePoint.node, handler);
+            const callerFlow = this.problem.getCallToExceptionalReturnFlowFunction(
+                callEdgePoint.node, handler, this.icfg.getCalleesOfCallAt(callEdgePoint.node), true);
             this.addExceptionalCallSummaries(callerEdges, callEdgePoint, handlerTarget, callerFlow.getDataFacts(callEdgePoint.fact));
         }
     }
@@ -254,7 +253,10 @@ export class DataflowSolver<D> {
         }
 
         if (this.icfg.mayThrow(end.node) && exceptionalChildren.length === 0) {
-            this.processExceptionalExit(start, end);
+            const flow = this.problem.getExceptionalExitFlowFunction(end.node);
+            for (const fact of flow.getDataFacts(end.fact)) {
+                this.processExceptionalExit(start, new PathEdgePoint(end.node, fact));
+            }
         }
     }
 
@@ -287,19 +289,24 @@ export class DataflowSolver<D> {
             this.replayCallSummaries(start, callEdgePoint, returnSite);
         }
 
-        // Calls may fail before a callee body is entered (for example a null
-        // receiver), and unresolved/library calls have no callee exit summary.
+        // Only declared API failures create a bypass before entering a callee.
+        // Explicit throws in project bodies arrive through exceptional summaries.
         for (const handler of handlers) {
             const handlerTarget = this.icfg.getHandlerContinuation(handler);
-            const exceptionalFlow = this.problem.getCallToExceptionalReturnFlowFunction(callEdgePoint.node, handler, callees);
-            for (const fact of exceptionalFlow.getDataFacts(callEdgePoint.fact)) {
-                this.propagate(new PathEdge(start, new PathEdgePoint(handlerTarget, fact)));
+            if (this.icfg.mayThrow(callEdgePoint.node)) {
+                const exceptionalFlow = this.problem.getCallToExceptionalReturnFlowFunction(callEdgePoint.node, handler, callees);
+                for (const fact of exceptionalFlow.getDataFacts(callEdgePoint.fact)) {
+                    this.propagate(new PathEdge(start, new PathEdgePoint(handlerTarget, fact)));
+                }
             }
             this.replayCallSummaries(start, callEdgePoint, handlerTarget);
         }
 
-        if (handlers.length === 0) {
-            this.processExceptionalExit(start, callEdgePoint);
+        if (handlers.length === 0 && this.icfg.mayThrow(callEdgePoint.node)) {
+            const flow = this.problem.getExceptionalExitFlowFunction(callEdgePoint.node);
+            for (const fact of flow.getDataFacts(callEdgePoint.fact)) {
+                this.processExceptionalExit(start, new PathEdgePoint(callEdgePoint.node, fact));
+            }
         }
     }
 
