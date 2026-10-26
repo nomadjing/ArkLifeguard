@@ -1,4 +1,6 @@
 import {
+    ArkAwaitExpr,
+    ArkCastExpr,
     ArkInstanceFieldRef,
     ArkMethod,
     ArkReturnStmt,
@@ -131,15 +133,7 @@ export class ResourceRunner {
         icfg: InterproceduralCFG,
     ): ResourceDiagnostic[] {
         const groups = new Map<string, ExitFact[]>();
-        const released = new Map<string, Set<Stmt>>();
-        for (const facts of byStatement.values()) {
-            for (const fact of facts) {
-                if (fact.state !== 'released' || !fact.allocationSite) continue;
-                const sites = released.get(fact.ruleId) ?? new Set<Stmt>();
-                sites.add(fact.allocationSite);
-                released.set(fact.ruleId, sites);
-            }
-        }
+        const seenOverwrites = new Set<string>();
         const ids = new Map<Stmt, number>();
         const siteId = (site: Stmt): number => {
             let id = ids.get(site);
@@ -149,22 +143,37 @@ export class ResourceRunner {
             }
             return id;
         };
+        const obligationKey = (fact: ResourceFact): string =>
+            `${fact.ruleId}|${siteId(fact.allocationSite!)}|${fact.acquisitionContext.map(siteId).join(',')}`;
+        const released = new Set<string>();
+        for (const facts of byStatement.values()) {
+            for (const fact of facts) {
+                if (fact.state === 'released' && fact.allocationSite) released.add(obligationKey(fact));
+            }
+        }
         for (const [exit, facts] of byStatement) {
-            if (!(exit instanceof ArkReturnStmt || exit instanceof ArkReturnVoidStmt ||
-                exit instanceof ArkThrowStmt)) continue;
-            if (!icfg.isExitStatement(exit)) continue;
+            const atExit = (exit instanceof ArkReturnStmt || exit instanceof ArkReturnVoidStmt ||
+                exit instanceof ArkThrowStmt) && icfg.isExitStatement(exit);
             const method = exit.getCfg()?.getDeclaringMethod();
             if (!method) continue;
             for (const fact of facts) {
                 if (fact.isZero() || !fact.allocationSite || fact.frames.length > 0) continue;
+                const lost = fact.hasLostHandles();
+                if (!lost && !atExit) continue;
                 // The contract asks for a reachable matching release, not cleanup
-                // on every normal/exceptional path. Include releases inside callees.
-                if (released.get(fact.ruleId)?.has(fact.allocationSite)) continue;
-                if (this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
+                // on every path. Losing the last handle is separate evidence:
+                // releasing its replacement cannot discharge the old obligation.
+                if (!lost && released.has(obligationKey(fact))) continue;
+                if (!lost && this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
                 // Multiple lifecycle exits are evidence for one allocation, not independent leaks.
                 const key = `${fact.ruleId}|${siteId(fact.allocationSite)}`;
+                if (lost) {
+                    const overwriteKey = `${key}|${siteId(fact.eventSite!)}|${fact.state}`;
+                    if (seenOverwrites.has(overwriteKey)) continue;
+                    seenOverwrites.add(overwriteKey);
+                }
                 const group = groups.get(key) ?? [];
-                group.push({ fact, exit });
+                group.push({ fact, exit: lost ? fact.eventSite! : exit });
                 groups.set(key, group);
             }
         }
@@ -177,9 +186,12 @@ export class ResourceRunner {
             const preferred = (items: ExitFact[]): ExitFact | undefined => items.find(item =>
                 item.exit.getCfg()?.getDeclaringMethod() ===
                 item.fact.allocationSite?.getCfg()?.getDeclaringMethod()) ?? items[0];
-            const chosen = (preferred(leaks) ?? preferred(unknowns))!;
+            const lost = group.filter(item => item.fact.hasLostHandles());
+            const chosen = (preferred(lost.filter(item => item.fact.state === 'allocated')) ??
+                preferred(lost) ?? preferred(leaks) ?? preferred(unknowns))!;
             const { fact, exit } = chosen;
-            const reason: ResourceLeakReason = fact.state === 'unknown' || fact.state === 'pending'
+            const reason: ResourceLeakReason = fact.hasLostHandles() ? 'overwritten'
+                : fact.state === 'unknown' || fact.state === 'pending'
                     ? 'unknown-ownership'
                     : fact.event === 'overwritten'
                         ? 'overwritten'
@@ -196,7 +208,7 @@ export class ResourceRunner {
                 allocation,
                 boundary,
                 reason,
-                confidence: reason === 'unknown-ownership' ? 'low' : 'high',
+                confidence: fact.state === 'unknown' || fact.state === 'pending' ? 'low' : 'high',
                 evidence,
             });
         }
@@ -206,8 +218,12 @@ export class ResourceRunner {
     }
 
     private transferredAtExit(exit: Stmt, fact: ResourceFact, nonRoot: boolean): boolean {
-        if (exit instanceof ArkReturnStmt && hasResourceHandle(fact.handles, exit.getOp())) {
-            return true;
+        if (exit instanceof ArkReturnStmt) {
+            let returned = exit.getOp();
+            while (returned instanceof ArkAwaitExpr || returned instanceof ArkCastExpr) {
+                returned = returned instanceof ArkAwaitExpr ? returned.getPromise() : returned.getOp();
+            }
+            if (hasResourceHandle(fact.handles, returned)) return true;
         }
         // A receiver field stays owned by the containing object. The caller's
         // continuation will decide whether it is eventually released.

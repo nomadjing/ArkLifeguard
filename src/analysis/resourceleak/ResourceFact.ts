@@ -29,6 +29,8 @@ export class ResourceFact {
         readonly frames: readonly ResourceCallFrame[],
         readonly event?: ResourceEvent,
         readonly eventSite?: Stmt,
+        /** Bounded inner-to-outer acquisition returns; stable through cleanup calls. */
+        readonly acquisitionContext: readonly Stmt[] = [],
     ) {}
 
     static zeroFact(): ResourceFact {
@@ -45,12 +47,25 @@ export class ResourceFact {
         return this === ResourceFact.zero;
     }
 
+    hasLostHandles(): boolean {
+        return this.event === 'overwritten' && this.handles.length === 0 &&
+            (this.state === 'allocated' || this.state === 'unknown');
+    }
+
+    atAcquisitionReturn(callSite: Stmt): ResourceFact {
+        return this.derive({
+            // Keep a finite call context, including distinctions in middle wrappers.
+            acquisitionContext: [...this.acquisitionContext, callSite].slice(-4),
+        });
+    }
+
     derive(change: {
         handles?: readonly Value[];
         state?: ResourceState;
         frames?: readonly ResourceCallFrame[];
         event?: ResourceEvent;
         eventSite?: Stmt;
+        acquisitionContext?: readonly Stmt[];
     }): ResourceFact {
         return new ResourceFact(
             this.ruleId,
@@ -60,6 +75,7 @@ export class ResourceFact {
             change.frames ?? this.frames,
             change.event ?? this.event,
             change.eventSite ?? this.eventSite,
+            change.acquisitionContext ?? this.acquisitionContext,
         );
     }
 }

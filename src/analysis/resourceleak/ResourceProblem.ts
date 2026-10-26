@@ -201,8 +201,9 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                     handles: frame.callerHandles, frames: fact.frames.slice(0, index),
                 })]);
             }
-            // Resources allocated inside the callee still carry their own obligation.
-            return new Set([fact]);
+            // A callee-owned resource keeps its obligation on failure, with the
+            // same acquisition identity as that call's successful factory return.
+            return new Set([fact.atAcquisitionReturn(callStmt)]);
         } };
     }
 
@@ -218,7 +219,14 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                     const returnedAlias = exitStmt instanceof ArkReturnStmt &&
                         hasResourceHandle(fact.handles, this.unwrap(exitStmt.getOp()));
                     const destination = callStmt instanceof ArkAssignStmt ? callStmt.getLeftOp() : undefined;
-                    const restored = uniqueResourceHandles([...frame.callerHandles, ...handles])
+                    const method = exitStmt.getCfg()?.getDeclaringMethod();
+                    // Caller locals survive a call. Shared fields, however, must
+                    // reflect the callee's output rather than resurrect killed aliases.
+                    const preserved = frame.callerHandles.filter(handle =>
+                        !(handle instanceof ArkInstanceFieldRef || handle instanceof ArkStaticFieldRef) ||
+                        !method || this.mapCallerHandlesToCallee(callStmt, method, [handle]).length === 0 ||
+                        hasResourceHandle(handles, handle));
+                    const restored = uniqueResourceHandles([...preserved, ...handles])
                         .filter(handle => !destination || returnedAlias ||
                             resourceValueKey(handle) !== resourceValueKey(destination));
                     const overwritten = restored.length === 0 && !!destination &&
@@ -233,7 +241,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 // the returned value or a receiver/static field.
                 const handles = this.mapCalleeHandlesToCaller(exitStmt, callStmt, fact.handles);
                 return handles.length > 0
-                    ? new Set([fact.derive({ handles })])
+                    ? new Set([fact.derive({ handles }).atAcquisitionReturn(callStmt)])
                     : new Set();
             },
         };
@@ -250,6 +258,9 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 if (fact.isZero()) return transferred;
                 if (this.isRuleApi(srcStmt)) return transferred;
                 if (fact.state === 'released' || fact.state === 'escaped') return transferred;
+                // An unrelated callback cannot acquire ownership of an already
+                // lost resource or erase its overwrite evidence.
+                if (fact.hasLostHandles()) return transferred;
                 if ([...(callees ?? [])].some(method =>
                     !this.isDirectCallee(srcStmt, method))) {
                     // CallResolver includes callback targets on a registration
@@ -302,7 +313,8 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         if (fact.isZero()) return 'zero';
         const cached = this.factKeys.get(fact);
         if (cached !== undefined) return cached;
-        const key = [fact.ruleId, this.id(fact.allocationSite!), fact.state,
+        const key = [fact.ruleId, this.id(fact.allocationSite!),
+            fact.acquisitionContext.map(site => this.id(site)).join(','), fact.state,
             fact.handles.map(resourceValueKey).sort().join(','), fact.event ?? '',
             fact.eventSite ? this.id(fact.eventSite) : 0,
             ...fact.frames.map(frame => `${this.id(frame.callSite)}:${frame.callerHandles

@@ -109,6 +109,42 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('releaseFactoryResult').diagnostics).toEqual([]);
     });
 
+    it.each(['leakFactoryResult', 'mixedFactoryConsumers', 'releaseOneFactoryResult'])(
+        'keeps independent factory acquisitions separate in %s', name => {
+            const result = run(name);
+            expect(result.status).toBe('success');
+            expect(result.diagnostics).toHaveLength(1);
+            expect(result.diagnostics[0]).toMatchObject({ ruleId: 'HandleNotReleased', reason: 'unreleased' });
+        },
+    );
+
+    it.each(['releaseBothFactoryResults', 'releaseFactoryResultInCallback'])(
+        'preserves factory acquisition identity through cleanup in %s', name => {
+            const result = run(name);
+            expect(result.status).toBe('success');
+            expect(result.diagnostics).toEqual([]);
+        },
+    );
+
+    it.each(['releaseOneNestedFactoryField', 'releaseOneWrappedFactoryField',
+        'releaseOneMiddleContextFactoryField', 'releaseOneFactoryOwner'])(
+        'keeps factory acquisition contexts distinct in %s', name => {
+            const result = run(name);
+            expect(result.status).toBe('success');
+            expect(result.diagnostics).toMatchObject([{ reason: 'unreleased', confidence: 'high' }]);
+            expect(result.diagnostics).toHaveLength(1);
+        },
+    );
+
+    it.each(['releaseBothNestedFactoryFields', 'releaseBothWrappedFactoryFields',
+        'releaseBothMiddleContextFactoryFields', 'releaseBothFactoryOwners'])(
+        'matches both factory cleanup contexts in %s', name => {
+            const result = run(name);
+            expect(result.status).toBe('success');
+            expect(result.diagnostics).toEqual([]);
+        },
+    );
+
     it('does not release an old allocation through a replaced call-result handle', () => {
         const result = run('overwriteByReturn');
         expect(result.status).toBe('success');
@@ -118,11 +154,30 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('preserveOtherAlias').diagnostics).toEqual([]);
     });
 
-    it('accepts release of the returned resource on a reachable branch', () => {
+    it('reports loss of the last handle even if another branch returns the original resource', () => {
         const result = run('conditionalReturnedAlias');
         expect(result.status).toBe('success');
-        expect(result.diagnostics).toEqual([]);
+        expect(result.diagnostics).toMatchObject([{ reason: 'overwritten' }]);
+        expect(result.diagnostics).toHaveLength(1);
     });
+
+    it.each(['repeatStoreThenRelease', 'repeatLocalThenRelease', 'overwriteFieldInCallee'])(
+        'reports the lost old obligation at its overwrite in %s', name => {
+            const result = run(name);
+            expect(result.status).toBe('success');
+            expect(result.diagnostics).toMatchObject([{ reason: 'overwritten', confidence: 'high' }]);
+            expect(result.diagnostics).toHaveLength(1);
+            expect(result.diagnostics[0].boundary.line).toBeGreaterThan(0);
+        },
+    );
+
+    it.each(['repeatStoreWithRelease', 'repeatReplaceAfterRelease', 'preserveCallerAliasAfterFieldOverwrite'])(
+        'preserves cleanup and surviving aliases in %s', name => {
+            const result = run(name);
+            expect(result.status).toBe('success');
+            expect(result.diagnostics).toEqual([]);
+        },
+    );
 
     it('does not transfer a callee parameter reassignment to the caller local', () => {
         const result = run('parameterAssignmentIsLocal');

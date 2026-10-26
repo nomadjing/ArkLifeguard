@@ -19,6 +19,7 @@ declare function schedule(callback: () => void): void;
 
 export class FlowCases {
     private field?: Handle;
+    private otherField?: Handle;
 
     static finallyReturn(): number {
         const handle = Handle.open();
@@ -189,6 +190,54 @@ export class FlowCases {
         this.field?.release();
     }
 
+    replaceFieldWithoutRelease(): void {
+        this.field = new Handle();
+    }
+
+    static overwriteFieldInCallee(): void {
+        const owner = new FlowCases();
+        owner.store();
+        owner.replaceFieldWithoutRelease();
+        owner.releaseField();
+    }
+
+    static preserveCallerAliasAfterFieldOverwrite(): void {
+        const owner = new FlowCases();
+        owner.store();
+        const alias = owner.field;
+        owner.replaceFieldWithoutRelease();
+        alias?.release();
+    }
+
+    static repeatStoreThenRelease(): void {
+        const owner = new FlowCases();
+        for (let round = 0; round < 2; round++) owner.store();
+        owner.releaseField();
+    }
+
+    static repeatStoreWithRelease(): void {
+        const owner = new FlowCases();
+        for (let round = 0; round < 2; round++) {
+            owner.store();
+            owner.releaseField();
+        }
+    }
+
+    static repeatReplaceAfterRelease(): void {
+        const owner = new FlowCases();
+        for (let round = 0; round < 2; round++) {
+            owner.releaseField();
+            owner.store();
+        }
+        owner.releaseField();
+    }
+
+    static repeatLocalThenRelease(): void {
+        let handle: Handle | undefined;
+        for (let round = 0; round < 2; round++) handle = Handle.open();
+        handle?.release();
+    }
+
     static releaseAcrossMethods(): void {
         const owner = new FlowCases();
         owner.store();
@@ -256,9 +305,118 @@ export class FlowCases {
         return Handle.open();
     }
 
+    storeFactoryPair(): void {
+        this.field = FlowCases.factory();
+        this.otherField = FlowCases.factory();
+    }
+
+    storeFactoryPairThroughWrapper(): void {
+        this.storeFactoryPair();
+    }
+
+    static wrappedFactory(): Handle {
+        return FlowCases.factory();
+    }
+
+    storeWrappedFactoryPair(): void {
+        this.field = FlowCases.wrappedFactory();
+        this.otherField = FlowCases.wrappedFactory();
+    }
+
+    static releaseOneMiddleContextFactoryField(): void {
+        const owner = new FlowCases();
+        owner.storeWrappedFactoryPair();
+        owner.releaseField();
+    }
+
+    static releaseBothMiddleContextFactoryFields(): void {
+        const owner = new FlowCases();
+        owner.storeWrappedFactoryPair();
+        owner.releaseField();
+        owner.releaseOtherField();
+    }
+
+    storeFactoryField(): void {
+        this.field = FlowCases.factory();
+    }
+
+    releaseOtherField(): void {
+        this.otherField?.release();
+    }
+
+    static releaseOneNestedFactoryField(): void {
+        const owner = new FlowCases();
+        owner.storeFactoryPair();
+        owner.releaseField();
+    }
+
+    static releaseOneWrappedFactoryField(): void {
+        const owner = new FlowCases();
+        owner.storeFactoryPairThroughWrapper();
+        owner.releaseField();
+    }
+
+    static releaseBothNestedFactoryFields(): void {
+        const owner = new FlowCases();
+        owner.storeFactoryPair();
+        owner.releaseField();
+        owner.releaseOtherField();
+    }
+
+    static releaseBothWrappedFactoryFields(): void {
+        const owner = new FlowCases();
+        owner.storeFactoryPairThroughWrapper();
+        owner.releaseField();
+        owner.releaseOtherField();
+    }
+
+    static releaseOneFactoryOwner(): void {
+        const first = new FlowCases();
+        const second = new FlowCases();
+        first.storeFactoryField();
+        second.storeFactoryField();
+        second.releaseField();
+    }
+
+    static releaseBothFactoryOwners(): void {
+        const first = new FlowCases();
+        const second = new FlowCases();
+        first.storeFactoryField();
+        second.storeFactoryField();
+        first.releaseField();
+        second.releaseField();
+    }
+
     static releaseFactoryResult(): void {
         const handle = FlowCases.factory();
         handle.release();
+    }
+
+    static leakFactoryResult(): void {
+        const handle = FlowCases.factory();
+    }
+
+    static mixedFactoryConsumers(): void {
+        FlowCases.releaseFactoryResult();
+        FlowCases.leakFactoryResult();
+    }
+
+    static releaseOneFactoryResult(): void {
+        const first = FlowCases.factory();
+        const second = FlowCases.factory();
+        first.release();
+    }
+
+    static releaseBothFactoryResults(): void {
+        const first = FlowCases.factory();
+        const second = FlowCases.factory();
+        FlowCases.closeHandle(first);
+        second.release();
+    }
+
+    static releaseFactoryResultInCallback(): void {
+        const handle: Handle = FlowCases.factory();
+        Promise.resolve().then(() => handle.release());
     }
 
     static oneOfTwo(): void {

@@ -21,6 +21,18 @@ describe('HarmonyOS SDK resource rules', () => {
         expect(resolved.rules).toHaveLength(10);
     });
 
+    it('keeps asynchronous factory acquisition contexts through a shared owner return', () => {
+        const leaking = run('playerFactoryPairLeak');
+        expect(leaking.status).toBe('success');
+        expect(leaking.diagnostics).toMatchObject([{
+            ruleId: 'AVPlayerNotReleased', reason: 'unreleased', confidence: 'high',
+        }]);
+        expect(leaking.diagnostics).toHaveLength(1);
+        const released = run('playerFactoryPairRelease');
+        expect(released.status).toBe('success');
+        expect(released.diagnostics).toEqual([]);
+    });
+
     it.each([
         ['http', 'HttpRequestNotDestroyed'], ['file', 'FileNotClosed'],
         ['fileio', 'FileIONotClosed'], ['source', 'ImageSourceNotReleased'],
@@ -58,7 +70,7 @@ describe('HarmonyOS SDK resource rules', () => {
     });
 
     it.each(['fileReleaseFailureSkipsOther', 'fileWorkFailsBeforeClose', 'fileCalleeAllocationFailsBeforeClose',
-        'fileDescriptorZeroLeak', 'fileDescriptorTruthyLeak', 'fileConditionalRelease', 'fileioZeroLeak'])
+        'fileFactoryWorkCaller', 'fileDescriptorZeroLeak', 'fileDescriptorTruthyLeak', 'fileConditionalRelease', 'fileioZeroLeak'])
     ('accepts reachable release without requiring cleanup on every path: %s', name => {
         const result = run(name);
         expect(result.status).toBe('success');

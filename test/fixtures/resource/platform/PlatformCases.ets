@@ -6,6 +6,31 @@ import media from '@ohos.multimedia.media';
 import audio from '@ohos.multimedia.audio';
 import relationalStore from '@ohos.data.relationalStore';
 export class PlatformCases {
+    private firstPlayer?: media.AVPlayer;
+    private secondPlayer?: media.AVPlayer;
+
+    static async playerFactory(): Promise<media.AVPlayer> {
+        return await media.createAVPlayer();
+    }
+
+    async acquirePlayerPair(): Promise<void> {
+        this.firstPlayer = await PlatformCases.playerFactory();
+        this.secondPlayer = await PlatformCases.playerFactory();
+    }
+
+    static async playerFactoryPairLeak(): Promise<void> {
+        const owner = new PlatformCases();
+        await owner.acquirePlayerPair();
+        owner.firstPlayer?.release();
+    }
+
+    static async playerFactoryPairRelease(): Promise<void> {
+        const owner = new PlatformCases();
+        await owner.acquirePlayerPair();
+        owner.firstPlayer?.release();
+        owner.secondPlayer?.release();
+    }
+
     static httpLeak(): void { const h = http.createHttp();  }
     static httpRelease(): void { const h = http.createHttp(); h.destroy(); }
     static fileLeak(): void { const h = fs.openSync("x");  }
@@ -81,6 +106,17 @@ export class PlatformCases {
         const file = fs.openSync('x');
         fs.writeSync(file.fd, 'data');
         fs.closeSync(file);
+    }
+    static fileFactoryWithWork(): fs.File {
+        const file = fs.openSync('x');
+        fs.writeSync(file.fd, 'data');
+        return file;
+    }
+    static fileFactoryWorkCaller(): void {
+        try {
+            const file = PlatformCases.fileFactoryWithWork();
+            fs.closeSync(file);
+        } catch (error) {}
     }
     static fileCalleeAllocationFailsBeforeClose(): void {
         try { PlatformCases.fileAllocateAndWrite(); } catch (error) {}
