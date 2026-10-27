@@ -265,7 +265,7 @@ describe('new resource-leak IFDS flow', () => {
 
     it('keeps an Ability field alive from onCreate to onDestroy', () => {
         const lifecycleScene = buildResourceScene('lifecycle-release');
-        const creator = createLifecycleModelCreator(lifecycleScene, 'flat');
+        const creator = createLifecycleModelCreator(lifecycleScene);
         creator.create();
         const find = (name: string) => {
             for (const owner of lifecycleScene.getMethods()) {
@@ -288,7 +288,7 @@ describe('new resource-leak IFDS flow', () => {
         expect(result.diagnostics).toEqual([]);
 
         const leakScene = buildResourceScene('lifecycle-leak');
-        const leakCreator = createLifecycleModelCreator(leakScene, 'flat');
+        const leakCreator = createLifecycleModelCreator(leakScene);
         leakCreator.create();
         const leakAllocator = leakScene.getMethods()
             .flatMap(owner => owner.getCfg()?.getStmts() ?? [])

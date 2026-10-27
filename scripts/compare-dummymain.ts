@@ -49,19 +49,15 @@ function compare(fixture: string) {
     const foreign = new home.DummyMainCreater(build(home, fixture), undefined, undefined, true);
     foreign.createDummyMain();
     const homeflow = summarize(foreign.getDummyMain());
-    const models = Object.fromEntries((['flat', 'hierarchical'] as const).map(mode => {
-        const creator = createLifecycleModelCreator(build(own, fixture), mode);
-        creator.create();
-        const summary = summarize(creator.getDummyMain());
-        return [mode, {
-            ...summary,
-            uiRegistrations: creator.getComponents().reduce((count, component) =>
-                count + component.uiCallbacks.length, 0),
-            onlyCurrent: summary.directMethods.filter(method => !homeflow.directMethods.includes(method)),
-            onlyHomeflow: homeflow.directMethods.filter(method => !summary.directMethods.includes(method)),
-        }];
-    }));
-    return { homeflow, ...models };
+    const creator = createLifecycleModelCreator(build(own, fixture));
+    creator.create();
+    const summary = summarize(creator.getDummyMain());
+    return { homeflow, flat: {
+        ...summary,
+        uiRegistrations: creator.getComponents().reduce((count, component) => count + component.uiCallbacks.length, 0),
+        onlyCurrent: summary.directMethods.filter(method => !homeflow.directMethods.includes(method)),
+        onlyHomeflow: homeflow.directMethods.filter(method => !summary.directMethods.includes(method)),
+    } };
 }
 
 const log = console.log;

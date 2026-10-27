@@ -7,7 +7,6 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { Sdk } from '../src/adapter/arkanalyzer';
 import { Scene, SceneConfig } from '../src/adapter/arkanalyzer';
-import type { LifecycleModelMode } from '../src/lifecycle';
 import type { IFDSSolverStatistics } from '../src/ifds';
 import {
     NullnessAnalysisRunner,
@@ -34,8 +33,6 @@ interface Options {
     projects: string[];
     outputPath?: string;
     timeoutMs: number;
-    lifecycleModel: LifecycleModelMode;
-    pruneUnreachableAbilities: boolean;
     collectSolverStatistics: boolean;
     lifecycleRootOnly: boolean;
     maxAccessPathLength: number;
@@ -88,10 +85,7 @@ interface RealAppsReport {
     settings: {
         sdkRoot: string;
         timeoutMs: number;
-        lifecycleModel: LifecycleModelMode;
-        lifecycleOptimizations: {
-            pruneUnreachableAbilities: boolean;
-        };
+        lifecycleModel: 'flat';
         collectSolverStatistics: boolean;
         lifecycleRootOnly: boolean;
         maxAccessPathLength: number;
@@ -139,8 +133,6 @@ function help(): void {
         '  --real-apps-root <path>   HarmonyRealApps directory containing meta.json',
         '  --sdk-root <path>         SDK root containing openharmony/ets and hms/ets',
         '  --timeout-ms <n>          Per-project timeout; default: 600000',
-        '  --lifecycle-model <mode>  flat or hierarchical; default: flat',
-        '  --no-ability-prune        M1-NoAbilityPrune ablation',
         '  --ifds-stats              Collect IFDS solver time and counters',
         '  --lifecycle-root-only     Disable module-initializer/framework-sink roots',
         '  --max-access-path-length <n> Maximum tracked field depth; default: 5',
@@ -180,8 +172,6 @@ function parseArgs(args: string[]): Options {
     const projects: string[] = [];
     let outputPath: string | undefined;
     let timeoutMs = 600_000;
-    let lifecycleModel: LifecycleModelMode = 'flat';
-    let pruneUnreachableAbilities = true;
     let collectSolverStatistics = false;
     let lifecycleRootOnly = false;
     let maxAccessPathLength = 5;
@@ -253,35 +243,8 @@ function parseArgs(args: string[]): Options {
             timeoutMs = parsePositiveInteger(arg.slice('--timeout-ms='.length), '--timeout-ms');
             continue;
         }
-        if (arg === '--lifecycle-model') {
-            const value = optionValue(args, index, arg);
-            if (value !== 'flat' &&
-                value !== 'hierarchical') {
-                throw new Error(
-                    `${arg} must be flat or hierarchical: ${value}`
-                );
-            }
-            lifecycleModel = value;
-            index++;
-            continue;
-        }
-        if (arg.startsWith('--lifecycle-model=')) {
-            const value = arg.slice('--lifecycle-model='.length);
-            if (value !== 'flat' &&
-                value !== 'hierarchical') {
-                throw new Error(
-                    `--lifecycle-model must be flat or hierarchical: ${value}`
-                );
-            }
-            lifecycleModel = value;
-            continue;
-        }
         if (arg === '--ifds-stats') {
             collectSolverStatistics = true;
-            continue;
-        }
-        if (arg === '--no-ability-prune') {
-            pruneUnreachableAbilities = false;
             continue;
         }
         if (arg === '--lifecycle-root-only') {
@@ -337,8 +300,6 @@ function parseArgs(args: string[]): Options {
         projects,
         outputPath,
         timeoutMs,
-        lifecycleModel,
-        pruneUnreachableAbilities,
         collectSolverStatistics,
         lifecycleRootOnly,
         maxAccessPathLength,
@@ -446,12 +407,6 @@ function analyzeProject(
 
         const analysisStart = Date.now();
         const result = new NullnessAnalysisRunner(scene, {
-            lifecycleModel: options.lifecycleModel,
-            lifecycle: {
-                optimizations: {
-                    pruneUnreachableAbilities: options.lifecycleModel === 'hierarchical' && options.pruneUnreachableAbilities,
-                },
-            },
             collectSolverStatistics: options.collectSolverStatistics,
             analyzeModuleInitializers: !options.lifecycleRootOnly,
             analyzeFrameworkSinkMethods: !options.lifecycleRootOnly,
@@ -571,12 +526,9 @@ function createReport(
         updatedAt: now,
         completed: false,
         settings: {
+            lifecycleModel: 'flat',
             sdkRoot: options.sdkRoot,
             timeoutMs: options.timeoutMs,
-            lifecycleModel: options.lifecycleModel,
-            lifecycleOptimizations: {
-                pruneUnreachableAbilities: options.lifecycleModel === 'hierarchical' && options.pruneUnreachableAbilities,
-            },
             collectSolverStatistics: options.collectSolverStatistics,
             lifecycleRootOnly: options.lifecycleRootOnly,
             maxAccessPathLength: options.maxAccessPathLength,
@@ -664,7 +616,7 @@ function runParent(options: Options): void {
     const report = createReport(options, selected);
     console.log(
         `Nullness real-project evaluation: projects=${selected.length}, ` +
-        `model=${options.lifecycleModel}, sdk=${options.sdkRoot}, ` +
+        `model=flat, sdk=${options.sdkRoot}, ` +
         `root=${options.lifecycleRootOnly ? 'lifecycle-only' : 'all'}, ` +
         `timeout=${options.timeoutMs}ms`
     );
@@ -684,13 +636,10 @@ function runParent(options: Options): void {
                 '--worker-result', resultPath,
                 '--real-apps-root', options.realAppsRoot,
                 '--sdk-root', options.sdkRoot,
-                '--lifecycle-model', options.lifecycleModel,
                 '--max-access-path-length', String(options.maxAccessPathLength),
                 '--max-propagation-depth', String(options.maxPropagationDepth),
                 ...(options.collectSolverStatistics ? ['--ifds-stats'] : []),
                 ...(options.lifecycleRootOnly ? ['--lifecycle-root-only'] : []),
-                ...(!options.pruneUnreachableAbilities
-                    ? ['--no-ability-prune'] : []),
             ],
             {
                 cwd: repositoryRoot,

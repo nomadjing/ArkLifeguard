@@ -43,7 +43,10 @@ export class ResourceRunner {
         this.unresolvedRuleIds = resolved?.unresolvedRuleIds ?? [];
     }
 
-    runWithDummyMain(dummyMain: ArkMethod): ResourceAnalysisResult {
+    runWithDummyMain(
+        dummyMain: ArkMethod,
+        onSolved?: (solver: DataflowSolver<ResourceFact>) => void,
+    ): ResourceAnalysisResult {
         const entryMethod = dummyMain.getSignature().toString();
         if (this.rules.length === 0) {
             return {
@@ -70,6 +73,7 @@ export class ResourceRunner {
                 stmt => icfg.getNormalSuccessors(stmt));
             const solver = new DataflowSolver(problem, this.scene, { collectStatistics: this.collectStatistics }, icfg);
             solver.solve();
+            onSolved?.(solver);
             const byStatement = new Map<Stmt, ResourceFact[]>();
             for (const edge of solver.getPathEdgeSet()) {
                 const statement = edge.edgeEnd.node;

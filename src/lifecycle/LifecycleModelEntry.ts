@@ -6,27 +6,16 @@
 
 import { Scene } from "../adapter/arkanalyzer";
 import { FlatLifecycleModelCreator } from "./FlatLifecycleModelCreator";
-import { HierarchicalLifecycleModelCreator } from "./HierarchicalLifecycleModelCreator";
 import { LifecycleModelCreator } from "./LifecycleModelCreator";
 import { LifecycleModelConfig } from "./LifecycleTypes";
 
-export type LifecycleModelMode =
-  | "flat"
-  | "hierarchical";
-
-export const DEFAULT_LIFECYCLE_MODEL_MODE: LifecycleModelMode = "flat";
-
-/** Selects one of the interchangeable lifecycle DummyMain implementations. */
+/** Creates the standard compact flat DummyMain generator. */
 export function createLifecycleModelCreator(
   scene: Scene,
-  mode: LifecycleModelMode = DEFAULT_LIFECYCLE_MODEL_MODE,
   config?: Partial<LifecycleModelConfig>,
 ): LifecycleModelCreator {
-  if (mode === "flat") {
-    return new FlatLifecycleModelCreator(scene, config);
+  if (config !== undefined && (config === null || typeof config !== "object" || Array.isArray(config))) {
+    throw new TypeError("Lifecycle configuration must be an object");
   }
-  if (mode === "hierarchical") {
-    return new HierarchicalLifecycleModelCreator(scene, config);
-  }
-  throw new Error(`Unsupported lifecycle model: ${mode}`);
+  return new FlatLifecycleModelCreator(scene, config);
 }

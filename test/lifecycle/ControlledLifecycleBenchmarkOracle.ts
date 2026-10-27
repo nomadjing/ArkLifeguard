@@ -1,15 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export type ResearchLifecycleModel = 'flat' | 'hierarchical' | 'hierarchical-state';
-export type PrecisionLevel = 'M0' | 'M1' | 'M2';
 
 interface BenchmarkCaseBase {
     id: string;
     project: string;
-    firstPreciseModel: PrecisionLevel;
     semanticFeasible: boolean;
-    expected: Record<ResearchLifecycleModel, boolean>;
+    expected: { flat: boolean };
 }
 
 export interface NullnessBenchmarkCase extends BenchmarkCaseBase {
@@ -39,11 +36,8 @@ export const CONTROLLED_LIFECYCLE_ROOT = path.join(
 
 const ORACLE_PATH = path.join(CONTROLLED_LIFECYCLE_ROOT, 'lifecycle_model_expected.json');
 
-function isExpectedModels(value: unknown): value is Record<ResearchLifecycleModel, boolean> {
-    const expected = value as Partial<Record<ResearchLifecycleModel, unknown>> | undefined;
-    return typeof expected?.flat === 'boolean' &&
-        typeof expected.hierarchical === 'boolean' &&
-        typeof expected['hierarchical-state'] === 'boolean';
+function isExpectedModels(value: unknown): value is { flat: boolean } {
+    return typeof (value as { flat?: unknown } | undefined)?.flat === 'boolean';
 }
 
 function loadOracle(): ControlledLifecycleOracle {
@@ -60,7 +54,6 @@ function loadOracle(): ControlledLifecycleOracle {
             : item.observation === 'immediate-transition' &&
                 typeof item.from === 'string' && typeof item.to === 'string';
         if (!item.id || ids.has(item.id) || !item.project ||
-            !['M0', 'M1', 'M2'].includes(item.firstPreciseModel) ||
             typeof item.semanticFeasible !== 'boolean' ||
             !isExpectedModels(item.expected) || !validObservation) {
             throw new Error(`Invalid or duplicate controlled lifecycle case: ${item.id}`);
@@ -70,6 +63,6 @@ function loadOracle(): ControlledLifecycleOracle {
     return oracle;
 }
 
-/** M1/M2 expectations are future contracts; only M0 is executable today. */
+/** Only the standard flat-model expectations are executable. */
 export const CONTROLLED_LIFECYCLE_CASES: readonly ControlledLifecycleCase[] =
     loadOracle().cases;

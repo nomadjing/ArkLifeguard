@@ -16,7 +16,6 @@ import {
     type DummyMainRecord,
 } from '../src/application/ProjectAnalyzer';
 import type { IFDSSolverStatistics } from '../src/ifds';
-import type { LifecycleModelMode } from '../src/lifecycle';
 import type { LifecycleModelStatistics } from '../src/lifecycle';
 import { HARMONY_RESOURCE_DEFINITIONS, type ResourceAnalysisResult } from '../src/analysis/resourceleak';
 
@@ -39,8 +38,6 @@ interface Options {
     outputPath?: string;
     timeoutMs: number;
     collectSolverStatistics: boolean;
-    lifecycleModel: LifecycleModelMode;
-    pruneUnreachableAbilities: boolean;
     limit?: number;
     listOnly: boolean;
     workerProject?: string;
@@ -82,10 +79,7 @@ interface RealAppsReport {
         sdkRoot: string;
         timeoutMs: number;
         collectSolverStatistics: boolean;
-        lifecycleModel: LifecycleModelMode;
-        lifecycleOptimizations: {
-            pruneUnreachableAbilities: boolean;
-        };
+        lifecycleModel: 'flat';
     };
     summary: {
         selectedProjects: number;
@@ -188,8 +182,6 @@ function help(): void {
         '  --sdk-root <path>           SDK root containing openharmony/ets and hms/ets',
         '  --timeout-ms <n>            Hard per-project timeout; default: 180000',
         '  --ifds-stats                Collect aggregate IFDS solver statistics',
-        '  --lifecycle-model <mode>    flat or hierarchical; default: flat',
-        '  --no-ability-prune          Retain unreachable Abilities',
         '  --list                      List projects without analyzing',
         '  -h, --help                  Show this help',
         '',
@@ -220,8 +212,6 @@ function parseArgs(args: string[]): Options {
     let outputPath: string | undefined;
     let timeoutMs = 180_000;
     let collectSolverStatistics = false;
-    let lifecycleModel: LifecycleModelMode = 'flat';
-    let pruneUnreachableAbilities = true;
     let limit: number | undefined;
     let listOnly = false;
     let workerProject: string | undefined;
@@ -263,20 +253,6 @@ function parseArgs(args: string[]): Options {
             timeoutMs = positiveInteger(arg.slice('--timeout-ms='.length), '--timeout-ms');
         } else if (arg === '--ifds-stats') {
             collectSolverStatistics = true;
-        } else if (arg === '--lifecycle-model') {
-            const value = consume(arg);
-            if (value !== 'flat' && value !== 'hierarchical') {
-                throw new Error(`${arg} must be flat or hierarchical: ${value}`);
-            }
-            lifecycleModel = value;
-        } else if (arg.startsWith('--lifecycle-model=')) {
-            const value = arg.slice('--lifecycle-model='.length);
-            if (value !== 'flat' && value !== 'hierarchical') {
-                throw new Error(`--lifecycle-model must be flat or hierarchical: ${value}`);
-            }
-            lifecycleModel = value;
-        } else if (arg === '--no-ability-prune') {
-            pruneUnreachableAbilities = false;
         } else if (arg === '--list') {
             listOnly = true;
         } else if (arg === '--worker-project') {
@@ -296,8 +272,6 @@ function parseArgs(args: string[]): Options {
         outputPath,
         timeoutMs,
         collectSolverStatistics,
-        lifecycleModel,
-        pruneUnreachableAbilities,
         limit,
         listOnly,
         workerProject,
@@ -363,8 +337,6 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
             runNullness: false,
             runResourceAnalysis: true,
             analyzeNavigation: false,
-            lifecycleModel: options.lifecycleModel,
-            pruneUnreachableAbilities: options.lifecycleModel === 'hierarchical' && options.pruneUnreachableAbilities,
             collectSolverStatistics: options.collectSolverStatistics,
         }).analyze(projectPath);
         record.projectFiles = result.summary.projectFiles;
@@ -529,13 +501,10 @@ async function main(): Promise<void> {
         updatedAt: new Date().toISOString(),
         completed: false,
         settings: {
+            lifecycleModel: 'flat',
             sdkRoot: options.sdkRoot,
             timeoutMs: options.timeoutMs,
             collectSolverStatistics: options.collectSolverStatistics,
-            lifecycleModel: options.lifecycleModel,
-            lifecycleOptimizations: {
-                pruneUnreachableAbilities: options.lifecycleModel === 'hierarchical' && options.pruneUnreachableAbilities,
-            },
         },
         summary: emptySummary(selected.length),
         provenance: provenance(options),
@@ -543,7 +512,7 @@ async function main(): Promise<void> {
     };
     console.log(
         `Resource real-project evaluation: projects=${selected.length}, ` +
-        `model=${options.lifecycleModel}, sdk=${options.sdkRoot}, timeout=${options.timeoutMs}ms`
+        `model=flat, sdk=${options.sdkRoot}, timeout=${options.timeoutMs}ms`
     );
 
     selected.forEach((item, index) => {
@@ -558,9 +527,7 @@ async function main(): Promise<void> {
             '--worker-result', resultPath,
             '--real-apps-root', options.realAppsRoot,
             '--sdk-root', options.sdkRoot,
-            '--lifecycle-model', options.lifecycleModel,
         ];
-        if (!options.pruneUnreachableAbilities) childArgs.push('--no-ability-prune');
         if (options.collectSolverStatistics) childArgs.push('--ifds-stats');
         const child = spawnSync(process.execPath, childArgs, {
             cwd: repositoryRoot,

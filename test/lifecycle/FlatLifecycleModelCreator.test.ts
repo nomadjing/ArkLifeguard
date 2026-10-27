@@ -3,7 +3,7 @@ import 'arkanalyzer';
 import { ArkAssignStmt, ArkIfStmt, ArkNewExpr, BasicBlock } from '../../src/adapter/arkanalyzer';
 import {
     createLifecycleModelCreator,
-    DEFAULT_LIFECYCLE_MODEL_MODE,
+    FlatLifecycleModelCreator,
 } from '../../src/lifecycle';
 import { buildLifecycleScene } from '../helpers/buildScene';
 
@@ -35,12 +35,12 @@ function invokedNames(block: BasicBlock): string[] {
     });
 }
 
-describe('interchangeable lifecycle model entry', () => {
+describe('standard flat DummyMain generator', () => {
     it('uses the flat model by default and separates start, loop and end callbacks', () => {
         const creator = createLifecycleModelCreator(buildLifecycleScene('simple'));
         creator.create();
 
-        expect(DEFAULT_LIFECYCLE_MODEL_MODE).toBe('flat');
+        expect(creator).toBeInstanceOf(FlatLifecycleModelCreator);
         const cfg = creator.getDummyMain().getCfg()!;
         expect(cfg.getStartingStmt()).toBeDefined();
         const blocks = [...cfg.getBlocks()];
@@ -76,8 +76,7 @@ describe('interchangeable lifecycle model entry', () => {
 
     it('excludes test-source abilities from the flat model', () => {
         const creator = createLifecycleModelCreator(
-            buildLifecycleScene('ability-scope-nesting'),
-            'flat'
+            buildLifecycleScene('ability-scope-nesting')
         );
         creator.create();
 
@@ -87,7 +86,7 @@ describe('interchangeable lifecycle model entry', () => {
         expect(creator.getAbilities().map(ability => ability.name)).not.toContain(
             'TestAbility'
         );
-        expect(creator.getLifecycleModelStatistics().abilities.pruned).toBe(0);
+        expect(creator.getLifecycleModelStatistics().abilities.collected).toBe(creator.getAbilities().length);
     });
 
     it('uses one compact dispatcher and a unique continuation for every event', () => {
@@ -131,48 +130,10 @@ describe('interchangeable lifecycle model entry', () => {
         expect(firstCreate).toBeGreaterThan(Math.max(...allocations));
     });
 
-    it.each(['bounded-unroll', 'opt-flat'])(
-        'rejects the retired model %s through the factory', mode => {
-            expect(() => createLifecycleModelCreator(
-                buildLifecycleScene('simple'),
-                mode as Parameters<typeof createLifecycleModelCreator>[1]
-            )).toThrow(`Unsupported lifecycle model: ${mode}`);
-        }
-    );
-
-    it('keeps the hierarchical model cyclic for unbounded legal repetition', () => {
-        const creator = createLifecycleModelCreator(
+    it('rejects model names passed through the retired factory argument', () => {
+        expect(() => createLifecycleModelCreator(
             buildLifecycleScene('simple'),
-            'hierarchical'
-        );
-        creator.create();
-
-        const blocks = [...creator.getDummyMain().getCfg()!.getBlocks()];
-        expect(hasCycle(blocks)).toBe(true);
-        expect(blocks.flatMap(invokedNames)).toEqual(expect.arrayContaining([
-            'onForeground',
-            'onBackground',
-            'handleClick',
-        ]));
-        expect(blocks.every(block => block.getStmts().length > 0)).toBe(true);
+            'hierarchical' as unknown as Parameters<typeof createLifecycleModelCreator>[1],
+        )).toThrow('Lifecycle configuration must be an object');
     });
-
-    it('prunes unreachable Abilities only in the hierarchical model', () => {
-        const creator = createLifecycleModelCreator(buildLifecycleScene('ability-scope-nesting'), 'hierarchical');
-        creator.create();
-        expect(creator.getAbilities().map(ability => ability.name)).toEqual(['EntryAbility', 'SecondAbility']);
-        expect(creator.getLifecycleModelStatistics().abilities).toEqual({ collected: 3, reachable: 2, pruned: 1 });
-    });
-
-    it('can disable hierarchical Ability pruning', () => {
-        const creator = createLifecycleModelCreator(
-            buildLifecycleScene('ability-scope-nesting'),
-            'hierarchical',
-            { optimizations: { pruneUnreachableAbilities: false } },
-        );
-        creator.create();
-        expect(creator.getAbilities().map(ability => ability.name)).toContain('UnusedAbility');
-        expect(creator.getLifecycleModelStatistics().abilities.pruned).toBe(0);
-    });
-
 });

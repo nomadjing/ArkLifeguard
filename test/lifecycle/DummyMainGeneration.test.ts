@@ -7,8 +7,8 @@ import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import { buildLifecycleScene } from '../helpers/buildScene';
 
 describe('DummyMain generation contracts', () => {
-    it.each(['flat', 'hierarchical'] as const)(
-        '%s emits every lifecycle declaration in the HomeFlow coverage fixture', mode => {
+    it(
+        'emits every lifecycle declaration in the HomeFlow coverage fixture', () => {
             const scene = buildLifecycleScene('lifecycle-coverage');
             // The fixture deliberately includes HomeFlow's extra method names, plus
             // ArkLifeguard's backup/key-event entries and corrected onSessionDestroy.
@@ -16,7 +16,7 @@ describe('DummyMain generation contracts', () => {
                 .filter(cls => cls.getName().startsWith('Full'))
                 .flatMap(cls => cls.getMethods())
                 .filter(method => method.getName() !== 'constructor' && !method.getName().startsWith('%'));
-            const creator = createLifecycleModelCreator(scene, mode);
+            const creator = createLifecycleModelCreator(scene);
             creator.create();
             const main = creator.getDummyMain();
             const cfg = main.getCfg()!;

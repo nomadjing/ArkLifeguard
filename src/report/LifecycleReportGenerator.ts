@@ -9,14 +9,13 @@ import path from 'node:path';
 import type { ProjectAnalysisResult } from '../application';
 
 export interface LifecycleModelingReport {
-    schemaVersion: 1;
+    schemaVersion: 2;
     reportKind: 'lifecycle-modeling-details';
     project: ProjectAnalysisResult['project'];
     settings: {
         lifecycleModel: ProjectAnalysisResult['settings']['lifecycleModel'];
         extractUICallbacks: boolean;
         analyzeNavigation: boolean;
-        optimizations: ProjectAnalysisResult['settings']['lifecycleOptimizations'];
     };
     summary: {
         abilities: number;
@@ -41,14 +40,13 @@ export interface LifecycleModelingReport {
 export class LifecycleReportGenerator {
     generate(result: ProjectAnalysisResult, outputPath?: string): string {
         const report: LifecycleModelingReport = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             reportKind: 'lifecycle-modeling-details',
             project: result.project,
             settings: {
                 lifecycleModel: result.settings.lifecycleModel,
                 extractUICallbacks: result.settings.extractUICallbacks,
                 analyzeNavigation: result.settings.analyzeNavigation,
-                optimizations: result.settings.lifecycleOptimizations,
             },
             summary: {
                 abilities: result.summary.abilities,

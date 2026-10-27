@@ -16,8 +16,6 @@ import { Stmt } from 'arkanalyzer/lib/core/base/Stmt';
 import type { ArkMethod } from 'arkanalyzer/lib/core/model/ArkMethod';
 import {
     createLifecycleModelCreator,
-    DEFAULT_LIFECYCLE_MODEL_MODE,
-    type LifecycleModelMode,
 } from '../src/lifecycle/LifecycleModelEntry';
 
 type OutputFormat = 'ir' | 'source' | 'both';
@@ -28,7 +26,6 @@ interface Options {
     sdkRoot?: string;
     sdkPaths: string[];
     inferTypes: boolean;
-    model: LifecycleModelMode;
 }
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +41,6 @@ function help(): void {
         '  --format <ir|source|both>  Output format; default: both',
         '  --sdk-root <path>          Use openharmony/ets and hms/ets below an SDK root',
         '  --sdk <ets-path>           Use an ETS SDK path; repeatable',
-        '  --model <flat|hierarchical>  Lifecycle model; default: flat',
         '  --no-infer-types           Skip Scene type inference',
         '  -h, --help                 Show this help',
         '',
@@ -70,7 +66,6 @@ function parseArgs(args: string[]): Options {
     let sdkRoot: string | undefined;
     const sdkPaths: string[] = [];
     let inferTypes = true;
-    let model: LifecycleModelMode = DEFAULT_LIFECYCLE_MODEL_MODE;
 
     for (let index = 0; index < args.length; index++) {
         const arg = args[index];
@@ -105,15 +100,6 @@ function parseArgs(args: string[]): Options {
             sdkPaths.push(arg.slice('--sdk='.length));
             continue;
         }
-        if (arg === '--model') {
-            model = value(args, index, arg) as LifecycleModelMode;
-            index++;
-            continue;
-        }
-        if (arg.startsWith('--model=')) {
-            model = arg.slice('--model='.length) as LifecycleModelMode;
-            continue;
-        }
         if (arg === '--no-infer-types') {
             inferTypes = false;
             continue;
@@ -130,10 +116,7 @@ function parseArgs(args: string[]): Options {
     if (!['ir', 'source', 'both'].includes(format)) {
         throw new Error(`Invalid --format: ${format}; expected ir, source, or both`);
     }
-    if (!['flat', 'hierarchical'].includes(model)) {
-        throw new Error(`Invalid --model: ${model}; expected flat or hierarchical`);
-    }
-    return { projectPath, format, sdkRoot, sdkPaths, inferTypes, model };
+    return { projectPath, format, sdkRoot, sdkPaths, inferTypes };
 }
 
 function discoverSdks(options: Options): Sdk[] {
@@ -288,14 +271,14 @@ function main(): void {
     const scene = new Scene();
     scene.buildSceneFromProjectDir(config);
     if (options.inferTypes) scene.inferTypes();
-    const creator = createLifecycleModelCreator(scene, options.model);
+    const creator = createLifecycleModelCreator(scene);
     creator.create();
     const dummyMain = creator.getDummyMain();
     const header = [
         'LIFECYCLE DUMMYMAIN INSPECTION',
         `PROJECT: ${projectPath}`,
         `FORMAT: ${options.format}`,
-        `MODEL: ${options.model}`,
+        'MODEL: flat',
         `SDK: ${sdks.map(sdk => `${sdk.name}=${sdk.path}`).join(', ')}`,
         '',
         `METHOD ${dummyMain.getSignature().toString()}`,

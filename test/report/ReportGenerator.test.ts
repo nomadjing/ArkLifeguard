@@ -22,9 +22,6 @@ const result: ProjectAnalysisResult = {
         runNullness: true,
         runResourceAnalysis: true,
         lifecycleModel: 'flat',
-        lifecycleOptimizations: {
-            pruneUnreachableAbilities: false,
-        },
         bounds: {
             maxAccessPathLength: 5,
             maxPropagationDepth: 40,
@@ -68,32 +65,9 @@ const result: ProjectAnalysisResult = {
         lifecycleCalls: 2, uiCallbackCalls: 1,
     },
     lifecycleStatistics: {
-        abilities: { collected: 1, reachable: 1, pruned: 0 },
-        pages: { owned: 1, unknown: 0 },
-        components: { owned: 1, reachable: 1, fallback: 0 },
-        callbacks: { bound: 1, fallback: 0 },
-        ownership: {
-            directPageRoots: 1,
-            viewTreeComponentEdges: 0,
-            navigationPageEdges: 0,
-            viewTreeFailures: 0,
-        },
-        transitions: {
-            candidateCallbackTransitions: 1,
-            retainedCallbackTransitions: 1,
-            prunedCrossAbilityTransitions: 0,
-            conservativeFallbackTransitions: 0,
-        },
-        pageTransitions: {
-            discoveredPages: 1,
-            boundCallbacks: 1,
-            fallbackCallbacks: 0,
-            candidateCallbackTransitions: 1,
-            retainedCallbackTransitions: 1,
-            prunedCrossPageTransitions: 0,
-            conservativeFallbackTransitions: 0,
-            legalNavigationTransitions: 0,
-        },
+        abilities: { collected: 1 },
+        components: { collected: 1 },
+        callbacks: { collected: 1 },
     },
     nullness: {
         enabled: true,
@@ -287,6 +261,8 @@ describe('ReportGenerator', () => {
     it('writes lifecycle modeling details as a separate report', () => {
         const report = JSON.parse(new LifecycleReportGenerator().generate(result));
         expect(report.reportKind).toBe('lifecycle-modeling-details');
+        expect(report.schemaVersion).toBe(2);
+        expect(report.settings).not.toHaveProperty('optimizations');
         expect(report.settings.lifecycleModel).toBe('flat');
         expect(report.settings).not.toHaveProperty('maxCallbackIterations');
         expect(report.abilities).toHaveLength(1);

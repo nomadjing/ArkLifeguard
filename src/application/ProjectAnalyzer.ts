@@ -11,11 +11,8 @@ import {
     AbilityInfo,
     ComponentInfo,
     createLifecycleModelCreator,
-    DEFAULT_LIFECYCLE_CONFIG,
-    DEFAULT_LIFECYCLE_MODEL_MODE,
     LifecycleModelCreator,
     LifecycleModelStatistics,
-    LifecycleModelMode,
     NavigationAnalyzer,
 } from '../lifecycle';
 import {
@@ -42,8 +39,6 @@ export interface ProjectAnalysisOptions {
     closureRules?: readonly RegistrationRule[];
     maxRetentionStates?: number;
     maxRetentionCallDepth?: number;
-    lifecycleModel?: LifecycleModelMode;
-    pruneUnreachableAbilities?: boolean;
     maxAccessPathLength?: number;
     maxPropagationDepth?: number;
     reportUnresolvedReturns?: boolean;
@@ -86,10 +81,7 @@ export interface ProjectAnalysisResult {
         runClosureAnalysis?: boolean;
         runMemoryAnalysis?: boolean;
         retentionBounds?: { maxStates: number; maxCallDepth: number };
-        lifecycleModel: LifecycleModelMode;
-        lifecycleOptimizations: {
-            pruneUnreachableAbilities: boolean;
-        };
+        lifecycleModel: 'flat';
         bounds: {
             maxAccessPathLength: number;
             maxPropagationDepth: number;
@@ -198,8 +190,6 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     runMemoryAnalysis: false,
     maxRetentionStates: 20000,
     maxRetentionCallDepth: 4,
-    lifecycleModel: DEFAULT_LIFECYCLE_MODEL_MODE,
-    pruneUnreachableAbilities: DEFAULT_LIFECYCLE_CONFIG.optimizations.pruneUnreachableAbilities,
     maxAccessPathLength: 5,
     maxPropagationDepth: 40,
     reportUnresolvedReturns: false,
@@ -235,12 +225,9 @@ export class ProjectAnalyzer {
 
         const lifecycleStart = Date.now();
         const creator = this.withLifecycleConsole(() => {
-            const lifecycleCreator = createLifecycleModelCreator(scene, this.options.lifecycleModel, {
+            const lifecycleCreator = createLifecycleModelCreator(scene, {
                 lifecycleOrder: NULLNESS_LIFECYCLE_ORDER,
                 enableViewTreeParsing: this.options.extractUICallbacks,
-                optimizations: {
-                    pruneUnreachableAbilities: this.options.pruneUnreachableAbilities,
-                },
             });
             lifecycleCreator.create();
             return lifecycleCreator;
@@ -352,11 +339,7 @@ export class ProjectAnalyzer {
                 runClosureAnalysis: this.options.runClosureAnalysis,
                 runMemoryAnalysis: this.options.runMemoryAnalysis,
                 retentionBounds: { maxStates: this.options.maxRetentionStates, maxCallDepth: this.options.maxRetentionCallDepth },
-                lifecycleModel: this.options.lifecycleModel,
-                lifecycleOptimizations: {
-                    pruneUnreachableAbilities: this.options.lifecycleModel === 'hierarchical' &&
-                        this.options.pruneUnreachableAbilities,
-                },
+                lifecycleModel: 'flat',
                 bounds: {
                     maxAccessPathLength: this.options.maxAccessPathLength,
                     maxPropagationDepth: this.options.maxPropagationDepth,

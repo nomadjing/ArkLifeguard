@@ -19,8 +19,6 @@ import { ArkAssignStmt, Stmt } from '../../adapter/arkanalyzer';
 import { ArkMethod } from '../../adapter/arkanalyzer';
 import {
     createLifecycleModelCreator,
-    DEFAULT_LIFECYCLE_MODEL_MODE,
-    LifecycleModelMode,
     LifecycleModelStatistics,
 } from '../../lifecycle';
 import {
@@ -42,7 +40,6 @@ import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
 import type { IFDSSolverStatistics } from '../../ifds';
 
 export interface NullnessRunnerConfig {
-    lifecycleModel?: LifecycleModelMode;
     problem?: NullnessAnalysisConfig;
     lifecycle?: Partial<LifecycleModelConfig>;
     libraryRegistry?: NullnessLibraryRegistry;
@@ -107,7 +104,6 @@ export class NullnessAnalysisRunner {
         try {
             const creator = createLifecycleModelCreator(
                 this.scene,
-                this.config.lifecycleModel ?? DEFAULT_LIFECYCLE_MODEL_MODE,
                 {
                     lifecycleOrder: NULLNESS_LIFECYCLE_ORDER,
                     ...this.config.lifecycle,
@@ -154,7 +150,10 @@ export class NullnessAnalysisRunner {
     }
 
     /** Run against a lifecycle model already created by an application entry point. */
-    runWithDummyMain(dummyMain: ArkMethod): NullnessAnalysisResult {
+    runWithDummyMain(
+        dummyMain: ArkMethod,
+        onSolved?: (solver: NullnessSolver, root: 'lifecycle' | 'supplemental') => void,
+    ): NullnessAnalysisResult {
         try {
             const cfg = dummyMain.getCfg();
             const entryStmt = cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
@@ -204,6 +203,7 @@ export class NullnessAnalysisRunner {
                 collectStatistics: this.config.collectSolverStatistics,
             }, recursiveMethods);
             solver.solve();
+            onSolved?.(solver, 'lifecycle');
             const mainStatistics = solver.getStatistics();
             const supplementalStatistics: IFDSSolverStatistics[] = [];
             let supplementalRootCount = 0;
@@ -234,6 +234,7 @@ export class NullnessAnalysisRunner {
                     recursiveMethods
                 );
                 supplementalSolver.solve();
+                onSolved?.(supplementalSolver, 'supplemental');
                 const rootStatistics = supplementalSolver.getStatistics();
                 if (rootStatistics) {
                     supplementalStatistics.push({ ...rootStatistics });

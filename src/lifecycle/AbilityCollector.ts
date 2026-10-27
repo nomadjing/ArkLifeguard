@@ -432,15 +432,6 @@ export class AbilityCollector {
         }));
     }
 
-    /** Resolve every Page scope that contains this component. */
-    public getPagesForComponent(component: ComponentInfo): readonly PageInfo[] {
-        this.collectAllAbilities();
-        const signature = component.signature.toString();
-        return this.pageInfos.filter(page => page.components.some(candidate =>
-            candidate.signature.toString() === signature
-        ));
-    }
-
     /** Resolve a router/main-pages target to Page roots, keeping ambiguity visible. */
     public resolvePageTarget(target: string): readonly PageInfo[] {
         this.collectAllAbilities();
@@ -451,29 +442,6 @@ export class AbilityCollector {
         return this.pageInfos.filter(page =>
             page.id === resolved || page.routeNames.includes(target) ||
             page.routeNames.includes(normalized)
-        );
-    }
-
-    /** Extract Page targets from one callback method. */
-    public getNavigationTargetPages(method: ArkMethod): readonly PageInfo[] {
-        const result = new Map<string, PageInfo>();
-        for (const target of this.navigationAnalyzer.analyzeMethod(method)) {
-            if (target.navigationType === NavigationType.START_ABILITY ||
-                target.navigationType === NavigationType.ROUTER_BACK) {
-                continue;
-            }
-            for (const page of this.resolvePageTarget(target.targetAbilityName)) {
-                result.set(page.id, page);
-            }
-        }
-        return [...result.values()];
-    }
-
-    /** Whether a callback contains a Page-routing operation, resolved or not. */
-    public hasPageNavigation(method: ArkMethod): boolean {
-        return this.navigationAnalyzer.analyzeMethod(method).some(target =>
-            target.navigationType !== NavigationType.START_ABILITY &&
-            target.navigationType !== NavigationType.ROUTER_BACK
         );
     }
 
@@ -547,7 +515,6 @@ export class AbilityCollector {
             pageComponents: [], // 将由 loadContent/router 解析填充
             navigationTargets: [], // 将在后续填充
             isEntry: this.checkIsEntryAbility(arkClass),
-            hasUnresolvedAbilityNavigation: false,
         };
         
         return info;
@@ -688,9 +655,6 @@ export class AbilityCollector {
         
         // 输出警告信息
         for (const warning of analysisResult.warnings) {
-            if (warning.includes('startAbility')) {
-                ability.hasUnresolvedAbilityNavigation = true;
-            }
             console.warn(`[AbilityCollector] Warning: ${warning}`);
         }
         
@@ -840,9 +804,8 @@ export class AbilityCollector {
     }
 
     /**
-     * Attribute startAbility calls in page/component methods to their owning
-     * Ability. If the component owner is unknown, disable M1 Ability pruning
-     * because the call may be reachable from any retained page scope.
+     * Attribute resolved component startAbility calls to their owning Ability
+     * for navigation metadata; this does not constrain the flat dispatcher.
      */
     private analyzeComponentAbilityNavigation(abilities: AbilityInfo[]): void {
         for (const component of this.componentCache.values()) {
@@ -850,10 +813,7 @@ export class AbilityCollector {
             const targets = analysisResult.navigationTargets.filter(target =>
                 target.navigationType === NavigationType.START_ABILITY
             );
-            const hasUnresolvedTarget = analysisResult.warnings.some(warning =>
-                warning.includes('startAbility')
-            );
-            if (targets.length === 0 && !hasUnresolvedTarget) continue;
+            if (targets.length === 0) continue;
 
             const owners = abilities.filter(ability =>
                 ability.components.some(owned =>
@@ -861,14 +821,6 @@ export class AbilityCollector {
                 )
             );
             if (owners.length === 0) {
-                for (const ability of abilities) {
-                    ability.hasUnresolvedAbilityNavigation = true;
-                }
-                console.warn(
-                    `[AbilityCollector] Component ${component.name} contains ` +
-                    'startAbility but has no resolved Ability owner; ' +
-                    'Ability pruning will be disabled.'
-                );
                 continue;
             }
 
@@ -881,9 +833,6 @@ export class AbilityCollector {
                             target.sourceMethod.getSignature().toString()
                     );
                     if (!duplicate) owner.navigationTargets.push(target);
-                }
-                if (hasUnresolvedTarget) {
-                    owner.hasUnresolvedAbilityNavigation = true;
                 }
             }
         }

@@ -13,40 +13,7 @@
  * limitations under the License.
  */
 
-/**
- * @file index.ts
- * @description 生命周期模型模块入口
- * 
- * 本模块提供扩展版的生命周期建模功能，用于构建包含多 Ability 和精细化
- * UI 回调的 DummyMain 函数。
- * 
- * ## 模块结构
- * 
- * ```
- * lifecycle/
- * ├── index.ts                      # 模块入口（本文件）
- * ├── LifecycleTypes.ts             # 类型定义
- * ├── AbilityCollector.ts           # Ability/Component 收集器
- * ├── ViewTreeCallbackExtractor.ts  # UI 回调提取器
- * ├── FlatLifecycleModelCreator.ts  # Compact flat
- * └── HierarchicalLifecycleModelCreator.ts # canonical hierarchy
- * ```
- * 
- * ## 快速使用
- * 
- * ```typescript
- * import { createLifecycleModelCreator } from './lifecycle';
- * 
- * // 假设 scene 已经构建完成
- * const creator = createLifecycleModelCreator(scene, 'hierarchical');
- * creator.create();
- * 
- * // 获取生成的 DummyMain
- * const dummyMain = creator.getDummyMain();
- * ```
- * 
- * Flat 与 hierarchical 通过同一入口选择。
- */
+/** Standard compact flat DummyMain generation and shared collection utilities. */
 
 // ============================================================================
 // 导出类型定义
@@ -76,10 +43,7 @@ export {
     
     // 配置
     LifecycleModelConfig,
-    LifecycleOptimizationConfig,
     LifecycleModelStatistics,
-    ScopeModelInfo,
-    PageScopeInfo,
     DEFAULT_LIFECYCLE_CONFIG,
 } from './LifecycleTypes';
 
@@ -89,10 +53,7 @@ export { LifecycleModelCreator } from './LifecycleModelCreator';
 export {
     FlatLifecycleModelCreator,
 } from './FlatLifecycleModelCreator';
-export { HierarchicalLifecycleModelCreator } from './HierarchicalLifecycleModelCreator';
 export {
     createLifecycleModelCreator,
-    DEFAULT_LIFECYCLE_MODEL_MODE,
-    LifecycleModelMode,
 } from './LifecycleModelEntry';
 export { NavigationAnalyzer, analyzeNavigation, NavigationAnalysisResult } from './NavigationAnalyzer';

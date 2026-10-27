@@ -29,7 +29,6 @@ import {
   ArkMethod,
   ClassSignature,
   ArkField,
-  Stmt,
   ViewTreeNode,
 } from "../adapter/arkanalyzer";
 
@@ -216,8 +215,6 @@ export interface AbilityInfo {
   /** 是否是入口 Ability（在 module.json5 中配置） */
   isEntry: boolean;
 
-  /** 是否存在无法静态解析目标的 startAbility 调用。 */
-  hasUnresolvedAbilityNavigation: boolean;
 }
 
 /**
@@ -372,9 +369,6 @@ export enum UIEventType {
  * 扩展 DummyMain 的配置选项
  */
 export interface LifecycleModelConfig {
-  /** 是否包含多 Ability 跳转建模 */
-  enableMultiAbilityNavigation: boolean;
-
   /** 是否精细化建模 UI 回调（按控件实例化） */
   enableFineGrainedUICallbacks: boolean;
 
@@ -383,116 +377,19 @@ export interface LifecycleModelConfig {
 
   /** 生命周期方法调用顺序（可自定义） */
   lifecycleOrder: AbilityLifecycleMethodStage[];
-
-  /** 最大跳转深度（防止无限循环） */
-  maxNavigationDepth: number;
-
-  /** Hierarchical 的可选 Ability 可达裁剪；flat 不应用。 */
-  optimizations: LifecycleOptimizationConfig;
 }
 
-/** Hierarchical 的可达 Ability 裁剪；flat 保留全部收集对象。 */
-export interface LifecycleOptimizationConfig {
-  /** 仅保留入口 Ability 及静态可达的 startAbility 闭包。 */
-  pruneUnreachableAbilities: boolean;
-}
-
-/** RQ1.5 每个项目需要记录的 hierarchy 收集与裁剪统计。 */
+/** Counts of declarations included in the standard flat model. */
 export interface LifecycleModelStatistics {
-  abilities: {
-    collected: number;
-    reachable: number;
-    pruned: number;
-  };
-  pages: {
-    owned: number;
-    unknown: number;
-  };
-  components: {
-    owned: number;
-    reachable: number;
-    fallback: number;
-  };
-  callbacks: {
-    bound: number;
-    fallback: number;
-  };
-  ownership: {
-    /** loadContent/router 直接解析到的 Page 根。 */
-    directPageRoots: number;
-    /** 从 Page ViewTree 中发现的 custom-component 关系。 */
-    viewTreeComponentEdges: number;
-    /** Additional component edges recovered from rendering IR. */
-    renderIRComponentEdges?: number;
-    /** 从已归属 Component 的导航调用中解析的 Page 关系。 */
-    navigationPageEdges: number;
-    /** ViewTree 无法构建的已归属 Component 数。 */
-    viewTreeFailures: number;
-  };
-  transitions: {
-    /** Flat 全局 callback pool 中的有序 callback 对。 */
-    candidateCallbackTransitions: number;
-    /** M1 在共同 Ability scope 或 fallback 下保留的有序对。 */
-    retainedCallbackTransitions: number;
-    /** 因 owner Ability 集合不相交而裁剪的有序对。 */
-    prunedCrossAbilityTransitions: number;
-    /** 因任一端 ownership 未知而保守保留的有序对。 */
-    conservativeFallbackTransitions: number;
-  };
-  pageTransitions: {
-    /** Page roots obtained from main_pages/router_map or code discovery. */
-    discoveredPages: number;
-    /** UI callbacks with one or more resolved Page owners. */
-    boundCallbacks: number;
-    /** UI callbacks without a resolved Page owner and therefore kept global. */
-    fallbackCallbacks: number;
-    /** Ordered callback pairs before Page-scope pruning. */
-    candidateCallbackTransitions: number;
-    /** Ordered callback pairs represented by the selected lifecycle model. */
-    retainedCallbackTransitions: number;
-    /** Ordered pairs removed because their Page owners are disjoint. */
-    prunedCrossPageTransitions: number;
-    /** Pairs kept because one endpoint has unknown/ambiguous Page ownership. */
-    conservativeFallbackTransitions: number;
-    /** Cross-Page pairs retained because the source callback has that route. */
-    legalNavigationTransitions: number;
-  };
-}
-
-/**
- * DummyMain 的 scope 结构信息（仅分层模型提供）。
- *
- * 用于 profiling / 调试：把"哪个 Stmt 是哪个 Page scope / fallback / Ability
- * 分发器"暴露给上层，配合 IFDS 求解结果做按 scope 的事实统计。Flat /
- * 其他无 scope 结构的模型返回 undefined。
- */
-export interface PageScopeInfo {
-  pageId: string;
-  /** Page scope 分发器块中的语句（`if true != false`）。 */
-  head: Stmt;
-  /** onPageShow 之后的分发器块语句；无 onPageShow 时与 head 相同。 */
-  eventHead: Stmt;
-  /** 该 scope 内组件对应的合成实例 Local 名称（如 `%6`）。 */
-  instanceNames: string[];
-}
-
-export interface ScopeModelInfo {
-  /** Ability 级生命周期分发器块语句（外层循环头）。 */
-  abilityHead?: Stmt;
-  pageScopes: PageScopeInfo[];
-  /** fallback 分发器块语句（归属未知 / 歧义的回调集中于此）。 */
-  fallbackHead?: Stmt;
-  /** fallback 返回分发器块语句。 */
-  fallbackReturnHead?: Stmt;
-  /** fallback 组件对应的合成实例 Local 名称。 */
-  fallbackInstanceNames: string[];
+  abilities: { collected: number };
+  components: { collected: number };
+  callbacks: { collected: number };
 }
 
 /**
  * 默认配置
  */
 export const DEFAULT_LIFECYCLE_CONFIG: LifecycleModelConfig = {
-  enableMultiAbilityNavigation: true,
   enableFineGrainedUICallbacks: true,
   enableViewTreeParsing: true,
   lifecycleOrder: [
@@ -529,8 +426,4 @@ export const DEFAULT_LIFECYCLE_CONFIG: LifecycleModelConfig = {
     BackupExtensionLifecycleStage.PROCESS,
     ...Object.values(FormExtensionLifecycleStage),
   ],
-  maxNavigationDepth: 10,
-  optimizations: {
-    pruneUnreachableAbilities: true,
-  },
 };

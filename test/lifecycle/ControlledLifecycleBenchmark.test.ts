@@ -12,16 +12,13 @@ import {
     CONTROLLED_LIFECYCLE_ROOT,
     CONTROLLED_LIFECYCLE_CASES,
     NullnessBenchmarkCase,
-    PrecisionLevel,
-    ResearchLifecycleModel,
     TransitionBenchmarkCase,
 } from './ControlledLifecycleBenchmarkOracle';
 
-type ImplementedLifecycleModel = Extract<ResearchLifecycleModel, 'flat' | 'hierarchical'>;
+type ImplementedLifecycleModel = 'flat';
 
 const IMPLEMENTED_MODELS: readonly ImplementedLifecycleModel[] = [
     'flat',
-    'hierarchical',
 ];
 const diagnosticsByModelAndProject = new Map<
     string,
@@ -54,9 +51,7 @@ function runNullness(
     const key = cacheKey(model, project);
     const cached = diagnosticsByModelAndProject.get(key);
     if (cached) return cached;
-    const result = new NullnessAnalysisRunner(buildControlledScene(project), {
-        lifecycleModel: model,
-    }).runFromDummyMain();
+    const result = new NullnessAnalysisRunner(buildControlledScene(project)).runFromDummyMain();
     expect(result.success, result.error).toBe(true);
     diagnosticsByModelAndProject.set(key, result.diagnostics);
     return result.diagnostics;
@@ -86,8 +81,7 @@ function modelBlocks(
     const cached = blocksByModelAndProject.get(key);
     if (cached) return cached;
     const creator = createLifecycleModelCreator(
-        buildControlledScene(project),
-        model
+        buildControlledScene(project)
     );
     creator.create();
     const blocks = [...creator.getDummyMain().getCfg()!.getBlocks()];
@@ -127,22 +121,6 @@ const nullnessCases = CONTROLLED_LIFECYCLE_CASES.filter(
 const transitionCases = CONTROLLED_LIFECYCLE_CASES.filter(
     (item): item is TransitionBenchmarkCase => item.observation === 'immediate-transition'
 );
-
-describe('controlled lifecycle benchmark oracle', () => {
-    it.each(CONTROLLED_LIFECYCLE_CASES)('$id first becomes precise at $firstPreciseModel', item => {
-        const models: ResearchLifecycleModel[] = [
-            'flat',
-            'hierarchical',
-            'hierarchical-state',
-        ];
-        const levelIndex: Record<PrecisionLevel, number> = { M0: 0, M1: 1, M2: 2 };
-        for (const [index, model] of models.entries()) {
-            expect(item.expected[model] === item.semanticFeasible).toBe(
-                index >= levelIndex[item.firstPreciseModel]
-            );
-        }
-    });
-});
 
 for (const model of IMPLEMENTED_MODELS) {
     describe(`${model} observations`, () => {

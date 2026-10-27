@@ -21,17 +21,17 @@
  *
  * 1. **多 Ability 支持**
  *    - 收集项目中所有 Ability
- *    - 按启动顺序/跳转关系建模
+ *    - 保留收集到的所有运行时 Ability
  *
  * 2. **精细化 UI 回调**
  *    - 利用 ViewTree 提取控件信息
  *    - 按控件实例化后调用对应回调
  *
- * 3. **页面跳转建模**
- *    - 分析 startAbility/router.pushUrl 等调用
- *    - 在 CFG 中体现跳转关系
+ * 3. **统一事件调度**
+ *    - 使用一个 compact dispatcher 调度生命周期方法与 UI 回调
+ *    - 导航与组件归属信息作为元数据，不裁剪事件后继
  *
- * 具体的 DummyMain CFG 由循环生命周期模型实现。
+ * DummyMain 使用统一的 compact flat 调度循环。
  */
 import {
   Scene,
@@ -73,8 +73,6 @@ import {
   LifecycleModelConfig,
   LifecycleModelStatistics,
   DEFAULT_LIFECYCLE_CONFIG,
-  NavigationType,
-  ScopeModelInfo,
 } from "./LifecycleTypes";
 
 // ============================================================================
@@ -87,7 +85,7 @@ import {
  * 使用方式：
  * ```typescript
  * const scene = ...; // 已构建的 Scene
- * const creator = new LifecycleModelCreator(scene);
+ * const creator = createLifecycleModelCreator(scene);
  * creator.create();
  * const dummyMain = creator.getDummyMain();
  * ```
@@ -124,44 +122,6 @@ export abstract class LifecycleModelCreator {
   /** 类实例 Local 映射：类签名 -> Local 变量 */
   protected classInstanceMap: Map<string, Local> = new Map();
 
-  /** DummyMain 的 scope 结构信息（仅分层模型在 buildDummyMainCfg 中填充）。 */
-  protected scopeModelInfo?: ScopeModelInfo;
-
-  /** Collected/effective hierarchy counts used by RQ1.5 reports. */
-  private lifecycleModelStatistics: LifecycleModelStatistics = {
-    abilities: { collected: 0, reachable: 0, pruned: 0 },
-    pages: { owned: 0, unknown: 0 },
-    components: { owned: 0, reachable: 0, fallback: 0 },
-    callbacks: { bound: 0, fallback: 0 },
-    ownership: {
-      directPageRoots: 0,
-      viewTreeComponentEdges: 0,
-      navigationPageEdges: 0,
-      viewTreeFailures: 0,
-    },
-    transitions: {
-      candidateCallbackTransitions: 0,
-      retainedCallbackTransitions: 0,
-      prunedCrossAbilityTransitions: 0,
-      conservativeFallbackTransitions: 0,
-    },
-    pageTransitions: {
-      discoveredPages: 0,
-      boundCallbacks: 0,
-      fallbackCallbacks: 0,
-      candidateCallbackTransitions: 0,
-      retainedCallbackTransitions: 0,
-      prunedCrossPageTransitions: 0,
-      conservativeFallbackTransitions: 0,
-      legalNavigationTransitions: 0,
-    },
-  };
-
-  private collectedAbilitiesCount = 0;
-  private collectedComponents: ComponentInfo[] = [];
-  private collectedPageComponentSignatures = new Set<string>();
-  private collectedOwnedComponentSignatures = new Set<string>();
-
   // ========================================================================
   // 构造函数
   // ========================================================================
@@ -177,10 +137,6 @@ export abstract class LifecycleModelCreator {
     this.config = {
       ...DEFAULT_LIFECYCLE_CONFIG,
       ...config,
-      optimizations: {
-        ...DEFAULT_LIFECYCLE_CONFIG.optimizations,
-        ...(config?.optimizations ?? {}),
-      },
     };
 
     // 初始化收集器
@@ -242,37 +198,13 @@ export abstract class LifecycleModelCreator {
     return this.components;
   }
 
-  /** Return a defensive copy of hierarchy statistics for reports. */
+  /** Counts of the objects included in the standard flat model. */
   public getLifecycleModelStatistics(): LifecycleModelStatistics {
     return {
-      abilities: { ...this.lifecycleModelStatistics.abilities },
-      pages: { ...this.lifecycleModelStatistics.pages },
-      components: { ...this.lifecycleModelStatistics.components },
-      callbacks: { ...this.lifecycleModelStatistics.callbacks },
-      ownership: { ...this.lifecycleModelStatistics.ownership },
-      transitions: { ...this.lifecycleModelStatistics.transitions },
-      pageTransitions: { ...this.lifecycleModelStatistics.pageTransitions },
+      abilities: { collected: this.abilities.length },
+      components: { collected: this.components.length },
+      callbacks: { collected: this.components.reduce((sum, component) => sum + component.uiCallbacks.length, 0) },
     };
-  }
-
-  /**
-   * DummyMain 的 scope 结构信息，供 profiling / 调试使用。
-   * 仅分层模型返回非 undefined；Flat 返回 undefined。
-   */
-  public getScopeModelInfo(): ScopeModelInfo | undefined {
-    return this.scopeModelInfo;
-  }
-
-  /** Page-scope subclasses use the shared collector after callbacks are filled. */
-  protected getAbilityCollector(): AbilityCollector {
-    return this.abilityCollector;
-  }
-
-  /** Record model-specific Page transition counts after its CFG is built. */
-  protected setPageTransitionStatistics(
-    statistics: LifecycleModelStatistics['pageTransitions'],
-  ): void {
-    this.lifecycleModelStatistics.pageTransitions = { ...statistics };
   }
 
   // ========================================================================
@@ -298,19 +230,6 @@ export abstract class LifecycleModelCreator {
     // 阶段四：@Entry Component 优先 - loadContent 通常加载入口页，入口组件先执行更符合实际流程
     this.components.sort((a, b) => (b.isEntry ? 1 : 0) - (a.isEntry ? 1 : 0)); // @Entry 排前面
     console.log(`  Found ${this.components.length} Components (@Entry first)`);
-    this.collectedAbilitiesCount = this.abilities.length;
-    this.collectedComponents = [...this.components];
-    this.collectedPageComponentSignatures = new Set(
-      this.abilities.flatMap(ability =>
-        ability.pageComponents.map(component => component.signature.toString())
-      ),
-    );
-    this.collectedOwnedComponentSignatures = new Set(
-      this.abilities.flatMap(ability =>
-        ability.components.map(component => component.signature.toString())
-      ),
-    );
-    this.refreshLifecycleModelStatistics();
   }
 
   // ========================================================================
@@ -332,245 +251,6 @@ export abstract class LifecycleModelCreator {
       totalCallbacks += component.uiCallbacks.length;
     }
     console.log(`  Extracted ${totalCallbacks} UI callbacks`);
-    this.refreshLifecycleModelStatistics();
-  }
-
-  /**
-   * Apply hierarchical Ability reachability pruning. An unresolved
-   * startAbility target conservatively retains every collected Ability.
-   */
-  protected retainReachableModelElements(): void {
-    const allAbilities = this.abilities;
-    if (!this.config.optimizations.pruneUnreachableAbilities) {
-      this.refreshLifecycleModelStatistics();
-      return;
-    }
-    const entries = allAbilities.filter(ability => ability.isEntry);
-    if (entries.length === 0) {
-      this.refreshLifecycleModelStatistics();
-      return;
-    }
-
-    const byName = new Map(
-      allAbilities.map(ability => [ability.name.toLowerCase(), ability]),
-    );
-    const reachable = new Set<AbilityInfo>();
-    const pending = [...entries];
-    while (pending.length > 0) {
-      const ability = pending.pop()!;
-      if (reachable.has(ability)) continue;
-      reachable.add(ability);
-      if (ability.hasUnresolvedAbilityNavigation) {
-        this.refreshLifecycleModelStatistics();
-        return;
-      }
-      for (const target of ability.navigationTargets) {
-        if (target.navigationType !== NavigationType.START_ABILITY) continue;
-        const targetName = target.targetAbilityName
-          .split(/[/.]/)
-          .filter(Boolean)
-          .at(-1)
-          ?.toLowerCase();
-        const targetAbility = targetName ? byName.get(targetName) : undefined;
-        if (targetAbility && !reachable.has(targetAbility)) {
-          pending.push(targetAbility);
-        }
-      }
-    }
-
-    const allOwned = new Set(
-      allAbilities.flatMap(ability =>
-        ability.components.map(component => component.signature.toString())
-      ),
-    );
-    const reachableOwned = new Set(
-      [...reachable].flatMap(ability =>
-        ability.components.map(component => component.signature.toString())
-      ),
-    );
-    this.abilities = allAbilities.filter(ability => reachable.has(ability));
-    this.components = this.components.filter(component => {
-      const signature = component.signature.toString();
-      return !allOwned.has(signature) || reachableOwned.has(signature);
-    });
-    this.refreshLifecycleModelStatistics();
-  }
-
-  private refreshLifecycleModelStatistics(): void {
-    const collectedComponents = new Map(
-      this.collectedComponents.map(component => [
-        component.signature.toString(),
-        component,
-      ]),
-    );
-    const reachableComponents = new Map(
-      this.components.map(component => [component.signature.toString(), component]),
-    );
-    const ownedComponents = [...collectedComponents.entries()]
-      .filter(([signature]) =>
-        this.collectedOwnedComponentSignatures.has(signature)
-      )
-      .map(([, component]) => component);
-    const reachableOwnedComponents = ownedComponents.filter(component =>
-      reachableComponents.has(component.signature.toString())
-    );
-    const fallbackComponents = [...collectedComponents.entries()]
-      .filter(([signature]) =>
-        !this.collectedOwnedComponentSignatures.has(signature)
-      )
-      .map(([, component]) => component);
-    const transitionStatistics = this.computeCallbackTransitionStatistics(
-      [...reachableComponents.values()],
-    );
-    const ownershipExpansion = this.abilityCollector
-      .getOwnershipExpansionStatistics();
-    this.lifecycleModelStatistics = {
-      abilities: {
-        collected: this.collectedAbilitiesCount,
-        reachable: this.abilities.length,
-        pruned: Math.max(
-          0,
-          this.collectedAbilitiesCount - this.abilities.length,
-        ),
-      },
-      pages: {
-        owned: this.collectedPageComponentSignatures.size,
-        unknown: this.collectedComponents.filter(component =>
-          component.isEntry &&
-          !this.collectedPageComponentSignatures.has(component.signature.toString())
-        ).length,
-      },
-      components: {
-        owned: ownedComponents.length,
-        reachable: reachableComponents.size,
-        fallback: fallbackComponents.length,
-      },
-      callbacks: {
-        bound: reachableOwnedComponents.reduce(
-          (sum, component) => sum + component.uiCallbacks.length,
-          0,
-        ),
-        fallback: fallbackComponents.reduce(
-          (sum, component) => sum + component.uiCallbacks.length,
-          0,
-        ),
-      },
-      ownership: {
-        directPageRoots: this.collectedPageComponentSignatures.size,
-        ...ownershipExpansion,
-      },
-      transitions: transitionStatistics,
-      pageTransitions: this.computeDefaultPageTransitionStatistics(
-        [...reachableComponents.values()],
-      ),
-    };
-  }
-
-  /**
-   * Flat and Ability-scoped models deliberately retain the global/cross-Page
-   * callback pairs.  The Page-scope creator replaces these with its actual
-   * retained/pruned counts after constructing the CFG.
-   */
-  private computeDefaultPageTransitionStatistics(
-    components: readonly ComponentInfo[],
-  ): LifecycleModelStatistics['pageTransitions'] {
-    const collector = this.abilityCollector;
-    // Resolve ownership once per component and count targets with identical Page sets.
-    const pagesByComponent = new Map(components.map(component => [
-      component, new Set(collector.getPagesForComponent(component).map(page => page.id)),
-    ]));
-    const targetGroups = new Map<string, { pages: Set<string>; count: number }>();
-    let totalCallbacks = 0;
-    let boundCallbacks = 0;
-    for (const component of components) {
-      const pages = pagesByComponent.get(component)!;
-      const count = component.uiCallbacks.length;
-      totalCallbacks += count;
-      if (pages.size > 0) boundCallbacks += count;
-      if (count === 0) continue;
-      const key = JSON.stringify([...pages].sort());
-      const group = targetGroups.get(key);
-      if (group) group.count += count;
-      else targetGroups.set(key, { pages, count });
-    }
-    const candidateCallbackTransitions = totalCallbacks ** 2;
-    const fallbackCallbacks = totalCallbacks - boundCallbacks;
-    const conservativeFallbackTransitions = candidateCallbackTransitions - boundCallbacks ** 2;
-    let legalNavigationTransitions = 0;
-    for (const component of components) {
-      const sourcePages = pagesByComponent.get(component)!;
-      for (const callback of component.uiCallbacks) {
-        const navigationPages = new Set(
-          collector.getNavigationTargetPages(callback.callbackMethod).map(page => page.id),
-        );
-        if (navigationPages.size === 0) continue;
-        for (const { pages, count } of targetGroups.values()) {
-          if ([...pages].some(page => navigationPages.has(page)) &&
-              ![...sourcePages].some(page => pages.has(page))) {
-            legalNavigationTransitions += count;
-          }
-        }
-      }
-    }
-    return {
-      discoveredPages: collector.getPageInfos().length,
-      boundCallbacks,
-      fallbackCallbacks,
-      candidateCallbackTransitions,
-      retainedCallbackTransitions: candidateCallbackTransitions,
-      prunedCrossPageTransitions: 0,
-      conservativeFallbackTransitions,
-      legalNavigationTransitions,
-    };
-  }
-
-  private computeCallbackTransitionStatistics(
-    components: readonly ComponentInfo[],
-  ): LifecycleModelStatistics['transitions'] {
-    const ownersByComponent = new Map<string, Set<string>>();
-    for (const ability of this.abilities) {
-      const abilityKey = ability.signature.toString();
-      for (const component of ability.components) {
-        const componentKey = component.signature.toString();
-        let owners = ownersByComponent.get(componentKey);
-        if (!owners) {
-          owners = new Set<string>();
-          ownersByComponent.set(componentKey, owners);
-        }
-        owners.add(abilityKey);
-      }
-    }
-    const groups = new Map<string, { owners: Set<string>; count: number }>();
-    let totalCallbacks = 0;
-    let boundCallbacks = 0;
-    for (const component of components) {
-      const owners = ownersByComponent.get(component.signature.toString()) ?? new Set<string>();
-      const count = component.uiCallbacks.length;
-      totalCallbacks += count;
-      if (owners.size > 0) boundCallbacks += count;
-      if (owners.size === 0 || count === 0) continue;
-      const key = JSON.stringify([...owners].sort());
-      const group = groups.get(key);
-      if (group) group.count += count;
-      else groups.set(key, { owners, count });
-    }
-    const candidateCallbackTransitions = totalCallbacks ** 2;
-    const conservativeFallbackTransitions = candidateCallbackTransitions - boundCallbacks ** 2;
-    let prunedCrossAbilityTransitions = 0;
-    for (const source of groups.values()) {
-      for (const target of groups.values()) {
-        if (![...source.owners].some(owner => target.owners.has(owner))) {
-          prunedCrossAbilityTransitions += source.count * target.count;
-        }
-      }
-    }
-    return {
-      candidateCallbackTransitions,
-      retainedCallbackTransitions:
-        candidateCallbackTransitions - prunedCrossAbilityTransitions,
-      prunedCrossAbilityTransitions,
-      conservativeFallbackTransitions,
-    };
   }
 
   // ========================================================================

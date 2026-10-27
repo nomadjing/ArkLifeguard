@@ -62,14 +62,12 @@ function loadCases(): BenchmarkCase[] {
 
 function parseArgs(args: string[]): {
     selectedCase?: string;
-    lifecycleModel: 'flat' | 'hierarchical';
 } {
     let selectedCase: string | undefined;
-    let lifecycleModel: 'flat' | 'hierarchical' = 'flat';
     for (let index = 0; index < args.length; index++) {
         const arg = args[index];
         if (arg === '--help' || arg === '-h') {
-            console.log('Usage: npm run test:nullness:bench -- [--case <case-name>] [--model <flat|hierarchical>]');
+            console.log('Usage: npm run test:nullness:bench -- [--case <case-name>]');
             process.exit(0);
         }
         if (arg === '--case') {
@@ -83,33 +81,16 @@ function parseArgs(args: string[]): {
             selectedCase = arg.slice('--case='.length);
             continue;
         }
-        if (arg === '--model') {
-            const value = args[++index];
-            if (value !== 'flat' && value !== 'hierarchical') {
-                throw new Error('--model requires flat or hierarchical');
-            }
-            lifecycleModel = value;
-            continue;
-        }
-        if (arg.startsWith('--model=')) {
-            const value = arg.slice('--model='.length);
-            if (value !== 'flat' && value !== 'hierarchical') {
-                throw new Error('--model requires flat or hierarchical');
-            }
-            lifecycleModel = value;
-            continue;
-        }
         throw new Error(`Unknown argument: ${arg}`);
     }
-    return { selectedCase, lifecycleModel };
+    return { selectedCase };
 }
 
 function runBatch(
-    selectedCases: readonly BenchmarkCase[],
-    lifecycleModel: 'flat' | 'hierarchical'
+    selectedCases: readonly BenchmarkCase[]
 ): BenchmarkResult[] {
     const label = selectedCases.length === 1 ? selectedCases[0].id : `${selectedCases.length} cases`;
-    console.log(`\n===== ArkDefectBench: ${label}; model=${lifecycleModel} =====`);
+    console.log(`\n===== ArkDefectBench: ${label}; model=flat =====`);
     const metricsPath = path.join(
         os.tmpdir(),
         `ark-npd-metrics-${process.pid}-${Date.now()}.jsonl`
@@ -134,7 +115,6 @@ function runBatch(
                     ? selectedCases[0].id
                     : undefined,
                 ARK_NPD_METRICS_FILE: metricsPath,
-                ARK_LIFECYCLE_MODEL: lifecycleModel,
                 NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --max-old-space-size=1024`.trim(),
             },
             stdio: 'inherit',
@@ -191,7 +171,7 @@ function formatRate(numerator: number, denominator: number): string {
     return `${(numerator / denominator * 100).toFixed(2)}%`;
 }
 
-const { selectedCase, lifecycleModel } = parseArgs(process.argv.slice(2));
+const { selectedCase } = parseArgs(process.argv.slice(2));
 const cases = loadCases();
 const selected = selectedCase === undefined
     ? cases
@@ -201,10 +181,10 @@ if (selectedCase !== undefined && selected.length === 0) {
         `Unknown ArkDefectBench case: ${selectedCase}. Available cases: ${cases.map(item => item.name).join(', ')}`
     );
 }
-const results = runBatch(selected, lifecycleModel);
+const results = runBatch(selected);
 const failed = results.filter(result => result.status !== 'PASS');
 
-console.log(`\n===== ArkDefectBench null-pointer summary; model=${lifecycleModel} =====`);
+console.log(`\n===== ArkDefectBench null-pointer summary; model=flat =====`);
 for (const result of results) {
     console.log(
         `${result.status.padEnd(13)} ${formatClassification(result.metrics).padEnd(14)} ${result.caseName}`

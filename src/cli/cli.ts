@@ -12,7 +12,6 @@ import {
     Option,
 } from 'commander';
 import { ProjectAnalysisOptions, ProjectAnalyzer } from '../application';
-import type { LifecycleModelMode } from '../lifecycle';
 import {
     LifecycleReportGenerator,
     ReportFormat,
@@ -32,8 +31,6 @@ interface AnalyzeCliOptions {
     navigation: boolean;
     uiCallbacks: boolean;
     checks: AnalysisCheck[];
-    lifecycleModel: LifecycleModelMode;
-    pruneUnreachableAbilities: boolean;
     maxAccessPathLength: number;
     maxPropagationDepth: number;
     reportUnresolvedReturns: boolean;
@@ -70,12 +67,6 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
             '--checks <checks>',
             'checks to run: all, nullness, resource, closure, memory, or a comma-separated list'
         ).argParser(parseChecks).default(['nullness', 'resource', 'closure', 'memory'] as AnalysisCheck[], 'all'))
-        .addOption(new Option('--lifecycle-model <mode>', 'DummyMain lifecycle model')
-            .choices([
-                'flat',
-                'hierarchical',
-            ]).default('flat'))
-        .option('--no-prune-unreachable-abilities', 'retain unreachable Abilities in the hierarchical model')
         .option('--max-access-path-length <n>', 'maximum nullness access-path length', positiveInteger, 5)
         .option('--max-propagation-depth <n>', 'maximum nullness fact propagation depth', positiveInteger, 40)
         .option('--report-unresolved-returns', 'include low-confidence unresolved-return reports', false)
@@ -102,8 +93,6 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     runMemoryAnalysis: selectedChecks.has('memory'),
                     maxRetentionStates: options.maxRetentionStates,
                     maxRetentionCallDepth: options.maxRetentionCallDepth,
-                    lifecycleModel: options.lifecycleModel,
-                    pruneUnreachableAbilities: options.pruneUnreachableAbilities,
                     maxAccessPathLength: options.maxAccessPathLength,
                     maxPropagationDepth: options.maxPropagationDepth,
                     reportUnresolvedReturns: options.reportUnresolvedReturns,

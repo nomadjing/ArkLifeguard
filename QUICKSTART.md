@@ -25,7 +25,6 @@ SDK 选择按以下顺序：
 npm run cli -- analyze "/path/to/HarmonyOSApp" \
   --sdk "/path/to/openharmony/ets" \
   --checks nullness,resource,closure,memory \
-  --lifecycle-model flat \
   --format json --output out/report.json
 ```
 
@@ -42,7 +41,6 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 
 | 参数 | 默认值 | 实际作用 |
 | --- | ---: | --- |
-| `--lifecycle-model` | `flat` | 可选 `flat`、`hierarchical` |
 | `--max-access-path-length` | 5 | 空指针访问路径长度 |
 | `--max-propagation-depth` | 40 | 空指针事实传播深度；不约束资源检查 |
 | `--max-retention-states` | 20000 | 每个闭包/内存 Runner 的状态上限 |
@@ -53,7 +51,7 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 
 `--no-infer-types`、`--no-ui-callbacks`、`--no-navigation` 分别关闭类型推断、UI 回调提取、附加导航收集，可能降低覆盖。`--no-navigation` 不保证删除所有生命周期内部的路由/owner 推断。`--report-unresolved-returns` 开启未解析返回值的低置信度空指针候选。`--verbose` 显示建模日志。
 
-两种模型均固定使用 compact dispatcher。`--no-prune-unreachable-abilities` 只关闭 hierarchical 的可达 Ability 裁剪；flat 保留全部收集对象。详见[生命周期模块](docs/analysis/lifecycle.md)。
+DummyMain 统一使用 compact flat dispatcher，保留全部收集对象，无需选择模型或配置 Ability 裁剪。详见[生命周期模块](docs/analysis/lifecycle.md)。
 
 ## 报告与退出码
 
@@ -94,7 +92,6 @@ const result = await new ProjectAnalyzer({
     runResourceAnalysis: true,
     runClosureAnalysis: true,
     runMemoryAnalysis: true,
-    lifecycleModel: 'flat',
     maxRetentionStates: 20000,
     maxRetentionCallDepth: 4,
 }).analyze('/path/to/HarmonyOSApp');
