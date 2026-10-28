@@ -511,18 +511,38 @@
       "targetSdkVersion": null
     },
     {
-      "name": "TunBox",
-      "path": "projects/TunBox",
       "repo": "https://github.com/xiaoli8571/TunBox.git",
-      "revision": "6cc11e0953c30611df6b6c7c736ddf4c27ab22fa",
-      "resolvedCommit": "6cc11e0953c30611df6b6c7c736ddf4c27ab22fa",
+      "error": "<repository-root>/HarmonyRealApps/projects/TunBox is not an independent Git checkout; git resolves to <repository-root>. Remove the directory and rerun, or clone the intended repository there."
+    },
+    {
+      "name": "ohos-weather",
+      "path": "projects/ohos-weather",
+      "repo": "https://gitee.com/ericple/ohos-weather.git",
+      "revision": "beta",
+      "resolvedCommit": "f197791bce462c5eb1b22945c25f5bcd5fcc9f7c",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": "5.0.3(15)",
+      "targetSdkVersion": null
+    },
+    {
+      "name": "lv-markdown-in",
+      "path": "projects/lv-markdown-in",
+      "repo": "https://gitee.com/luvi/lv-markdown-in.git",
+      "revision": "master",
+      "resolvedCommit": "2adcf6990b97bc4f83d22eff4333e65dd8dc5fb1",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": "5.0.0(12)",
+      "targetSdkVersion": "5.0.5(17)"
+    },
+    {
+      "name": "HarmonyOSMusicPlayer",
+      "path": "projects/HarmonyOSMusicPlayer",
+      "repo": "https://gitee.com/bilibiliales/HarmonyOSMusicPlayer.git",
+      "revision": "master",
+      "resolvedCommit": "f94dad791188c10611346479c7e42dd3173b9677",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.1.1(24)",
-      "targetSdkVersion": "26.0.0",
-      "sourceType": "snapshot",
-      "sourceRoot": "TunBox_HarmonyOS",
-      "sourceManifest": "TunBox.source-manifest.json",
-      "sourceScope": "Production ArkTS/TypeScript and configuration snapshot; excludes tests, native implementations, binaries, images, and generated duplicate TypeScript."
+      "targetSdkVersion": "6.1.1(24)"
     }
   ]
 }
