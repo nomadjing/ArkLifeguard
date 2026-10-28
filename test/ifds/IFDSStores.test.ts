@@ -77,4 +77,22 @@ describe('IFDS stores', () => {
         expect(store.getCallSummaries(point(callNode, 'CALL'), returnNode)
             .map(summary => summary.fact.value)).toEqual(['AA', 'BB']);
     });
+
+    it('keeps distinct start/end facts when their combined hashes collide', () => {
+        const startNode = {} as Stmt;
+        const endNode = {} as Stmt;
+        const store = new PathEdgeStore(semantics);
+        const edge = (start: string, end: string) => new PathEdge(
+            point(startNode, start), point(endNode, end)
+        );
+        // 31 * 1 + 40 === 31 * 2 + 9, despite different component hashes.
+        expect(store.addIfAbsent(edge('A', 'x'.repeat(40))).inserted).toBe(true);
+        expect(store.addIfAbsent(edge('BB', 'y'.repeat(9))).inserted).toBe(true);
+        // Same end fact and colliding start hash, but a distinct start fact.
+        expect(store.addIfAbsent(edge('C', 'x'.repeat(40))).inserted).toBe(true);
+        expect(store.addIfAbsent(edge('A', 'x'.repeat(40))).inserted).toBe(false);
+        expect(store.addIfAbsent(edge('BB', 'y'.repeat(9))).inserted).toBe(false);
+        expect(store.addIfAbsent(edge('C', 'x'.repeat(40))).inserted).toBe(false);
+        expect(store.size).toBe(3);
+    });
 });

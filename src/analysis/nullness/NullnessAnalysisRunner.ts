@@ -37,7 +37,7 @@ import { findRecursiveMethods } from '../../ifds/CallResolver';
 import { NullnessSourceSemantics } from './NullnessSourceSemantics';
 import { NullnessSolver } from './NullnessSolver';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
-import type { IFDSSolverStatistics } from '../../ifds';
+import { ArkInterproceduralCFG, type IFDSSolverStatistics } from '../../ifds';
 
 export interface NullnessRunnerConfig {
     problem?: NullnessAnalysisConfig;
@@ -199,9 +199,12 @@ export class NullnessAnalysisRunner {
             const recursiveMethods = problem.getConfig().recursiveSccWidening
                 ? findRecursiveMethods(this.scene)
                 : undefined;
+            // All roots already belong to this fixed Scene. Reuse its CFG
+            // index within this run; call resolution is reset for each root.
+            const icfg = new ArkInterproceduralCFG(this.scene, true);
             const solver = new NullnessSolver(problem, this.scene, {
                 collectStatistics: this.config.collectSolverStatistics,
-            }, recursiveMethods);
+            }, recursiveMethods, icfg);
             solver.solve();
             onSolved?.(solver, 'lifecycle');
             const mainStatistics = solver.getStatistics();
@@ -231,7 +234,8 @@ export class NullnessAnalysisRunner {
                     supplementalProblem,
                     this.scene,
                     { collectStatistics: this.config.collectSolverStatistics },
-                    recursiveMethods
+                    recursiveMethods,
+                    icfg
                 );
                 supplementalSolver.solve();
                 onSolved?.(supplementalSolver, 'supplemental');
@@ -365,7 +369,7 @@ export class NullnessAnalysisRunner {
     /**
      * UI builder methods can be reached through framework routing that is not
      * present in the project call graph. Analyze only methods containing a
-     * registered non-null argument sink instead of widening every public method.
+     * registered collection boundary or non-null sink instead of widening every public method.
      */
     private getNonNullSinkMethods(
         dummyMain: ArkMethod,
@@ -379,6 +383,7 @@ export class NullnessAnalysisRunner {
                     if (!cfg || method === dummyMain) continue;
                     const containsSink = [...cfg.getBlocks()].some(block =>
                         block.getStmts().some(stmt =>
+                            libraryRegistry.isFrameworkCollectionCall(stmt) ||
                             libraryRegistry.getNonNullArgumentIndices(stmt).length > 0
                         )
                     );
@@ -411,8 +416,20 @@ export class NullnessAnalysisRunner {
     ): void {
         for (const [stmt, facts] of incoming) {
             const merged = target.get(stmt) ?? [];
+            const buckets = new Map<number, NullnessFact[]>();
+            for (const fact of merged) {
+                const hash = fact.hashCode();
+                const bucket = buckets.get(hash);
+                if (bucket) bucket.push(fact);
+                else buckets.set(hash, [fact]);
+            }
             for (const fact of facts) {
-                if (!merged.some(existing => existing.equals(fact))) merged.push(fact);
+                const hash = fact.hashCode();
+                const bucket = buckets.get(hash);
+                if (bucket?.some(existing => existing.equals(fact))) continue;
+                merged.push(fact);
+                if (bucket) bucket.push(fact);
+                else buckets.set(hash, [fact]);
             }
             target.set(stmt, merged);
         }

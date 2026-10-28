@@ -15,6 +15,7 @@
 
 import {
     BooleanConstant,
+    BooleanType,
     NullConstant,
     NumberConstant,
     StringConstant,
@@ -25,6 +26,8 @@ import {
     ArkCastExpr,
     ArkConditionExpr,
     ArkInstanceOfExpr,
+    ArkStaticInvokeExpr,
+    ArkTypeOfExpr,
     ArkInstanceInvokeExpr,
     ArkNormalBinopExpr,
     ArkUnopExpr,
@@ -70,7 +73,8 @@ import {
     removeUndefined,
 } from './NullnessFact';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
-import { NullnessSourceSemantics, NULL, UNDEFINED, SourceAccess } from './NullnessSourceSemantics';
+import { NullnessSourceSemantics, NULL, UNDEFINED, SourceAccess,
+    appendSourceProperty, sourcePropertyName } from './NullnessSourceSemantics';
 import type { BasicBlock, Cfg } from '../../adapter/arkanalyzer';
 import { haveSameCallableIdentity, tryRenderArkType } from './ArkAnalyzerCompatibility';
 
@@ -122,8 +126,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     private readonly statementInfo = new WeakMap<Stmt, NullnessStatementInfo>();
     private readonly diagnosticsByLocation = new Map<string, NullDereferenceDiagnostic[]>();
     private readonly cfgIndices = new WeakMap<Cfg, Map<Stmt, BasicBlock>>();
-    private readonly staticNullFacts: NullnessFact[] = [];
-    private readonly staticDereferenceSites: Array<{ path: NullnessAccessPath; stmt: Stmt }> = [];
+    private readonly callBindings = new WeakMap<Stmt, WeakMap<ArkMethod, readonly NullnessCallBinding[]>>();
+    private readonly reassignedLocals = new WeakMap<ArkMethod, ReadonlySet<Local>>();
 
     constructor(
         private readonly entryPoint: Stmt,
@@ -152,7 +156,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 if (fact.isZeroFact()) {
                     problem.checkTypedNonNullArguments(srcStmt);
                     problem.checkLateNullGuard(srcStmt);
-                    problem.recordStaticDereferenceSite(srcStmt);
                     result.add(fact);
                     const generated = problem.createNullishLiteralFact(srcStmt);
                     if (generated) {
@@ -215,6 +218,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
 
                 const args = invokeExpr.getArgs();
                 if (fact.isZeroFact()) {
+                    if (problem.isCallbackCallee(srcStmt, method)) return result;
                     for (let index = 0; index < args.length; index++) {
                         const argument = args[index];
                         const kind = argument instanceof NullConstant
@@ -240,28 +244,20 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                     return result;
                 }
 
-                if (invokeExpr instanceof ArkInstanceInvokeExpr) {
-                    const receiverPath = NullnessAccessPath.fromValue(invokeExpr.getBase());
-                    if (receiverPath.isPrefixOf(fact.accessPath)) {
-                        const thisLocal = problem.getThisLocal(method);
-                        const remainingFields = fact.accessPath.remainingFieldsAfter(receiverPath);
-                        // Entering an instance method already proves that its
-                        // receiver is non-null on the normal call edge.  Only
-                        // facts below the receiver (receiver.field) belong in
-                        // the callee; mapping an exact nullable receiver to the
-                        // callee's `this` creates impossible executions for
-                        // optional calls such as `handler?.update()`.
-                        if (thisLocal && remainingFields.length > 0) {
-                            result.add(fact.deriveWithNewAccessPath(
-                                new NullnessAccessPath(
-                                    thisLocal,
-                                    thisLocal.getType(),
-                                    remainingFields
-                                ),
-                                srcStmt
-                            ));
-                        }
+                for (const binding of problem.getCallBindings(srcStmt, method)) {
+                    const fields = problem.getRemainingCallFields(binding.caller, fact.accessPath);
+                    if (!fields) continue;
+                    if (binding.argumentIndex !== undefined && fields.length === 0) {
+                        const accesses = problem.getSourceAccessMatches(srcStmt, binding.caller, null, binding.argumentIndex);
+                        const nullish = (mayBeNull(fact.kind) ? NULL : 0) | (mayBeUndefined(fact.kind) ? UNDEFINED : 0);
+                        if (accesses.length && accesses.every(access => (nullish & ~access.excluded) === 0)) continue;
                     }
+                    // A normal receiver edge already proves the receiver is
+                    // non-null; only its fields belong in the callee.
+                    if (!binding.parameter && fields.length === 0) continue;
+                    result.add(fact.deriveWithNewAccessPath(new NullnessAccessPath(
+                        binding.callee, binding.callee.getType(), fields
+                    ), srcStmt));
                 }
 
                 for (const asyncFact of problem.mapAsyncBoundaryFactToCallee(
@@ -279,27 +275,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                     srcStmt
                 )) {
                     result.add(closureFact);
-                }
-
-                for (let index = 0; index < args.length; index++) {
-                    const argumentPath = NullnessAccessPath.fromValue(args[index]);
-                    if (argumentPath.isEmpty() ||
-                        !argumentPath.isPrefixOf(fact.accessPath)) {
-                        continue;
-                    }
-
-                    const parameterLocal = problem.getParameterLocal(method, index);
-                    if (parameterLocal) {
-                        const remainingFields = fact.accessPath.remainingFieldsAfter(argumentPath);
-                        result.add(fact.deriveWithNewAccessPath(
-                            new NullnessAccessPath(
-                                parameterLocal,
-                                parameterLocal.getType(),
-                                remainingFields
-                            ),
-                            srcStmt
-                        ));
-                    }
                 }
 
                 return result;
@@ -350,20 +325,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                     return result;
                 }
 
-                const invokeExpr = callStmt.getInvokeExpr();
-                if (invokeExpr instanceof ArkInstanceInvokeExpr &&
-                    fact.accessPath.base?.getName() === 'this') {
-                    result.add(fact.deriveWithReplacedBase(invokeExpr.getBase(), callStmt));
-                }
-
-                // Static fields are heap/global state rather than values rooted at
-                // the callee's `this`.  A callback may update a static field and a
-                // later lifecycle method may read it through another receiver (or
-                // without a receiver at all).  Preserve the canonical static-field
-                // access path across the callee exit so the caller's subsequent CFG
-                // nodes can observe the update.
-                if (fact.accessPath.isStaticFieldRef()) {
-                    result.add(fact);
+                for (const returnedFact of problem.mapHeapFactToCaller(srcStmt, callStmt, fact)) {
+                    result.add(returnedFact);
                 }
 
                 if (srcStmt instanceof ArkReturnStmt &&
@@ -403,7 +366,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 if (fact.isZeroFact()) {
                     problem.checkTypedNonNullArguments(srcStmt);
                     problem.checkLateNullGuard(srcStmt);
-                    problem.recordStaticDereferenceSite(srcStmt);
                 }
                 const result = problem.libraryRegistry.getCallToReturnFacts(srcStmt, fact);
                 if (!fact.isZeroFact()) {
@@ -412,7 +374,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                         problem.definesAccessPath(srcStmt, fact.accessPath)) {
                         return result;
                     }
-                    if (problem.shouldRouteReceiverFieldThroughCallee(
+                    if (problem.shouldRouteHeapFactThroughCallees(
                         srcStmt,
                         fact,
                         callees
@@ -436,7 +398,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     getCallToExceptionalReturnFlowFunction(
         srcStmt: Stmt,
         _handlerStmt: Stmt,
-        _callees?: ReadonlySet<ArkMethod>
+        callees?: ReadonlySet<ArkMethod>,
+        fromCallee = false
     ): FlowFunction<NullnessFact> {
         const problem = this;
         return {
@@ -444,9 +407,11 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 if (fact.isZeroFact()) {
                     problem.checkTypedNonNullArguments(srcStmt);
                     problem.checkLateNullGuard(srcStmt);
-                    problem.recordStaticDereferenceSite(srcStmt);
                 } else {
                     problem.checkDirectDereference(srcStmt, fact);
+                    if (fromCallee && problem.shouldRouteHeapFactThroughCallees(srcStmt, fact, callees)) {
+                        return new Set();
+                    }
                 }
                 return new Set([fact]);
             },
@@ -456,9 +421,18 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     getExceptionalExitToReturnFlowFunction(
         exitStmt: Stmt,
         handlerStmt: Stmt,
-        _callStmt: Stmt
+        callStmt: Stmt
     ): FlowFunction<NullnessFact> {
-        return this.createExceptionalFlowFunction(exitStmt, handlerStmt);
+        const problem = this;
+        const exceptionalFlow = this.createExceptionalFlowFunction(exitStmt, handlerStmt);
+        return { getDataFacts(fact: NullnessFact): Set<NullnessFact> {
+            const result = problem.mapHeapFactToCaller(exitStmt, callStmt, fact);
+            if (fact.isZeroFact()) result.add(fact);
+            for (const caughtFact of exceptionalFlow.getDataFacts(fact)) {
+                if (caughtFact !== fact) result.add(caughtFact);
+            }
+            return result;
+        } };
     }
 
     createZeroValue(): NullnessFact {
@@ -497,7 +471,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                     if (fact.isZeroFact()) {
                         problem.checkTypedNonNullArguments(srcStmt);
                         problem.checkLateNullGuard(srcStmt);
-                        problem.recordStaticDereferenceSite(srcStmt);
                     } else {
                         problem.checkDirectDereference(srcStmt, fact);
                     }
@@ -575,15 +548,13 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             return null;
         }
 
-        const fact = NullnessFact.create(accessPath, kind, {
+        return NullnessFact.create(accessPath, kind, {
             kind: kind === NullnessKind.Null
                 ? NullnessOriginKind.NullLiteral
                 : NullnessOriginKind.UndefinedLiteral,
             stmt,
             description: `assigned the ${kind} literal`,
         });
-        this.recordStaticNullFact(fact);
-        return fact;
     }
 
     /** Seed nullable reads whose platform contract is not represented as a call summary. */
@@ -620,22 +591,102 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return !accessPath.isEmpty() && !accessPath.isZero();
     }
 
-    private shouldRouteReceiverFieldThroughCallee(
+    private shouldRouteHeapFactThroughCallees(
         callStmt: Stmt,
         fact: NullnessFact,
         callees?: ReadonlySet<ArkMethod>
     ): boolean {
         if (!callees || callees.size === 0 ||
-            [...callees].some(callee => !callee.getCfg()) ||
             fact.accessPath.fields.length === 0) {
             return false;
         }
-        const invokeExpr = callStmt.getInvokeExpr();
-        if (!(invokeExpr instanceof ArkInstanceInvokeExpr)) {
-            return false;
+        return [...callees].every(callee => callee.getCfg() && !this.isCallbackCallee(callStmt, callee) &&
+            (fact.accessPath.isStaticFieldRef() || this.getCallBindings(callStmt, callee).some(binding =>
+                binding.stable && (this.getRemainingCallFields(binding.caller, fact.accessPath)?.length ?? 0) > 0)));
+    }
+
+    private getCallBindings(callStmt: Stmt, method: ArkMethod): readonly NullnessCallBinding[] {
+        let byMethod = this.callBindings.get(callStmt);
+        if (!byMethod) this.callBindings.set(callStmt, byMethod = new WeakMap());
+        const cached = byMethod.get(method);
+        if (cached) return cached;
+        const bindings: NullnessCallBinding[] = [];
+        const invoke = callStmt.getInvokeExpr();
+        const callback = this.isCallbackCallee(callStmt, method);
+        const calleeThis = this.getThisLocal(method);
+        let receiver: Local | undefined;
+        if (invoke instanceof ArkInstanceInvokeExpr && !callback) {
+            receiver = invoke.getBase();
+        } else if (this.sourceSemantics.isArrowMethod(method)) {
+            const caller = callStmt.getCfg()?.getDeclaringMethod();
+            if (caller && this.getLexicalReceiverOwner(caller) === this.getLexicalReceiverOwner(method)) {
+                receiver = this.getThisLocal(caller) ?? undefined;
+            }
         }
-        const receiverPath = NullnessAccessPath.fromValue(invokeExpr.getBase());
-        return !receiverPath.isEmpty() && receiverPath.isPrefixOf(fact.accessPath);
+        if (receiver && calleeThis) bindings.push({
+            caller: NullnessAccessPath.fromValue(receiver),
+            callee: calleeThis, parameter: false, stable: true,
+        });
+        if (!callback) invoke?.getArgs().forEach((argument, index) => {
+            const local = this.getParameterLocal(method, index);
+            const path = NullnessAccessPath.fromValue(argument);
+            if (local && !path.isEmpty()) bindings.push({ caller: path, callee: local,
+                parameter: true, argumentIndex: index, stable: !this.getReassignedLocals(method).has(local) });
+        });
+        byMethod.set(method, bindings);
+        return bindings;
+    }
+
+    private getRemainingCallFields(caller: NullnessAccessPath, fact: NullnessAccessPath) {
+        if (caller.isPrefixOf(fact)) return fact.remainingFieldsAfter(caller);
+        const canonicalCaller = this.canonicalAccessPath(caller, new Set(), true);
+        const canonicalFact = this.canonicalAccessPath(fact, new Set(), true);
+        if (!canonicalCaller.isPrefixOf(canonicalFact)) return null;
+        const fields = canonicalFact.remainingFieldsAfter(canonicalCaller);
+        return fields.length === 0 && caller.isLocal() !== fact.isLocal() ? null : fields;
+    }
+
+    private isCallbackCallee(callStmt: Stmt, method: ArkMethod): boolean {
+        const invoke = callStmt.getInvokeExpr();
+        return !!invoke && !haveSameCallableIdentity(invoke.getMethodSignature(), method.getSignature()) &&
+            this.isFunctionArgumentCallee(invoke.getArgs(), method);
+    }
+
+    private getLexicalReceiverOwner(method: ArkMethod): ArkMethod {
+        while (this.sourceSemantics.isArrowMethod(method) && method.getOuterMethod()) method = method.getOuterMethod()!;
+        return method;
+    }
+
+    private getReassignedLocals(method: ArkMethod): ReadonlySet<Local> {
+        let reassigned = this.reassignedLocals.get(method);
+        if (!reassigned) {
+            const defined = new Set<Local>();
+            const repeated = new Set<Local>();
+            for (const stmt of method.getCfg()?.getStmts() ?? []) {
+                const local = stmt.getDef();
+                if (!(local instanceof Local)) continue;
+                if (defined.has(local)) repeated.add(local);
+                defined.add(local);
+            }
+            this.reassignedLocals.set(method, reassigned = repeated);
+        }
+        return reassigned;
+    }
+
+    private mapHeapFactToCaller(exitStmt: Stmt, callStmt: Stmt, fact: NullnessFact): Set<NullnessFact> {
+        const result = new Set<NullnessFact>();
+        if (fact.accessPath.isStaticFieldRef()) result.add(fact);
+        const method = exitStmt.getCfg()?.getDeclaringMethod();
+        if (!method || fact.accessPath.fields.length === 0) return result;
+        for (const binding of this.getCallBindings(callStmt, method)) {
+            // A reassigned formal denotes a replacement object, not the caller's object.
+            if (!binding.stable || fact.accessPath.base !== binding.callee) continue;
+            result.add(fact.deriveWithNewAccessPath(new NullnessAccessPath(
+                binding.caller.base, binding.caller.baseType,
+                [...binding.caller.fields, ...fact.accessPath.fields], binding.caller.isStatic
+            ), callStmt));
+        }
+        return result;
     }
 
     /**
@@ -668,7 +719,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
 
                 const calleeClosureRef = this.findCapturedClosureRef(
                     callee,
-                    capturedLocal.getName()
+                    capturedLocal.getName(),
+                    capturedLocal
                 );
                 if (!calleeClosureRef) {
                     continue;
@@ -701,18 +753,9 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             return result;
         }
 
-        // Arrow callbacks retain the lexical receiver. ArkIR gives the callback
-        // a distinct `this` Local, so map fields rooted at the caller's `this`.
-        if (fact.accessPath.base?.getName() === 'this') {
-            const calleeThis = this.getThisLocal(callee);
-            if (calleeThis) {
-                result.add(fact.deriveWithReplacedBase(calleeThis, callStmt));
-            }
-        }
-
-        const capturedName = fact.accessPath.base?.getName();
-        if (capturedName) {
-            const closureRef = this.findCapturedClosureRef(callee, capturedName);
+        const capturedLocal = fact.accessPath.base;
+        if (capturedLocal instanceof Local) {
+            const closureRef = this.findCapturedClosureRef(callee, capturedLocal.getName(), capturedLocal);
             if (closureRef) {
                 const closurePath = NullnessAccessPath.fromValue(closureRef);
                 const mappedPath = new NullnessAccessPath(
@@ -776,7 +819,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             methodName === 'setTimeout' || methodName === 'setInterval';
     }
 
-    private findCapturedClosureRef(callee: ArkMethod, capturedName: string): ClosureFieldRef | null {
+    private findCapturedClosureRef(callee: ArkMethod, capturedName: string, capturedLocal?: Local): ClosureFieldRef | null {
         const startingBlock = callee.getCfg()?.getStartingBlock();
         if (!startingBlock) {
             return null;
@@ -787,6 +830,9 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             }
             const rightOp = stmt.getRightOp();
             if (rightOp instanceof ClosureFieldRef && rightOp.getFieldName() === capturedName) {
+                const environment = rightOp.getBase().getType();
+                if (capturedLocal && environment instanceof LexicalEnvType &&
+                    !environment.getClosures().includes(capturedLocal)) continue;
                 return rightOp;
             }
         }
@@ -865,10 +911,23 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         if (value instanceof ArkInstanceOfExpr) {
             const checkedPath = NullnessAccessPath.fromValue(value.getOp());
             if (expectedTruth && !checkedPath.isEmpty() &&
-                this.accessPathsAlias(checkedPath, fact.accessPath)) {
+                this.accessPathsAlias(checkedPath, fact.accessPath, branchStmt)) {
                 return null;
             }
             return fact;
+        }
+
+        if ((value instanceof ArkStaticInvokeExpr || value instanceof ArkInstanceInvokeExpr) && expectedTruth) {
+            const signature = value.getMethodSignature();
+            const owner = signature.getDeclaringClassSignature();
+            if (owner.getClassName() === 'ArrayConstructor' &&
+                owner.getDeclaringFileSignature().getFileName() === 'lib.es5.d.ts' &&
+                signature.getMethodSubSignature().getMethodName() === 'isArray') {
+                const argument = value.getArgs()[0];
+                if (argument instanceof Local &&
+                    !this.getReassignedLocals(branchStmt.getCfg()!.getDeclaringMethod()).has(argument) &&
+                    fact.accessPath.equals(NullnessAccessPath.fromValue(argument))) return null;
+            }
         }
 
         // A truthy value cannot be null or undefined.  ArkIR commonly keeps
@@ -877,7 +936,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         // nullish alternatives, so the truthy edge kills the matching fact.
         const truthinessPath = NullnessAccessPath.fromValue(value as Value);
         if (!truthinessPath.isEmpty() &&
-            (this.accessPathsAlias(truthinessPath, fact.accessPath) ||
+            (this.accessPathsAlias(truthinessPath, fact.accessPath, branchStmt) ||
+                truthinessPath.isLocal() === fact.accessPath.isLocal() &&
                 this.canonicalAccessPath(fact.accessPath, new Set()).isPrefixOf(
                     this.canonicalAccessPath(truthinessPath, new Set())
                 ))) {
@@ -893,6 +953,9 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         if (value instanceof Local) {
             const declaringStmt = value.getDeclaringStmt();
             if (declaringStmt instanceof ArkAssignStmt) {
+                // Value copies are snapshots. Only predicate expressions may
+                // be re-evaluated here; chasing a field load would read its new value.
+                if (!NullnessAccessPath.fromValue(declaringStmt.getRightOp()).isEmpty()) return fact;
                 return this.narrowFactForBooleanValue(
                     declaringStmt.getRightOp(),
                     expectedTruth,
@@ -945,6 +1008,28 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
 
         const op1 = value.getOp1();
         const op2 = value.getOp2();
+        const assignedValue = (operand: Value): Value => {
+            const declaration = operand instanceof Local ? operand.getDeclaringStmt() : undefined;
+            return declaration instanceof ArkAssignStmt ? declaration.getRightOp() : operand;
+        };
+        const left = assignedValue(op1);
+        const right = assignedValue(op2);
+        const typeOf = left instanceof ArkTypeOfExpr ? left : right instanceof ArkTypeOfExpr ? right : undefined;
+        const typeName = left instanceof StringConstant ? left : right instanceof StringConstant ? right : undefined;
+        const checked = typeOf?.getOp();
+        if (checked instanceof Local && typeName &&
+            !this.getReassignedLocals(branchStmt.getCfg()!.getDeclaringMethod()).has(checked) &&
+            fact.accessPath.equals(NullnessAccessPath.fromValue(checked))) {
+            const equal = equalityOperator ? expectedTruth : !expectedTruth;
+            const name = typeName.getValue();
+            let kind: NullnessKind | null = fact.kind;
+            if (name === 'undefined') kind = equal ? keepOnlyUndefined(kind) : removeUndefined(kind);
+            else if (name === 'object') kind = equal ? removeUndefined(kind) : removeNull(kind);
+            else if (equal && ['string', 'number', 'boolean', 'function', 'symbol', 'bigint'].includes(name)) {
+                kind = removeNullish(kind);
+            }
+            return kind === fact.kind ? fact : kind ? fact.deriveWithKind(kind, branchStmt) : null;
+        }
         const booleanOperand = op1 instanceof BooleanConstant
             ? op1
             : op2 instanceof BooleanConstant
@@ -967,9 +1052,16 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         // type-specific falsy sentinel, for example `value != 0` for objects and
         // `value != ''` for strings.  Recover the source-level truthiness guard
         // so aliases loaded from fields are narrowed on the protected edge too.
-        const falsyOperand = this.isLoweredTruthinessGuard(branchStmt) && isFalsySentinel(op1)
+        // A loose boolean comparison with 0/'' is a truth test even when
+        // another part of the source condition contains an explicit comparison.
+        const looseBooleanTest = (operator === RelationalBinaryOperator.Equality ||
+            operator === RelationalBinaryOperator.InEquality) &&
+            ((op1.getType() instanceof BooleanType && isNumericFalsySentinel(op2)) ||
+                (op2.getType() instanceof BooleanType && isNumericFalsySentinel(op1)));
+        const truthTest = looseBooleanTest || this.isLoweredTruthinessGuard(branchStmt);
+        const falsyOperand = truthTest && isFalsySentinel(op1)
             ? op1
-            : this.isLoweredTruthinessGuard(branchStmt) && isFalsySentinel(op2)
+            : truthTest && isFalsySentinel(op2)
                 ? op2
                 : null;
         if (falsyOperand) {
@@ -995,7 +1087,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         const comparedValue = nullishOperand === op1 ? op2 : op1;
         const comparedPath = NullnessAccessPath.fromValue(comparedValue);
         if (comparedPath.isEmpty() ||
-            !this.accessPathsAlias(comparedPath, fact.accessPath)) {
+            !this.accessPathsAlias(comparedPath, fact.accessPath, branchStmt)) {
             return fact;
         }
 
@@ -1045,7 +1137,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     }
 
     private isLoweredTruthinessGuard(stmt: ArkIfStmt): boolean {
-        return !this.sourceSemantics.isEqualityCondition(stmt);
+        return !!stmt.getOriginalText?.() && !this.sourceSemantics.isEqualityCondition(stmt);
     }
 
     private propagateAssignment(stmt: ArkAssignStmt, fact: NullnessFact): Set<NullnessFact> {
@@ -1182,7 +1274,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 (access.excluded & access.checkedLater) === access.checkedLater) continue;
             const receiver = info.receivers.find(receiver =>
                 receiver.member === access.member &&
-                this.canonicalAccessPath(receiver.path, new Set()).toString() === access.receiver);
+                this.renderSourceAccessPath(receiver.path) === access.receiver);
             if (!receiver) continue;
             const accessPath = this.canonicalAccessPath(receiver.path, new Set());
             const kind = access.checkedLater === NULL ? NullnessKind.MaybeNull
@@ -1289,10 +1381,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     private isReportableSourceUse(stmt: Stmt, path: NullnessAccessPath, member: string | null,
         argumentIndex: number | undefined, fact: NullnessFact): boolean {
         const info = this.getStatementInfo(stmt);
-        const canonical = this.canonicalAccessPath(path, new Set()).toString();
-        const matches = info.accesses.filter(access => access.argumentIndex === argumentIndex &&
-            (argumentIndex !== undefined || access.member === member || (member === null && access.indexed)) &&
-            (access.receiver === canonical || access.receiver === null));
+        const matches = this.getSourceAccessMatches(stmt, path, member, argumentIndex);
         if (!matches.length) return true; // No precise source mapping: keep the IR evidence.
         const nullish = (mayBeNull(fact.kind) ? NULL : 0) | (mayBeUndefined(fact.kind) ? UNDEFINED : 0);
         return matches.some(access => !access.optional && !access.coercion &&
@@ -1302,43 +1391,37 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 !info.location.filePath.endsWith('.ets')));
     }
 
+    private getSourceAccessMatches(stmt: Stmt, path: NullnessAccessPath, member: string | null,
+        argumentIndex?: number): readonly SourceAccess[] {
+        const info = this.getStatementInfo(stmt);
+        const canonical = this.renderSourceAccessPath(path);
+        const original = this.renderSourceAccessPath(path, false);
+        const sourceMember = member === null ? null : sourcePropertyName(member);
+        const candidates = info.accesses.filter(access => access.argumentIndex === argumentIndex &&
+            (argumentIndex !== undefined || access.member === sourceMember || (member === null && access.indexed)));
+        let matches = candidates.filter(access => access.receiver === original);
+        if (!matches.length) matches = candidates.filter(access => access.receiver === canonical);
+        if (!matches.length) matches = candidates.filter(access => access.receiver === null);
+        return matches;
+    }
+
     private isOptionalChainStmt(stmt: Stmt): boolean {
         const right = stmt instanceof ArkAssignStmt ? stmt.getRightOp() : undefined;
         if (!(right instanceof ArkInstanceFieldRef)) return false;
-        const canonical = this.canonicalAccessPath(NullnessAccessPath.fromValue(right.getBase()), new Set()).toString();
+        const canonical = this.renderSourceAccessPath(NullnessAccessPath.fromValue(right.getBase()));
         return this.getStatementInfo(stmt).accesses.some(access => access.optional &&
-            access.receiver === canonical && access.member === right.getFieldSignature().getFieldName());
+            access.receiver === canonical && access.member === sourcePropertyName(right.getFieldSignature().getFieldName()));
     }
 
-    /** Preserve static-field effects across lifecycle callbacks with partial order. */
-    private recordStaticNullFact(fact: NullnessFact): void {
-        if (!fact.accessPath.isStaticFieldRef() ||
-            this.staticNullFacts.some(existing => existing.equals(fact))) {
-            return;
-        }
-        this.staticNullFacts.push(fact);
-        for (const site of this.staticDereferenceSites) {
-            if (this.accessPathsAlias(site.path, fact.accessPath)) {
-                this.checkDirectDereference(site.stmt, fact);
-            }
-        }
-    }
-
-    private recordStaticDereferenceSite(stmt: Stmt): void {
-        if (typeof stmt.getUses !== 'function') return;
-        for (const { path: receiver } of this.getStatementInfo(stmt).receivers) {
-            const canonical = this.canonicalAccessPath(receiver, new Set());
-            if (!canonical.isStaticFieldRef() || this.staticDereferenceSites.some(site =>
-                site.stmt === stmt && site.path.equals(canonical))) {
-                continue;
-            }
-            this.staticDereferenceSites.push({ path: canonical, stmt });
-            for (const fact of this.staticNullFacts) {
-                if (this.accessPathsAlias(canonical, fact.accessPath)) {
-                    this.checkDirectDereference(stmt, fact);
-                }
-            }
-        }
+    private renderSourceAccessPath(path: NullnessAccessPath, followAliases = true): string {
+        const canonical = followAliases ? this.canonicalAccessPath(path, new Set()) : path;
+        const field = canonical.fields[0] as { getBaseName?: () => string } | undefined;
+        const owner = canonical.isStaticFieldRef() ? field?.getBaseName?.() : undefined;
+        const base = canonical.isStaticFieldRef() ? owner ?? '<static>' : canonical.base?.getName();
+        return base ? canonical.fields.reduce((path, field) => appendSourceProperty(path,
+            field.toString().startsWith('array-index:') ? field.getFieldName().slice(1, -1)
+                : sourcePropertyName(field.getFieldName())), base)
+            : canonical.toString();
     }
 
     private getCfgIndex(cfg: Cfg) {
@@ -1354,16 +1437,42 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     }
 
     /** Compare SSA temporaries and field reloads through their defining assignments. */
-    private accessPathsAlias(left: NullnessAccessPath, right: NullnessAccessPath): boolean {
+    private accessPathsAlias(left: NullnessAccessPath, right: NullnessAccessPath, atStmt?: Stmt): boolean {
         if (left.equals(right)) return true;
+        // A field is a storage cell; a local loaded from it is a value snapshot.
+        // Copies are propagated explicitly at the load, not re-read through the cell.
+        if (left.isLocal() !== right.isLocal()) {
+            return !!atStmt && (left.isLocal()
+                ? this.isFreshFieldRead(left, right, atStmt) : this.isFreshFieldRead(right, left, atStmt));
+        }
         return this.canonicalAccessPath(left, new Set()).equals(
             this.canonicalAccessPath(right, new Set())
         );
     }
 
+    private isFreshFieldRead(local: NullnessAccessPath, field: NullnessAccessPath, atStmt: Stmt): boolean {
+        const definition = (local.base as Local | null)?.getDeclaringStmt();
+        if (!(definition instanceof ArkAssignStmt) ||
+            !NullnessAccessPath.fromValue(definition.getRightOp()).equals(field)) return false;
+        const cfg = atStmt.getCfg();
+        if (!cfg || definition.getCfg() !== cfg) return false;
+        const block = this.getCfgIndex(cfg).get(atStmt);
+        if (!block || this.getCfgIndex(cfg).get(definition) !== block) return false;
+        const statements = block.getStmts();
+        const start = statements.indexOf(definition);
+        const end = statements.indexOf(atStmt);
+        if (start < 0 || end <= start) return false;
+        return statements.slice(start + 1, end).every(stmt => {
+            if (stmt.getInvokeExpr()) return false;
+            const defined = stmt.getDef();
+            return !defined || !NullnessAccessPath.fromValue(defined).isPrefixOf(field);
+        });
+    }
+
     private canonicalAccessPath(
         accessPath: NullnessAccessPath,
-        visited: Set<Local>
+        visited: Set<Local>,
+        stableOnly = false
     ): NullnessAccessPath {
         // NullnessAccessPath deliberately exposes a small local contract; this
         // routine needs ArkAnalyzer's concrete declaring-statement API.
@@ -1372,10 +1481,12 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         visited.add(base);
         const declaringStmt = base.getDeclaringStmt();
         if (!(declaringStmt instanceof ArkAssignStmt)) return accessPath;
+        const method = declaringStmt.getCfg()?.getDeclaringMethod();
+        if (stableOnly && method && this.getReassignedLocals(method).has(base)) return accessPath;
         const assignedPath = NullnessAccessPath.fromValue(declaringStmt.getRightOp());
         if (assignedPath.isEmpty() || assignedPath.isZero()) return accessPath;
 
-        const canonicalBase = this.canonicalAccessPath(assignedPath, visited);
+        const canonicalBase = this.canonicalAccessPath(assignedPath, visited, stableOnly);
         return new NullnessAccessPath(
             canonicalBase.base,
             canonicalBase.baseType,
@@ -1556,7 +1667,12 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     }
 }
 
-function isFalsySentinel(value: Value): value is NumberConstant | StringConstant {
+function isFalsySentinel(value: Value): value is NumberConstant | StringConstant | NullConstant | UndefinedConstant {
+    return value instanceof NullConstant || value instanceof UndefinedConstant ||
+        isNumericFalsySentinel(value);
+}
+
+function isNumericFalsySentinel(value: Value): value is NumberConstant | StringConstant {
     return (value instanceof NumberConstant && value.getValue() === '0') ||
         (value instanceof StringConstant && value.getValue() === '');
 }
@@ -1566,4 +1682,12 @@ interface NullnessStatementInfo {
     arguments: Array<{ path: NullnessAccessPath; index: number }>;
     accesses: readonly SourceAccess[];
     location: NullnessSourceLocation;
+}
+
+interface NullnessCallBinding {
+    caller: NullnessAccessPath;
+    callee: Local;
+    parameter: boolean;
+    argumentIndex?: number;
+    stable: boolean;
 }

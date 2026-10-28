@@ -218,10 +218,14 @@ export class DataflowSolver<D> {
 
     protected applySummaryToIncomingCallers(callerEdges: ReadonlySet<PathEdge<D>>, callEdgePoint: PathEdgePoint<D>, returnSitePoint: PathEdgePoint<D>): void {
         const startOfCaller = this.icfg.getStartPointOfCaller(callEdgePoint.node);
-        if (!startOfCaller) throw new Error('caller method has no start point');
+        // An explicit analysis root may start before its parameter bindings,
+        // whereas ordinary call entries skip them in the ICFG.
+        const rootEntry = callEdgePoint.node.getCfg?.()?.getDeclaringMethod() === this.problem.getEntryMethod()
+            ? this.problem.getEntryPoint() : undefined;
+        if (!startOfCaller && !rootEntry) throw new Error('caller method has no start point');
         for (const callerEdge of callerEdges) {
             if (callerEdge.edgeEnd.node !== callEdgePoint.node || !this.problem.factEqual(callerEdge.edgeEnd.fact, callEdgePoint.fact)) continue;
-            if (callerEdge.edgeStart.node !== startOfCaller) continue;
+            if (callerEdge.edgeStart.node !== startOfCaller && callerEdge.edgeStart.node !== rootEntry) continue;
             this.propagate(new PathEdge<D>(callerEdge.edgeStart, returnSitePoint));
         }
     }

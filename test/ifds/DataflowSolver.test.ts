@@ -228,6 +228,22 @@ function buildScene(fixture = 'normal-flow'): Scene {
 }
 
 describe('IFDS migration smoke tests', () => {
+    it('preserves exceptional reachability when independent roots share a CFG index', () => {
+        const scene = buildScene('exception-flow');
+        const shared = new ArkInterproceduralCFG(scene, true);
+        for (const name of ['callAndCatch', 'documentedAwait', 'defaultAwait']) {
+            const method = scene.getMethods().find(candidate => candidate.getName() === name)!;
+            const problem = () => new IdentityProblem(method.getCfg()!.getStartingStmt(), method);
+            const baseline = new IdentitySolver(problem(), scene);
+            baseline.solve();
+            const reused = new IdentitySolver(problem(), scene, {}, shared);
+            reused.solve();
+            const reached = (solver: IdentitySolver) => new Set([...solver.getReachedFacts().keys()]
+                .map(stmt => `${stmt.getCfg()!.getDeclaringMethod().getSignature()}:${stmt}`));
+            expect(reached(reused), name).toEqual(reached(baseline));
+        }
+    });
+
     it('keeps path edge endpoints and facts', () => {
         const node = {} as Stmt;
         const start = new PathEdgePoint(node, 'ZERO');

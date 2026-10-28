@@ -386,15 +386,18 @@ describe('Nullness flow and approximation', () => {
             capturedCallerLocal.getType()
         );
         const loadCapturedLocal = new ArkAssignStmt(capturedCalleeLocal, closureFieldRef);
-        const callee = {
-            getCfg: () => ({
-                getStartingBlock: () => ({ getStmts: () => [loadCapturedLocal] }),
-            }),
-        } as any;
         const callSignature = new MethodSignature(
             ClassSignature.DEFAULT,
             new MethodSubSignature('invokeClosure', [], UnknownType.getInstance(), true)
         );
+        const callee = {
+            getSignature: () => callSignature,
+            isAnonymousMethod: () => false,
+            getOuterMethod: () => undefined,
+            getCfg: () => ({
+                getStartingBlock: () => ({ getStmts: () => [loadCapturedLocal] }),
+            }),
+        } as any;
         const callStmt = new ArkInvokeStmt(new ArkStaticInvokeExpr(
             callSignature,
             [callerClosureArgument]

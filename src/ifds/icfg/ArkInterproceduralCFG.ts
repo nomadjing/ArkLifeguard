@@ -7,15 +7,20 @@ import type { InterproceduralCFG } from './InterproceduralCFG';
 export class ArkInterproceduralCFG implements InterproceduralCFG {
     private readonly cfgIndex: CfgIndex;
     private readonly callGraphManager: CallGraphManager;
+    private cfgInitialized = false;
 
-    constructor(scene: Scene) {
+    /** Reuse requires a fixed Scene containing all roots before the first initialization. */
+    constructor(scene: Scene, private readonly reuseCfgIndex = false) {
         this.cfgIndex = new CfgIndex(scene);
         this.callGraphManager = new CallGraphManager(scene);
     }
 
     initialize(entryMethod: ArkMethod): void {
         this.callGraphManager.initialize(entryMethod);
-        this.cfgIndex.initialize(entryMethod);
+        if (!this.reuseCfgIndex || !this.cfgInitialized) {
+            this.cfgIndex.initialize(entryMethod);
+            this.cfgInitialized = true;
+        }
     }
 
     getNormalSuccessors(stmt: Stmt): readonly Stmt[] {

@@ -70,8 +70,15 @@ export class HeapFlow<S extends HeapState> {
         this.cfg.initialize(entry);
         const start = entry.getCfg()?.getStartingBlock()?.getHead();
         if (!start) throw new Error('Retention analysis entry has no CFG');
-        const context: HeapContext = { method: entry, scope: `entry:${entry.getSignature()}`, receiver: [], args: [] };
-        const queue: Work<S>[] = [{ stmt: start, state: initial, context, frames: [] }];
+        const symbols = new Map<string, number>();
+        const encode = (value: string): number => {
+            let id = symbols.get(value);
+            if (id === undefined) { id = symbols.size + 1; symbols.set(value, id); }
+            return id;
+        };
+        const context: HeapContext = { method: entry, scope: `entry:${encode(entry.getSignature().toString())}`, receiver: [], args: [] };
+        const queue: Array<Work<S> | undefined> = [{ stmt: start, state: initial, context, frames: [] }];
+        const signatures = new WeakMap<S, string>();
         const seen = new Set<string>();
         const reached = new Set<Stmt>();
         let processedStates = 0;
@@ -80,9 +87,15 @@ export class HeapFlow<S extends HeapState> {
             queue.push({ stmt, state, context: ctx, frames });
         };
         for (let index = 0; index < queue.length; index++) {
-            const work = queue[index];
+            const work = queue[index]!;
+            queue[index] = undefined;
             const { stmt, context: ctx, frames } = work;
-            const key = `${this.siteId(stmt)}|${ctx.scope}|${frames.map(frame => this.siteId(frame.call)).join(',')}|${work.state.signature()}`;
+            let signature = signatures.get(work.state);
+            if (signature === undefined) {
+                signature = work.state.signature(encode);
+                signatures.set(work.state, signature);
+            }
+            const key = `${this.siteId(stmt)}|${encode(ctx.scope)}|${frames.map(frame => this.siteId(frame.call)).join(',')}|${signature}`;
             if (seen.has(key)) continue;
             seen.add(key);
             if (++processedStates > (this.options.maxStates ?? 20000)) {
@@ -95,7 +108,7 @@ export class HeapFlow<S extends HeapState> {
             // Exceptional successors use the PRE-statement heap: a throwing release/store
             // cannot be assumed to have completed.
             const exceptional = this.cfg.getExceptionalSuccessors(stmt);
-            for (const handler of exceptional) enqueue(handler, work.state.clone() as S, ctx, frames);
+            for (const handler of exceptional) enqueue(handler, work.state, ctx, frames);
             const invoke = stmt.getInvokeExpr();
             const handled = invoke ? this.hooks.invoke(stmt, state, ctx, this) || this.builtin(stmt, state, ctx) : false;
             if (invoke && !handled) {
@@ -105,7 +118,7 @@ export class HeapFlow<S extends HeapState> {
                         const receiver = invoke instanceof ArkInstanceInvokeExpr ? this.read(invoke.getBase(), state, ctx) : [];
                         const owner = receiver.find(id => this.ownerClasses.has(state.objects.get(id)?.classSignature ?? ''));
                         const calleeContext: HeapContext = { method: callee,
-                            scope: `${ctx.scope}>${this.siteId(stmt)}:${callee.getSignature()}`, receiver,
+                            scope: `${ctx.scope}>${this.siteId(stmt)}:${encode(callee.getSignature().toString())}`, receiver,
                             args: invoke.getArgs().map(arg => this.read(arg, state, ctx)),
                             lifetimeOwner: owner ?? ctx.lifetimeOwner };
                         enqueue(callee.getCfg()!.getStartingBlock()!.getHead()!, state.clone() as S,
@@ -136,17 +149,19 @@ export class HeapFlow<S extends HeapState> {
                 if (!frame) continue;
                 if (stmt instanceof ArkThrowStmt) {
                     const handlers = this.cfg.getExceptionalSuccessors(frame.call);
-                    for (const handler of handlers) enqueue(handler, state.clone() as S, frame.context, frames.slice(0, -1));
+                    for (const handler of handlers) enqueue(handler, state, frame.context, frames.slice(0, -1));
                     if (!handlers.length) this.limits.add('unhandled-exception-path');
                 } else {
                     const value = stmt instanceof ArkReturnStmt ? this.read(stmt.getOp(), state, ctx) : [];
                     if (frame.call instanceof ArkAssignStmt) this.write(frame.call.getLeftOp(), value, state, frame.context, frame.call);
                     for (const successor of this.cfg.getNormalSuccessors(frame.call)) enqueue(successor,
-                        state.clone() as S, frame.context, frames.slice(0, -1));
+                        state, frame.context, frames.slice(0, -1));
                 }
                 continue;
             }
-            for (const successor of this.cfg.getNormalSuccessors(stmt)) enqueue(successor, state.clone() as S, ctx, frames);
+            // Queued states are immutable snapshots. Each consumer clones before transfer,
+            // so sibling edges can share one snapshot without sharing mutable branch state.
+            for (const successor of this.cfg.getNormalSuccessors(stmt)) enqueue(successor, state, ctx, frames);
         }
         if (!lifecycleBoundaries) this.limits.add('no-observed-lifecycle-end');
         return { success: !this.limits.has('state-budget-exceeded') && !this.limits.has('call-depth-exceeded'),
@@ -294,6 +309,7 @@ export class HeapFlow<S extends HeapState> {
             if (!builtIn || !object) continue;
             if (method === 'construct-signature' || method === 'constructor') {
                 if (object.label.startsWith('Weak')) {
+                    state.objects.set(id, { ...object, kind: 'weak' });
                     state.set(`field:${id}:[[weak]]:target`, args[0] ?? [], stmt);
                     if (object.label !== 'WeakRef') state.uncertainties.add('weak-collection-ephemerons-not-modeled');
                 }

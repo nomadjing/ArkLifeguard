@@ -78,8 +78,8 @@ describe('enhanced call resolution', () => {
             .toEqual(['%dflt.used', 'Base.dispatch', 'Derived.dispatch']);
     });
 
-    it(`caches queries without changing IR and clears caches on initialize`, () => {
-        const icfg = new ArkInterproceduralCFG(scene);
+    it.each([false, true])(`clears call caches on initialize with CFG reuse=%s`, reuseCfgIndex => {
+        const icfg = new ArkInterproceduralCFG(scene, reuseCfgIndex);
         const entry = method('runUsed');
         icfg.initialize(entry);
         const stmt = call('runUsed');

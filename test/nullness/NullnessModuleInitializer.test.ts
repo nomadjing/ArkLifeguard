@@ -6,6 +6,7 @@ import { NullnessAnalysisRunner } from '../../src/analysis/nullness';
 import * as callResolver from '../../src/ifds/CallResolver';
 import { NullnessProblem } from '../../src/analysis/nullness/NullnessProblem';
 import { NullnessSolver } from '../../src/analysis/nullness/NullnessSolver';
+import { CfgIndex } from '../../src/ifds';
 
 const sdk: Sdk = {
     name: '',
@@ -38,20 +39,23 @@ describe('Nullness module initializer roots', () => {
         expect(diagnostics[0].nullness).toBe('null');
     });
 
-    it('computes recursion once for all roots and refreshes it on the next run', () => {
+    it('shares recursion and CFG indexing across roots and refreshes them on the next run', () => {
         const scene = buildScene();
         const findRecursive = vi.spyOn(callResolver, 'findRecursiveMethods');
+        const indexCfg = vi.spyOn(CfgIndex.prototype, 'initialize');
         const runner = new NullnessAnalysisRunner(scene, { collectSolverStatistics: true });
         const first = runner.runFromDummyMain();
         expect(first.success, first.error).toBe(true);
         expect(first.solverBreakdown!.supplementalRootCount).toBeGreaterThan(0);
         expect(findRecursive).toHaveBeenCalledTimes(1);
+        expect(indexCfg).toHaveBeenCalledTimes(1);
 
         const entry = scene.getMethods().find(method =>
             method.getSignature().toString() === first.entryMethod)!;
         const second = runner.runWithDummyMain(entry);
         expect(second.success, second.error).toBe(true);
         expect(findRecursive).toHaveBeenCalledTimes(2);
+        expect(indexCfg).toHaveBeenCalledTimes(2);
         expect(second.solverStatistics?.processedEdges).toBe(first.solverStatistics?.processedEdges);
         expect(second.reachedFacts.size).toBe(first.reachedFacts.size);
         expect(second.diagnostics.map(d => d.dereferenceStmt))

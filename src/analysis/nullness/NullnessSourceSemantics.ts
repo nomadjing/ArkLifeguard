@@ -4,7 +4,7 @@
  */
 
 import { ts } from '../../adapter/arkanalyzer';
-import type { ArkFile, Stmt } from '../../adapter/arkanalyzer';
+import type { ArkFile, ArkMethod, Stmt } from '../../adapter/arkanalyzer';
 
 export const NULL = 1;
 export const UNDEFINED = 2;
@@ -41,6 +41,24 @@ interface SourceEffect {
 export class NullnessSourceSemantics {
     private readonly files = new WeakMap<ArkFile, SourceIndex>();
     private readonly statements = new WeakMap<Stmt, readonly SourceAccess[]>();
+    private readonly arrowMethods = new WeakMap<ArkMethod, boolean>();
+
+    isArrowMethod(method: ArkMethod): boolean {
+        const cached = this.arrowMethods.get(method);
+        if (cached !== undefined) return cached;
+        let arrow = false;
+        const code = method.isAnonymousMethod() || method.getOuterMethod() ? method.getCode() : undefined;
+        if (code) {
+            const source = ts.createSourceFile('callback.ts', `const callback = (${code});`,
+                ts.ScriptTarget.Latest, true, ts.ScriptKind.ETS);
+            const statement = source.statements[0];
+            const initializer = statement && ts.isVariableStatement(statement)
+                ? statement.declarationList.declarations[0]?.initializer : undefined;
+            arrow = initializer !== undefined && ts.isArrowFunction(unwrap(initializer));
+        }
+        this.arrowMethods.set(method, arrow);
+        return arrow;
+    }
 
     isEqualityCondition(stmt: Stmt): boolean {
         if (!stmt.getOriginalText?.()) return false;
@@ -112,15 +130,16 @@ export class NullnessSourceSemantics {
             if (ts.isIfStatement(node)) {
                 const start = node.getStart(source);
                 index.conditionEnds.set(start, node.expression.end);
-                const comparison = (child: ts.Node): void => {
-                    if (ts.isBinaryExpression(child) && [ts.SyntaxKind.EqualsEqualsToken,
-                        ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken,
-                        ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(child.operatorToken.kind)) {
-                        index.equalityConditions.add(start);
-                    }
-                    ts.forEachChild(child, comparison);
-                };
-                comparison(node.expression);
+            }
+            if (ts.isBinaryExpression(node) && [ts.SyntaxKind.EqualsEqualsToken,
+                ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken,
+                ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(node.operatorToken.kind)) {
+                // Ternaries and logical expressions also lower to ArkIfStmt,
+                // often with the position of their containing assignment/return.
+                for (let parent: ts.Node | undefined = node;
+                    parent && !ts.isFunctionLike(parent) && !ts.isBlock(parent); parent = parent.parent) {
+                    index.equalityConditions.add(parent.getStart(source));
+                }
             }
             if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node) ||
                 ts.isCallExpression(node)) {
@@ -152,7 +171,7 @@ export class NullnessSourceSemantics {
                 }
             } else if (ts.isTemplateSpan(node)) {
                 const receiver = pathName(node.expression);
-                if (receiver) index.accesses.push({ start: node.getStart(source), end: node.end,
+                index.accesses.push({ start: node.getStart(source), end: node.end,
                     access: { receiver, member: 'toString', optional: false, asserted: false,
                         excluded: 0, coercion: true } });
             }
@@ -244,9 +263,29 @@ function pathName(expression: ts.Expression): string | null {
     if (expression.kind === ts.SyntaxKind.ThisKeyword) return 'this';
     if (ts.isPropertyAccessExpression(expression)) {
         const base = pathName(expression.expression);
-        return base ? `${base}.${expression.name.text}` : null;
+        return base ? appendSourceProperty(base, expression.name.text) : null;
+    }
+    if (ts.isElementAccessExpression(expression) &&
+        (ts.isStringLiteral(expression.argumentExpression) || ts.isNumericLiteral(expression.argumentExpression))) {
+        const base = pathName(expression.expression);
+        return base ? appendSourceProperty(base, expression.argumentExpression.text) : null;
     }
     return null;
+}
+
+/** ArkIR retains quotes for unresolved literal field names, but resolves known fields without them. */
+export function sourcePropertyName(name: string): string {
+    if (name.startsWith("'") || name.startsWith('"')) {
+        const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, name);
+        if (scanner.scan() === ts.SyntaxKind.StringLiteral && scanner.getTextPos() === name.length) {
+            return scanner.getTokenValue();
+        }
+    }
+    return name;
+}
+
+export function appendSourceProperty(base: string, name: string): string {
+    return /^[A-Za-z_$][\w$]*$/.test(name) ? `${base}.${name}` : `${base}[${JSON.stringify(name)}]`;
 }
 
 function knownTruth(expression: ts.Expression, known: Map<string, boolean>): boolean | undefined {

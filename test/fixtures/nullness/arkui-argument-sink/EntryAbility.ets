@@ -12,7 +12,7 @@ function nullableItems(): string[] | null {
 export default class EntryAbility extends UIAbility {
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     const missingItems: string[] | null = null;
-    ForEach(missingItems!, (_item: string): void => {}); // NPD_EXPECTED
+    ForEach(missingItems!, (_item: string): void => {}); // NPD_NOT_EXPECTED: framework rejects input before dereference
 
     const presentItems: string[] = [];
     ForEach(presentItems, (_item: string): void => {}); // NPD_NOT_EXPECTED
@@ -27,6 +27,16 @@ export default class EntryAbility extends UIAbility {
       ForEach(conjunctGuardedItems, (_item: string): void => {}); // NPD_NOT_EXPECTED
     }
   }
+}
+
+class Account { touch(): void {} }
+function missingAccount(): Account | null { return null; }
+
+// Not reachable from lifecycle methods: collection-owner supplemental coverage must remain.
+function uncalledCollectionOwner(): void {
+  ForEach([], (_item: string): void => {});
+  const account = missingAccount();
+  account!.touch(); // NPD_EXPECTED
 }
 
 @Component

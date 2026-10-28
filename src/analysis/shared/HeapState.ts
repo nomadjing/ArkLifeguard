@@ -53,12 +53,14 @@ export class HeapState {
         if (site) this.locations.set(slot, site);
     }
 
-    signature(): string {
+    /** The encoder is scoped to one exploration and must assign distinct IDs to distinct strings. */
+    signature(encode: (value: string) => string | number = value => value): string {
+        const values = (items: Iterable<string>) => [...items].map(encode).sort();
         return JSON.stringify([
-            [...this.objects.values()].map(object => [object.id, object.kind, object.lifetimeOwner]).sort(),
-            [...this.slots].sort(([a], [b]) => a.localeCompare(b)), [...this.roots].sort(),
-            [...this.initializedSlots].sort(),
-            [...this.endedOwners.keys()].sort(), [...this.uncertainties].sort(),
+            [...this.objects.values()].sort((a, b) => a.id.localeCompare(b.id)).map(object =>
+                [encode(object.id), encode(object.kind), object.lifetimeOwner === undefined ? null : encode(object.lifetimeOwner)]),
+            [...this.slots].sort(([a], [b]) => a.localeCompare(b)).map(([slot, targets]) => [encode(slot), values(targets)]),
+            values(this.roots), values(this.initializedSlots), values(this.endedOwners.keys()), values(this.uncertainties),
         ]);
     }
 

@@ -9,5 +9,5 @@ HarmonyRealApps/projects/
 AGENTS.md
 .editorconfig
 .prettierrc
-CODEBUDDY.md
 /docs/research
+.vscode/

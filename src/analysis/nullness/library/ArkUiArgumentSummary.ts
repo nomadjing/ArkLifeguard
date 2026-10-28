@@ -9,7 +9,7 @@ import { NullnessLibrarySummary } from './NullnessLibrarySummary';
 
 const NON_NULL_COLLECTION_BUILDERS = new Set(['ForEach', 'LazyForEach']);
 
-/** Non-null argument contracts for ArkUI collection builders. */
+/** Collection boundaries; ForEach rejects nullish input before dereferencing it. */
 export class ArkUiArgumentSummary implements NullnessLibrarySummary {
     readonly id = 'arkui-non-null-arguments';
 
@@ -27,7 +27,10 @@ export class ArkUiArgumentSummary implements NullnessLibrarySummary {
         return new Set();
     }
 
-    getNonNullArgumentIndices(_callStmt: Stmt): readonly number[] {
-        return [0];
+    getNonNullArgumentIndices(callStmt: Stmt): readonly number[] {
+        const signature = callStmt.getInvokeExpr()?.getMethodSignature();
+        const name = signature?.getMethodSubSignature().getMethodName();
+        const owner = signature?.getDeclaringClassSignature().getClassName();
+        return name === 'ForEach' || (name === 'create' && owner === 'ForEach') ? [] : [0];
     }
 }

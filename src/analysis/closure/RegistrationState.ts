@@ -22,8 +22,9 @@ export class RegistrationState extends HeapState {
         for (const [id, registration] of this.registrations) state.registrations.set(id, registration);
         return state;
     }
-    override signature(): string {
-        return `${super.signature()}|${JSON.stringify([...this.registrations].map(([id, registration]) =>
-            [id, registration.active, registration.repeated, registration.registrars, registration.events, registration.callbacks]).sort())}`;
+    override signature(encode: (value: string) => string | number = value => value): string {
+        return `${super.signature(encode)}|${JSON.stringify([...this.registrations].sort(([a], [b]) => a.localeCompare(b)).map(([id, registration]) =>
+            [encode(id), registration.active, registration.repeated, registration.registrars.map(encode),
+                registration.events.map(encode), registration.callbacks.map(encode)]))}`;
     }
 }

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ArkInstanceInvokeExpr, Scene, SceneConfig } from '../../src/adapter/arkanalyzer';
-import type { ArkFile, Stmt } from '../../src/adapter/arkanalyzer';
+import type { ArkFile, ArkMethod, Stmt } from '../../src/adapter/arkanalyzer';
 import { NullnessSourceSemantics, NULL, UNDEFINED } from '../../src/analysis/nullness/NullnessSourceSemantics';
 import { NullnessProblem } from '../../src/analysis/nullness/NullnessProblem';
 import { NullnessSolver } from '../../src/analysis/nullness/NullnessSolver';
@@ -20,6 +20,20 @@ function sourceStatement(code: string) {
 }
 
 describe('source access semantics', () => {
+    it.each([
+        ['(): void => { this.value = null; }', true],
+        ['async (value: number) => value', true],
+        ['function () { return () => 1; }', false],
+    ])('classifies and caches arrow receiver ownership in %s', (code, expected) => {
+        const getCode = vi.fn(() => code);
+        const method = { getCode, isAnonymousMethod: () => true,
+            getOuterMethod: () => undefined } as unknown as ArkMethod;
+        const semantics = new NullnessSourceSemantics();
+        expect(semantics.isArrowMethod(method)).toBe(expected);
+        expect(semantics.isArrowMethod(method)).toBe(expected);
+        expect(getCode).toHaveBeenCalledTimes(1);
+    });
+
     it.each([
         ['x && x!.run();', NULL | UNDEFINED],
         ['!x || x!.run();', NULL | UNDEFINED],
@@ -97,6 +111,34 @@ describe('nullness source recovery regressions', () => {
             }
         }
     );
+
+    it.each(['optionalIndex', 'optionalUnknownIndex', 'guardedArrayRead', 'guardedStringRead', 'guardedStringArgument',
+        'guardedFieldAlias', 'ternaryFieldAlias', 'templateReturnCoercion', 'guardedCalleeArgument', 'mapGuardInLoop',
+        'preservedFieldSnapshot', 'arrayGuardWithNestedComparison', 'shadowedCallbackCapture',
+        'preservedSnapshotArgument', 'compoundFieldGuard'])(
+        'does not report protected access in %s', name => {
+        const method = scene.getMethods().find(method => method.getName() === name)!;
+        const problem = new NullnessProblem(method.getCfg()!.getStartingStmt(), method);
+        new NullnessSolver(problem, scene).solve();
+        expect(problem.getNullDereferences()).toHaveLength(0);
+    });
+
+    it.each(['assertedIndex', 'nullableChildInOptionalChain', 'typeofObjectStillNull',
+        'arbitraryPredicateStillNull', 'staleTypeofStillNull', 'explicitPredicateComparisonStillNull',
+        'sameNamedPredicateStillNull', 'mixedIndexedAccesses', 'explicitReturnToString',
+        'nullOnlyFallbackStillUndefined', 'unguardedCalleeArgument', 'mapGuardThenDelete',
+        'nullableFieldSnapshot', 'realCallbackCapture', 'nullableSnapshotArgument', 'mapFalseGuard',
+        'mapGuardThenUnknownCall', 'staleSnapshotGuardStillNull',
+        'compoundFieldGuardThenMutation'])('retains a null dereference in %s', name => {
+        const method = scene.getMethods().find(method => method.getName() === name)!;
+        const problem = new NullnessProblem(method.getCfg()!.getStartingStmt(), method);
+        new NullnessSolver(problem, scene).solve();
+        expect(problem.getNullDereferences().length).toBeGreaterThan(0);
+        if (name === 'mixedIndexedAccesses') {
+            expect(problem.getNullDereferences().every(diagnostic => diagnostic.accessPath.base?.getName() === 'unsafe'))
+                .toBe(true);
+        }
+    });
 
     it('reuses statement extraction across facts and reports one source location once', () => {
         const method = scene.getMethods().find(method => method.getName() === 'mixedAccesses')!;

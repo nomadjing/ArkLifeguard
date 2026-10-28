@@ -3,8 +3,7 @@ import type { FactSemantics } from "./FactSemantics";
 import { PathEdge } from "./PathEdge";
 
 type EndFactIndex<D> = Map<number, PathEdge<D>[]>;
-type StartFactIndex<D> = Map<number, EndFactIndex<D>>;
-type EndNodeIndex<D> = Map<Stmt, StartFactIndex<D>>;
+type EndNodeIndex<D> = Map<Stmt, EndFactIndex<D>>;
 
 export interface PathEdgeInsertResult {
   inserted: boolean;
@@ -76,26 +75,22 @@ export class PathEdgeStore<D> {
       this.index.set(edge.edgeStart.node, byEndNode);
     }
 
-    let byStartFact = byEndNode.get(edge.edgeEnd.node);
-    if (!byStartFact) {
+    let byFactHash = byEndNode.get(edge.edgeEnd.node);
+    if (!byFactHash) {
       if (!create) return undefined;
-      byStartFact = new Map();
-      byEndNode.set(edge.edgeEnd.node, byStartFact);
+      byFactHash = new Map();
+      byEndNode.set(edge.edgeEnd.node, byFactHash);
     }
 
     const startHash = this.semantics.factHash(edge.edgeStart.fact);
-    let byEndFact = byStartFact.get(startHash);
-    if (!byEndFact) {
-      if (!create) return undefined;
-      byEndFact = new Map();
-      byStartFact.set(startHash, byEndFact);
-    }
-
     const endHash = this.semantics.factHash(edge.edgeEnd.fact);
-    let bucket = byEndFact.get(endHash);
+    // Combining hashes removes a Map per start fact. addIfAbsent still
+    // compares both facts, including collisions introduced by this pairing.
+    const hash = (Math.imul(startHash, 31) + endHash) | 0;
+    let bucket = byFactHash.get(hash);
     if (!bucket && create) {
       bucket = [];
-      byEndFact.set(endHash, bucket);
+      byFactHash.set(hash, bucket);
     }
     return bucket;
   }

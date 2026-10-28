@@ -30,6 +30,7 @@ import {
     NullnessOriginKind,
 } from '../NullnessFact';
 import { NullnessLibrarySummary } from './NullnessLibrarySummary';
+import type { BasicBlock } from '../../../adapter/arkanalyzer';
 
 export type ContainerOperation = 'read' | 'write' | 'delete' | 'transform' | 'predicate';
 
@@ -167,6 +168,8 @@ export class ContainerLibrarySummary implements NullnessLibrarySummary {
     ): boolean {
         const cfg = callStmt.getCfg();
         if (!cfg) return false;
+        const entry = cfg.getStartingBlock();
+        if (!entry) return false;
         const blocks = [...cfg.getBlocks()];
         const target = blocks.find(block => block.getStmts().includes(callStmt));
         if (!target) return false;
@@ -174,7 +177,7 @@ export class ContainerLibrarySummary implements NullnessLibrarySummary {
             const tail = block.getTail();
             if (!(tail instanceof ArkIfStmt)) continue;
             const source = tail.getOriginalText?.() ?? '';
-            if (/\bif\s*\(\s*!/.test(source)) continue;
+            if (!source || /\bif\s*\(\s*\(*\s*!/.test(source) || /(?:===?|!==?)/.test(source)) continue;
             const hasInvoke = this.findInvoke(
                 tail.getConditionExpr(),
                 'has',
@@ -187,12 +190,42 @@ export class ContainerLibrarySummary implements NullnessLibrarySummary {
             }
             const successors = block.getSuccessors();
             if (successors.length !== 2 || successors[0] === successors[1]) continue;
-            if (this.blockReaches(successors[0], target) &&
-                !this.blockReaches(successors[1], target)) {
+            // Returning through a loop header rechecks has(k); it is not a
+            // counterexample to the current iteration's true-edge guard.
+            if (!this.blockReaches(entry, target, block) &&
+                this.blockReaches(successors[0], target, block) &&
+                !this.blockReaches(successors[1], target, block) &&
+                this.guardPathIsUnmodified(successors[0], callStmt, block, getInvoke)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private guardPathIsUnmodified(start: BasicBlock, read: Stmt, guard: BasicBlock,
+        getInvoke: ArkInstanceInvokeExpr): boolean {
+        const pending = [start];
+        const visited = new Set<BasicBlock>();
+        while (pending.length) {
+            const block = pending.pop()!;
+            if (block === guard || visited.has(block)) continue;
+            visited.add(block);
+            let reachedRead = false;
+            for (const stmt of block.getStmts()) {
+                if (stmt === read) { reachedRead = true; break; }
+                const defined = stmt.getDef();
+                if (defined && (this.sameValue(defined, getInvoke.getBase()) ||
+                    this.sameValue(defined, getInvoke.getArgs()[0]))) return false;
+                const invoke = stmt.getInvokeExpr();
+                if (!invoke) continue;
+                const name = invoke.getMethodSignature().getMethodSubSignature().getMethodName();
+                if (!(invoke instanceof ArkInstanceInvokeExpr) ||
+                    !this.sameValue(invoke.getBase(), getInvoke.getBase()) ||
+                    (name !== 'get' && name !== 'has')) return false;
+            }
+            if (!reachedRead) pending.push(...block.getSuccessors());
+        }
+        return true;
     }
 
     /**
@@ -289,12 +322,14 @@ export class ContainerLibrarySummary implements NullnessLibrarySummary {
 
     private blockReaches(
         start: { getSuccessors(): unknown[] },
-        target: unknown
+        target: unknown,
+        barrier?: unknown
     ): boolean {
         const workList: Array<{ getSuccessors(): unknown[] }> = [start];
         const visited = new Set<unknown>();
         while (workList.length > 0) {
             const current = workList.pop()!;
+            if (current === barrier) continue;
             if (current === target) return true;
             if (visited.has(current)) continue;
             visited.add(current);

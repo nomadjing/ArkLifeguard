@@ -20,18 +20,23 @@ function buildScene(): Scene {
     return scene;
 }
 
-describe('Nullness ArkUI non-null argument sink', () => {
-    it('reports a nullish ForEach collection without flagging a present collection', () => {
+describe('Nullness ArkUI collection boundaries', () => {
+    it('does not mistake a rejected ForEach input for an internal null dereference', () => {
         const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
 
         expect(result.success, result.error).toBe(true);
         const diagnostics = result.diagnostics.filter(diagnostic =>
             diagnostic.dereferenceStmt.getOriginalText()?.includes('ForEach(')
         );
-        expect(diagnostics).toHaveLength(1);
-        expect(diagnostics[0].description).toContain('non-null parameter');
-        expect(diagnostics[0].nullness).toBe('null');
-        expect(diagnostics[0].dereferenceStmt.getOriginalText())
-            .toContain('ForEach(missingItems!');
+        expect(diagnostics).toHaveLength(0);
+    });
+
+    it('retains supplemental analysis of collection owners and their real defects', () => {
+        const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
+        expect(result.success, result.error).toBe(true);
+        expect(result.solverBreakdown!.supplementalRootCount).toBeGreaterThan(0);
+        expect(result.diagnostics.some(diagnostic =>
+            diagnostic.dereferenceStmt.getCfg()?.getDeclaringMethod().getName() === 'uncalledCollectionOwner' &&
+            diagnostic.dereferenceStmt.getOriginalText()?.includes('account!.touch()'))).toBe(true);
     });
 });

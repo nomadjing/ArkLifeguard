@@ -57,6 +57,10 @@ export class NullnessLibraryRegistry {
         return result;
     }
 
+    isFrameworkCollectionCall(callStmt: Stmt): boolean {
+        return this.summaries.some(summary => summary instanceof ArkUiArgumentSummary && summary.matches(callStmt));
+    }
+
     shouldSuppressLiteralReturn(callStmt: Stmt, zeroFact: NullnessFact): boolean {
         const summary = this.find(callStmt);
         if (!summary) return false;

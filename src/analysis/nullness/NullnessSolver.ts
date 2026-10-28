@@ -18,7 +18,7 @@ import type { Stmt } from '../../adapter/arkanalyzer';
 import { PathEdge, PathEdgePoint } from '../../ifds';
 import type { ArkMethod } from '../../adapter/arkanalyzer';
 import { DataflowSolver } from '../../ifds';
-import type { DataflowSolverOptions } from '../../ifds';
+import type { DataflowSolverOptions, InterproceduralCFG } from '../../ifds';
 import { NullnessFact } from './NullnessFact';
 import { NullnessProblem } from './NullnessProblem';
 import { findRecursiveMethods } from '../../ifds/CallResolver';
@@ -32,9 +32,10 @@ export class NullnessSolver extends DataflowSolver<NullnessFact> {
         problem: NullnessProblem,
         scene: Scene,
         options: DataflowSolverOptions = {},
-        recursiveMethods?: ReadonlySet<ArkMethod>
+        recursiveMethods?: ReadonlySet<ArkMethod>,
+        icfg?: InterproceduralCFG
     ) {
-        super(problem, scene, options);
+        super(problem, scene, options, icfg);
         this.recursiveMethods = problem.getConfig().recursiveSccWidening
             ? recursiveMethods ?? findRecursiveMethods(scene)
             : new Set();
