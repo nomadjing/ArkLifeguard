@@ -511,8 +511,14 @@
       "targetSdkVersion": null
     },
     {
+      "name": "TunBox",
+      "path": "projects/TunBox",
       "repo": "https://github.com/xiaoli8571/TunBox.git",
-      "error": "<repository-root>/HarmonyRealApps/projects/TunBox is not an independent Git checkout; git resolves to <repository-root>. Remove the directory and rerun, or clone the intended repository there."
+      "revision": "main",
+      "resolvedCommit": "f71f968c6e715fc524b81908f4930e741bbb8439",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": null,
+      "targetSdkVersion": null
     },
     {
       "name": "ohos-weather",
