@@ -2,7 +2,7 @@
 
 ## 唯一生成器与入口
 
-生命周期模块统一生成 compact flat `@extendedDummyMain`。资源、空指针、闭包和内存分析从这个合成方法进入，无需启动应用。
+生命周期模块统一生成 compact flat `@extendedDummyMain`。资源、listener 和空指针分析从这个合成方法进入，无需启动应用。
 
 统一入口为 [createLifecycleModelCreator](../../src/lifecycle/LifecycleModelEntry.ts)：
 
@@ -18,7 +18,7 @@ const dummyMain = creator.getDummyMain();
 
 ```bash
 npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
-  --checks closure,memory --lifecycle-report out/lifecycle.json
+  --checks resource,listener --lifecycle-report out/lifecycle.json
 ```
 
 ## 收集与控制流
@@ -39,9 +39,9 @@ compact dispatcher 直接连接事件调用块，避免额外的逐事件条件�
 
 ## 分析责任与报告
 
-DummyMain 决定方法入口及其调度后继，领域模块决定事实传播、资源义务和诊断规则。空指针入口使用 `NULLNESS_LIFECYCLE_ORDER`，包含前台重入；闭包／内存只把已收集 owner 的 `onDestroy`／`aboutToDisappear` 正常出口作为当前寿命终点。
+DummyMain 决定方法入口及其调度后继，领域模块决定事实传播、资源义务和诊断规则。空指针入口使用 `NULLNESS_LIFECYCLE_ORDER`，包含前台重入；资源/listener 沿入口调用与返回传播清理义务，不再提供对象寿命终点或 GC 保留判定。
 
-`lifecycleStatistics` 仅提供收集到的 Ability、Component 和 UI 回调数量。独立生命周期报告为 `schemaVersion: 2`，删除了分层裁剪与 scope 转移统计；主诊断报告仍为 `schemaVersion: 3`。
+`lifecycleStatistics` 仅提供收集到的 Ability、Component 和 UI 回调数量。独立生命周期报告为 `schemaVersion: 2`，删除了分层裁剪与 scope 转移统计；主诊断报告为 `schemaVersion: 5`。
 
 查看生成的 IR 和伪代码：
 

@@ -1,75 +1,48 @@
 # 架构与入口
 
-## 一次工程分析
+## 工程分析
 
-`ProjectAnalyzer.analyze(projectPath)` 完成工程校验、SDK 发现、Scene/IR 构建、类型推断、生命周期入口生成、检查编排和完整结果装配。CLI 再将结果交给报告生成器。
+ProjectAnalyzer 构建 Scene、推断类型并生成一个共同 DummyMain，再依次执行资源、listener、空指针检查。每个领域单独求解、返回状态；模块失败汇总到 errors，Scene 或生命周期构建失败属于顶层错误。
 
 ```mermaid
 flowchart TD
-    CLI["CLI / API"] --> Project["ProjectAnalyzer"]
-    Project --> Scene["ArkAnalyzer Scene / IR"]
-    Scene --> Lifecycle["Ability / Page / Component / UI callback"]
-    Lifecycle --> Entry["共同 DummyMain"]
-    Entry --> Nullness["NullnessAnalysisRunner"]
-    Entry --> Resource["ResourceRunner"]
-    Entry --> Closure["ClosureRunner"]
-    Entry --> Memory["MemoryRunner"]
-    Nullness --> IFDS["共享 IFDS / ICFG"]
-    Resource --> IFDS
-    Closure --> Heap["各自运行共享 HeapFlow / HeapState"]
-    Memory --> Heap
-    Nullness --> Result["独立结果与覆盖限制"]
-    Resource --> Result
-    Closure --> Result
-    Memory --> Result
-    Result --> Report["JSON / Text / Markdown / HTML"]
+    CLI --> ProjectAnalyzer
+    ProjectAnalyzer --> Scene
+    Scene --> DummyMain
+    DummyMain --> ResourceRunner
+    DummyMain --> ListenerRunner
+    DummyMain --> NullnessAnalysisRunner
+    ResourceRunner --> ReleaseObligationRunner
+    ListenerRunner --> ReleaseObligationRunner
+    ReleaseObligationRunner --> IFDS
+    NullnessAnalysisRunner --> IFDS
+    IFDS --> Reports
 ```
 
-工程编排只构造一次共同 DummyMain。空指针还会分析选中的模块初始化器和框架非空参数方法；其每个补充入口使用独立求解器。闭包、内存分别运行解释器，不共享可变求解状态；内存直接解析注册摘要，不读取闭包诊断。
-
-当前执行顺序是资源、闭包、内存、空指针。已进入分析模块的失败通过独立结果和 `errors` 汇总；Scene 或生命周期构建失败属于顶层错误，无法保证剩余模块继续。
-
-## 层与职责
+## 实现与职责
 
 | 路径 | 职责 |
 | --- | --- |
-| [adapter](../src/adapter/arkanalyzer.ts) | 统一导出 ArkAnalyzer 类型、IR 节点与兼容工具 |
-| [lifecycle](../src/lifecycle/LifecycleModelEntry.ts) | 框架入口、owner/route、DummyMain 及模型统计 |
-| [ifds](../src/ifds/DataflowSolver.ts) | 求解、ICFG、事实与摘要存储 |
-| [nullness](../src/analysis/nullness/NullnessAnalysisRunner.ts) | 空值事实、流函数、解引用与库摘要 |
-| [resourceleak](../src/analysis/resourceleak/ResourceRunner.ts) | 资源句柄义务、精确规则与出口诊断 |
-| [closure](../src/analysis/closure/ClosureRunner.ts) | 注册义务与捕获保留诊断 |
-| [memory](../src/analysis/memory/MemoryRunner.ts) | 生命周期后强引用候选及注册关联证据 |
-| [shared](../src/analysis/shared/HeapFlow.ts) | 堆解释器、引用图、位置与当前规则归属辅助 |
-| [application](../src/application/ProjectAnalyzer.ts) | 配置、模块编排及完整结果 |
-| [report](../src/report/ReportGenerator.ts) | 只读结果并生成用户报告 |
-| [cli](../src/cli/cli.ts) | 参数解析、开关和退出码 |
+| adapter / lifecycle | IR 接口、框架方法收集与共同入口 |
+| ifds | 数据流求解、ICFG、事实去重、调用返回摘要 |
+| analysis/resourceleak/ResourceProblem | 句柄传播、获取、释放、所有权与出口义务 |
+| analysis/resourceleak/ListenerProblem | 注册者、事件、回调/token 的取消匹配 |
+| analysis/resourceleak/ListenerIdentity | 有限身份查询，不含堆保留或捕获链 |
+| analysis/resourceleak/rules | SDK 资源与 listener 合同、未支持能力目录 |
+| analysis/resourceleak/ReleaseObligationRunner | 共用求解编排、覆盖、证据与出口报告 |
+| analysis/nullness | 独立空值事实、库摘要与补充入口 |
+| application / report / cli | 工程编排、输出和参数 |
 
-能力清单由资源和注册模块独立维护，不从混合规则表推导。公共接口与失败策略见[维护文档](maintenance.md)。
+显式内存与系统资源使用同一个 ResourceRunner、默认规则集合和单次求解。ListenerRunner 复用事实传播基础，增加注册身份语义；它不分析被回调捕获的业务对象。旧 memory/closure 目录和 HeapFlow/HeapState 已移除。
 
-## Runner 契约
+## Runner 合同
 
-| Runner | 所需输入 | 实际职责 |
-| --- | --- | --- |
-| `NullnessAnalysisRunner(scene, config)` | Scene；可自行建模或接收 DummyMain | 创建库摘要和求解器，合并主/补充入口诊断 |
-| `ResourceRunner(scene, rules?, collectStatistics?)` | Scene、DummyMain；规则可省略 | 解析默认资源规则，执行 IFDS，收集出口状态与覆盖 |
-| `ClosureRunner(scene, rules?, options?)` | Scene、入口、生命周期合同 | 核对注册及捕获链，区分未取消注册与闭包保留 |
-| `MemoryRunner(scene, options?, registrationRules?)` | Scene、入口、生命周期合同 | 解析根与引用链，分出注册保留关联证据 |
+ResourceRunner(scene, rules?, collectStatistics?) 与 ListenerRunner(scene, rules?, collectStatistics?) 接收现有入口并提供 runWithDummyMain(entry)。工程 API 分别使用 resourceRules / listenerRules 替代默认规则。
 
-独立资源、闭包、内存提供 `runWithDummyMain(entry)`。空指针同时提供 `runFromDummyMain()` 和 `runWithDummyMain(entry)`：前者负责生成入口，后者接收现有模型。这是两种入口使用方式，不是必须保留的历史兼容层。
+空指针入口保持原接口，并可分析模块初始化器等补充入口。IFDS 对回调目标的识别不等于证明回调执行时机；注册 API 不同步进入 listener 回调。资源的已建模 Promise fulfillment 仍可传播实际句柄，此类句柄传递不属于闭包保留分析。
 
-闭包/内存的 `HeapFlowOptions.lifetimes` 指定类签名与终点方法签名。工程编排从已收集 Ability/Component 提供 `onDestroy` / `aboutToDisappear`。直接使用 Runner 时，单凭方法名字或任意 return 不会建立寿命合同。
+## 边界与输出
 
-## 求解边界
+资源和 listener 沿用可达匹配清理合同；调用事实深度为 4。成功不代表无限调用、所有异步时序或所有平台 API 已完整覆盖。当前 DummyMain 的调度精度限制见[生命周期](analysis/lifecycle.md)。
 
-资源与空指针的问题域满足各自 IFDS 事实传播契约，复用 `DataflowSolver`。堆存储、清空和引用更新依赖完整状态，闭包/内存使用路径状态解释器，而不是将资源事实换一个类别标签。
-
-ICFG 的调用目标解析可能识别回调方法，但识别目标不等于证明其执行时机。领域摘要必须处理异步不确定性；注册摘要不会将回调当作普通同步调用执行。
-
-位置可能来自合成语句。此时诊断使用显式 `[synthetic]` 或可用的源码回退位置；不能把合成分配点描述为真实源码分配。
-
-## 输出契约
-
-完整 API 为 `ProjectAnalysisResult`，包含配置、各模块结果、生命周期信息和耗时。主报告为精简视图，保留模块状态、候选、证据及覆盖限制。两者字段范围不同。
-
-当前主报告 schema 为 3，`analysisKind: "arklifeguard"`。资源只使用 `resourceAnalysis`，含显式 enabled/status/success；诊断与覆盖留在主报告，IFDS 统计通过 schema 2 旁路报告输出。完整 API 保留求解统计。生命周期报告使用自身 schema。模块语义与状态是解释数量的前提，不能只汇总数组长度。
+主报告 schema 为 5，analysisKind 为 arklifeguard；resourceAnalysis / listenerAnalysis 分别输出 diagnostics，摘要为 resourceLeaks / listenerLeaks。各模块显式输出 enabled/status/success/error 与覆盖。主报告省略 IFDS 统计；完整 API 和 schema 2 的 --ifds-stats 旁路报告分别保留资源/listener 统计。生命周期报告仍有独立 schema。

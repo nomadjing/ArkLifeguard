@@ -4,6 +4,8 @@
 
 检测有显式释放义务的句柄，关注“同一资源是否释放/转交”，不依据对象大小判断内存泄漏。
 
+ImageSource、PixelMap、ImagePacker 属于统一资源释放义务，不再单列内存检查；监听注册归 [listener](listener.md) 检查。
+
 唯一入口为规则 IFDS；工程入口、CLI 和独立 Runner 使用相同合同。接口与共享设施见[维护策略](../maintenance.md)。
 
 ```bash
@@ -24,7 +26,7 @@ npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
 | `FileNotClosed` | `@ohos.file.fs` 的 open/openSync | close/closeSync，支持显式 `File.fd` 投影 |
 | `FileIONotClosed` | `@ohos.fileio` 的 open/openSync | close/closeSync |
 | `ImageSourceNotReleased` | ImageSource | release |
-| `PixelMapNotReleased` | 工厂或 ImageSource 的 PixelMap | release |
+| `PixelMapNotReleased` | image 或 ImageSource 的 PixelMap 工厂 | release |
 | `ImagePackerNotReleased` | ImagePacker | release |
 | `AVPlayerNotReleased` | AVPlayer | release |
 | `AudioRendererNotReleased` | AudioRenderer | release |

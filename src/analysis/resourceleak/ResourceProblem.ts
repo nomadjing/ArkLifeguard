@@ -149,10 +149,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                     return new Set();
                 }
                 const direct = this.isDirectCallee(srcStmt, method);
+                if (fact.registration && !direct) return new Set();
                 const mapped = direct
                     ? this.mapCallerHandlesToCallee(srcStmt, method, fact.handles)
                     : this.mapCallbackHandles(srcStmt, method, fact);
-                if (mapped.length === 0) return new Set();
+                if (mapped.length === 0 && !fact.registration) return new Set();
                 return new Set([fact.derive({
                     handles: mapped,
                     state: !direct && this.promiseResultParameter(srcStmt, method, fact) ? 'allocated' : fact.state,
@@ -182,7 +183,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return { getDataFacts: fact => {
             if (fromCallee && !fact.isZero() && !this.isRuleApi(srcStmt) && [...(callees ?? [])].some(method =>
                 method.getCfg() && this.isDirectCallee(srcStmt, method) &&
-                this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0)) {
+                (fact.registration || this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0))) {
                 // The actual callee summary owns these handles; an identity bypass would undo cleanup.
                 return new Set();
             }
@@ -240,7 +241,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 // An allocation in this callee can reach its caller only through
                 // the returned value or a receiver/static field.
                 const handles = this.mapCalleeHandlesToCaller(exitStmt, callStmt, fact.handles);
-                return handles.length > 0
+                return handles.length > 0 || fact.registration
                     ? new Set([fact.derive({ handles }).atAcquisitionReturn(callStmt)])
                     : new Set();
             },
@@ -278,7 +279,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 const directCallees = [...(callees ?? [])].filter(method =>
                     method.getCfg() && this.isDirectCallee(srcStmt, method));
                 if (directCallees.some(method =>
-                    this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0)) {
+                    (fact.registration || this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0))) {
                     // The callee summary owns this path. Keeping an unchanged bypass
                     // would reintroduce a leak after a definite release in the callee.
                     return new Set();
@@ -317,6 +318,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
             fact.acquisitionContext.map(site => this.id(site)).join(','), fact.state,
             fact.handles.map(resourceValueKey).sort().join(','), fact.event ?? '',
             fact.eventSite ? this.id(fact.eventSite) : 0,
+            JSON.stringify(fact.registration ?? null),
             ...fact.frames.map(frame => `${this.id(frame.callSite)}:${frame.callerHandles
                 .map(resourceValueKey).sort().join(',')}`)].join('|');
         this.factKeys.set(fact, key);
@@ -332,7 +334,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return id;
     }
 
-    private transfer(stmt: Stmt, fact: ResourceFact): Set<ResourceFact> {
+    protected transfer(stmt: Stmt, fact: ResourceFact): Set<ResourceFact> {
         if (fact.isZero()) {
             const result = new Set([fact]);
             const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
@@ -424,7 +426,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return signature !== undefined && (this.allocators.has(signature) || this.releasers.has(signature));
     }
 
-    private releaseAt(stmt: Stmt, fact: ResourceFact): ResourceFact | undefined {
+    protected releaseAt(stmt: Stmt, fact: ResourceFact): ResourceFact | undefined {
         if (fact.isZero() || fact.state === 'released' || fact.state === 'escaped') return undefined;
         const rule = this.rulesById.get(fact.ruleId)!;
         const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
@@ -438,7 +440,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return undefined;
     }
 
-    private handleAt(stmt: Stmt, location: ResourceHandleLocation): Value | undefined {
+    protected handleAt(stmt: Stmt, location: ResourceHandleLocation): Value | undefined {
         const invoke = stmt.getInvokeExpr();
         if (!invoke) return undefined;
         if (location.kind === 'return') {

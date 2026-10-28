@@ -9,7 +9,7 @@
 | `npm run typecheck` | 生产源码 |
 | `npm run typecheck:test` | 生产与测试源码 |
 | `npm run typecheck:scripts` | 生产与脚本源码 |
-| `npm run test:closure` / `test:memory` | 注册/捕获、内存保留 |
+| `npm run test:listener` | 注册身份与取消匹配 |
 | `npm run test:ifds` / `test:lifecycle` | 求解机制、框架建模；生命周期命令排除受控基准 |
 | `npm run test:nullness` | 空指针单测，排除独立大范围 Bench 测试文件 |
 | `npm run test:resource` | 资源事实流、十个 SDK 规则家族及正反例 |
@@ -36,7 +36,7 @@
 | 生命周期 Showcase | 保留：含 Navigation destination 与跨 Ability 通信覆盖，不只是演示输出 |
 | 空指针 | 删除无断言、只写文件的 `ArkTSNullSafetyIR.test.ts` 和对应 npm 命令；查看 IR 使用 `inspect:project-ir` |
 | 空指针事实与流 | 删除旧 scaffold 的 placeholder 流函数烟测及构造器存在性断言；保留事实语义等价、guard、闭包、await、路径抽象等行为断言 |
-| resource / closure / memory | 保留资源身份、正反例、生命周期边界、异常清理和预算失败等契约 |
+| resource / listener | 同一句柄身份、正反例、生命周期清理、模块归属和失败契约；不再测试捕获链或堆解释器预算 |
 | application / CLI / report | 保留模块失败隔离、默认检查、参数校验、诊断与统计输出契约 |
 
 这是按断言价值做的静态筛选，不表示其余测试已全部执行或不存在冗余。删除依据应是无行为断言、已有等价覆盖或契约已退出；文件老、小、使用 mock 都不是单独的删除理由。
@@ -90,7 +90,7 @@ npm run test:resource:real-apps -- \
   --ifds-stats --output out/resource-real-apps.json
 ```
 
-资源脚本直接运行唯一资源引擎，不接受 `--engine`。报告 schema 为 2，`resourceAnalysis.diagnostics` 为唯一诊断数组，计数、置信度、创建调用覆盖与统计分别保存。两个真实应用脚本分别运行资源或空指针，不负责闭包/内存真实应用精度评估。
+资源脚本直接运行唯一资源引擎，不接受 `--engine`。报告 schema 为 2，`resourceAnalysis.diagnostics` 为唯一诊断数组，计数、置信度、创建调用覆盖与统计分别保存。两个真实应用脚本分别运行资源或空指针，不负责listener 真实应用精度评估。
 
 逐项目独立进程、超时与增量报告记录执行状态、候选、覆盖、统计和内存。单项目成功只证明执行完成；缺少人工真值时不能计算可信的缺陷 Precision/Recall。
 

@@ -14,7 +14,7 @@ export interface ResourceApi {
 /** Exact SDK API identities and the ownership contract for one resource family. */
 export interface ResourceRule {
     readonly id: string;
-    readonly scope: 'resource' | 'compatibility';
+    readonly scope: 'resource' | 'listener' | 'compatibility';
     readonly allocators: readonly ResourceApi[];
     /** A reachable matching call on the correct handle discharges the allocation's obligation, even on failure.
      * This models the application's cleanup duty, not guaranteed physical deallocation. */

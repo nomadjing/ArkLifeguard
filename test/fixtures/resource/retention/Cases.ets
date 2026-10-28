@@ -75,4 +75,35 @@ export class Cases {
  static MethodIdentityCase() { const owner = new MethodIdentity(); owner.onCreate(); owner.onDestroy(); }
  static UnknownCallbackCase() { const owner = new UnknownCallback(); owner.onCreate(); owner.onDestroy(); }
  static ThrowingCleanupCase() { const owner = new ThrowingCleanup(); owner.onCreate(); owner.onDestroy(); }
+ static AliasListenerCase() {
+     const callback = () => {};
+     const alias = callback;
+     emitter.on({eventId: 1}, callback); emitter.off(1, alias);
+ }
+ static BoundAliasCase() {
+     const owner = new MethodIdentity();
+     const callback = owner.callback.bind(owner);
+     emitter.on({eventId: 1}, callback); emitter.off(1, callback);
+ }
+ static UnknownEventCase(event: number) {
+     const callback = () => {};
+     emitter.on({eventId: event}, callback); emitter.off(1, callback);
+ }
+ static OneRemainingCase() {
+     const first = () => {}; const second = () => {};
+     emitter.on({eventId: 1}, first); emitter.on({eventId: 1}, second);
+     emitter.off(1, first);
+ }
+ static RemoveAllSameEventCase() {
+     emitter.on({eventId: 1}, () => {}); emitter.on({eventId: 1}, () => {});
+     emitter.off(1);
+ }
+ static ReplacedRegistrarCase() {
+     const callback = () => {};
+     Roots.first = new EventHub(); Roots.first.on('tick', callback);
+     Roots.first = new EventHub(); Roots.first.off('tick', callback);
+ }
+ static NestedCallbackRegistrationCase() {
+     emitter.on({eventId: 1}, () => { emitter.on({eventId: 2}, () => {}); });
+ }
 }

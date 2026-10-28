@@ -1,13 +1,13 @@
 import { ModelUtils, type MethodSignature, type Scene } from '../../../adapter/arkanalyzer';
 import type { ResourceApi, ResourceHandleLocation, ResourceRule } from './ResourceRule';
 
-interface Selector {
+export interface Selector {
     readonly module: string;
     readonly owner: string;
     readonly methods: readonly string[];
     readonly handle: ResourceHandleLocation;
 }
-interface Definition {
+export interface Definition {
     readonly id: string;
     readonly allocators: readonly Selector[];
     readonly releasers: readonly Selector[];
@@ -20,7 +20,7 @@ const param: ResourceHandleLocation = { kind: 'param', index: 0 };
 const api = (module: string, owner: string, methods: string[], handle: ResourceHandleLocation = base): Selector =>
     ({ module, owner, methods, handle });
 
-/** Resource-only rules; listener pairing and nullification compatibility rules are separate work. */
+/** Exact SDK release contracts. Each definition belongs to exactly one default checker. */
 export const HARMONY_RESOURCE_DEFINITIONS: readonly Definition[] = [
     { id: 'HttpRequestNotDestroyed',
         allocators: [api('@ohos.net.http', '%dflt', ['createHttp'], returns)],

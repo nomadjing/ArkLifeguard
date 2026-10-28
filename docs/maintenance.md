@@ -1,38 +1,33 @@
 # 维护与接口策略
 
-## 当前资源入口
+## 分析范围
 
-资源分析只有 [ResourceRunner](../src/analysis/resourceleak/ResourceRunner.ts) 一条实现，由 [ProjectAnalyzer](../src/application/ProjectAnalyzer.ts) 调用。CLI、公共导出、报告和真实项目脚本均使用该入口。没有旧 Source/Sink 求解器、方法内辅助扫描、结构性抑制器或混合规则表，也没有兼容 wrapper、双跑和回退。
+资源检查统一包含系统资源与显式内存释放义务；listener 检查注册清理义务。实现集中于 analysis/resourceleak，二者共用 resourceleak/ReleaseObligationRunner 和 IFDS。普通托管对象的 GC 保留、闭包捕获链与实际堆增长不在范围内。
 
-新增资源语义接入 `resourceleak` 的规则与事实流；注册语义接入 `closure`，对象保留语义接入 `memory` / `shared`。三个模块独立返回结果，不能通过类别标签复用同一种泄漏判定。
+新增获取/释放规则接入 rules/HarmonyResourceRules；新增监听 API 接入 rules/ListenerRules，并明确注册者、事件、回调/token、批量取消与自动失效合同。禁止按项目 API 名字兜底，逃逸或普通置空不默认等于释放。
 
-## 公共接口
+## 当前接口
 
-| 接口 | 当前约定 |
+| 接口 | 约定 |
 | --- | --- |
-| 工程 CLI | `--checks resource` 直接使用资源规则；不接受 `--resource-engine` |
-| 工程 API | `runResourceAnalysis` 控制启用，`resourceRules` 替代默认规则；无 `resourceEngine` |
-| 主结果与报告 | schema 3，`analysisKind: "arklifeguard"`；唯一字段 `resourceAnalysis` |
-| 资源诊断 | `resourceAnalysis.diagnostics`；摘要 `resourceLeaks` 等于该数组长度 |
-| 模块状态 | 资源使用 `enabled`、`status: disabled/success/failed`、`success` 和 `error` |
-| IFDS 旁路报告 | schema 2，读取唯一资源结果的 `solverStatistics` |
-| 真实项目资源脚本 | 单入口，报告 schema 2；无 `--engine` 或旧传播上限 |
-| 能力目录 | [资源](../src/analysis/resourceleak/rules/ResourceCapabilities.ts)、[注册](../src/analysis/closure/RegistrationCapabilities.ts)各自声明默认未支持的 API 家族 |
+| CLI | --checks nullness,resource,listener；默认 all |
+| 工程 API | runResourceAnalysis/resourceRules、runListenerAnalysis/listenerRules |
+| 主报告 | schema 5；resourceAnalysis.diagnostics、listenerAnalysis.diagnostics |
+| 摘要 | resourceLeaks、listenerLeaks，各自等于诊断数组长度 |
+| 状态 | enabled、status: disabled/success/failed、success、error |
+| IFDS 旁路 | schema 2，资源和 listener 各自统计 |
+| 真实项目资源脚本 | 保持 resource 单入口和自身 schema 2，含图像内存义务 |
 
-不提供 `newResourceAnalysis`、`methodLocal`、`taintLeaks`、Source/Sink 位置数组或 amplification 镜像。CLI 拒绝已移除的选项；TypeScript API 不再导出相关类型。仓库外消费者应按当前 schema 和公开类型接入。
+旧 memory/closure 检查、runMemoryAnalysis/runClosureAnalysis、memoryRules/closureRules、HeapFlowOptions、堆预算参数及保留链输出均移除，不提供兼容别名。仓库外使用方需按新公开类型和 schema 迁移。
 
-`maxPropagationDepth` 只约束空指针。资源调用事实深度固定为 4，通过 `settings.resourceBounds` 表达；不接受 Ability 数/导航跳数传播约束。生命周期的 K 继续独立控制两种 bounded 模型，不能当作资源或内存预算。
+## 失败与近似
 
-## 能力与失败策略
+规则完全未解析、显式空规则、非法配置和求解异常均返回失败；空诊断不代表安全。部分未解析或未支持 API 必须保留覆盖限制。成功仅说明当前有限规则与上下文下求解完成。
 
-没有默认摘要的 API 必须显示覆盖不足，不以同名匹配、未取消就泄漏、分配即泄漏等规则兜底。默认能力目录是已知缺口清单，不是完整平台枚举，也不是本次工程实际调用统计；自定义规则是否覆盖这些家族需单独审查。
+资源与 listener 调用事实深度为 4，通过 resourceBounds/listenerBounds 表达。maxPropagationDepth 仅约束空指针。当前无通用事件次数/Ability 跳转边界参数；不得将调用深度写成完整生命周期有界证明。
 
-SDK 默认资源规则完全未解析、显式空规则、非法规则或求解失败均返回失败；不伪装成零诊断成功。闭包/内存的未解析规则和生命周期/根集合限制按模块合同解释。
+清理合同检查匹配行为，不检查所有路径异常安全。listener 的复杂别名、同一分配点重复注册计数与异步取消时序仍存在限制，不得解释为闭包对象保留证据。
 
-## 共享设施与 Runner
+## 修改与验证
 
-保留 `src/ifds/`、`src/lifecycle/`、`src/adapter/` 和 `shared/HeapFlow` / `HeapState`。它们承担当前求解与建模职责。五种生命周期模式仍可使用，与资源实现没有兼容绑定。
-
-四个 Runner 可分别接收 Scene 与现有入口；空指针也支持自行创建生命周期入口。闭包/内存直接使用时必须提供生命周期合同。保持这些明确职责，不建立万能 Runner 或旧结果转换层。
-
-接口调整应同时修改入口、公开类型、CLI、报告、脚本、定向测试和文档。验收依据规则匹配、释放身份、跨方法传播、异步未知状态、模块失败/关闭状态及独立计数；候选数量相同不是语义正确性的证据。
+接口变动需同步工程入口、公开导出、CLI、主/旁路报告、相关测试和文档。默认先类型检查，再运行直接相关单元测试；未经要求不运行完整构建、全套测试或真实应用基准。测试通过与真实应用精度/性能结论分开报告。

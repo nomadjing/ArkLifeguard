@@ -1,6 +1,6 @@
-import { ModelUtils, type MethodSignature, type Scene } from '../../adapter/arkanalyzer';
+import { ModelUtils, type MethodSignature, type Scene } from '../../../adapter/arkanalyzer';
 
-export interface RegistrationRule {
+export interface ListenerRule {
     readonly id: string;
     readonly allocators: readonly string[];
     readonly releasers: readonly string[];
@@ -13,7 +13,7 @@ export interface RegistrationRule {
     readonly allowRemoveAll?: boolean;
     readonly selfExpiring?: boolean;
 }
-interface Definition extends Omit<RegistrationRule, 'allocators' | 'releasers'> {
+interface Definition extends Omit<ListenerRule, 'allocators' | 'releasers'> {
     readonly file: string;
     readonly owner: string;
     readonly on: readonly string[];
@@ -43,8 +43,8 @@ const definitions: readonly Definition[] = [
         eventIndex: 0, releaseEventIndex: 0, releaseCallbackIndex: 1, allowRemoveAll: true })),
 ];
 
-export function resolveRegistrationRules(scene: Scene): {
-    rules: readonly RegistrationRule[]; unresolvedRuleIds: readonly string[];
+export function resolveListenerRules(scene: Scene): {
+    rules: readonly ListenerRule[]; unresolvedRuleIds: readonly string[];
 } {
     const signatures = new Map<string, MethodSignature>();
     const sdk = new Set(scene.getSdkArkFiles().map(file => file.getFileSignature().toString()));
@@ -59,7 +59,7 @@ export function resolveRegistrationRules(scene: Scene): {
             signatures.set(signature.toString(), signature);
         }
     }
-    const rules: RegistrationRule[] = [];
+    const rules: ListenerRule[] = [];
     const unresolvedRuleIds: string[] = [];
     for (const definition of definitions) {
         const candidates = [...signatures.values()].filter(signature => {

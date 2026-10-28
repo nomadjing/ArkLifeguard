@@ -17,6 +17,12 @@ export interface ResourceCallFrame {
     readonly callerHandles: readonly Value[];
 }
 
+export interface RegistrationIdentity {
+    readonly registrar?: string;
+    readonly event?: string;
+    readonly callback?: string;
+}
+
 /** Finite IFDS domain: identity excludes the evidence path and includes only one event site. */
 export class ResourceFact {
     private static readonly zero = new ResourceFact('', undefined, [], 'allocated', [], undefined, undefined);
@@ -31,6 +37,7 @@ export class ResourceFact {
         readonly eventSite?: Stmt,
         /** Bounded inner-to-outer acquisition returns; stable through cleanup calls. */
         readonly acquisitionContext: readonly Stmt[] = [],
+        readonly registration?: RegistrationIdentity,
     ) {}
 
     static zeroFact(): ResourceFact {
@@ -66,6 +73,7 @@ export class ResourceFact {
         event?: ResourceEvent;
         eventSite?: Stmt;
         acquisitionContext?: readonly Stmt[];
+        registration?: RegistrationIdentity;
     }): ResourceFact {
         return new ResourceFact(
             this.ruleId,
@@ -76,6 +84,7 @@ export class ResourceFact {
             change.event ?? this.event,
             change.eventSite ?? this.eventSite,
             change.acquisitionContext ?? this.acquisitionContext,
+            change.registration ?? this.registration,
         );
     }
 }

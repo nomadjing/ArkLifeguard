@@ -6,6 +6,7 @@ export interface SolverStatisticsReport {
     schemaVersion: 2;
     reportKind: 'ifds-solver-statistics';
     project: ProjectAnalysisResult['project'];
+    listenerAnalysis?: SolverStatisticsReport['resourceAnalysis'];
     resourceAnalysis: {
         enabled: boolean;
         success: boolean;
@@ -21,6 +22,12 @@ export class SolverStatisticsReportGenerator {
             schemaVersion: 2,
             reportKind: 'ifds-solver-statistics',
             project: result.project,
+            ...(result.listenerAnalysis ? { listenerAnalysis: {
+                enabled: result.listenerAnalysis.enabled,
+                success: result.listenerAnalysis.success,
+                statistics: result.listenerAnalysis.solverStatistics ?? null,
+                status: result.listenerAnalysis.status,
+            } } : {}),
             resourceAnalysis: {
                 enabled: result.resourceAnalysis.enabled,
                 success: result.resourceAnalysis.success,

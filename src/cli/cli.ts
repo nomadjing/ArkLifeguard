@@ -38,11 +38,9 @@ interface AnalyzeCliOptions {
     ifdsStats?: string;
     title?: string;
     verbose: boolean;
-    maxRetentionStates: number;
-    maxRetentionCallDepth: number;
 }
 
-type AnalysisCheck = 'nullness' | 'resource' | 'closure' | 'memory';
+type AnalysisCheck = 'nullness' | 'resource' | 'listener';
 
 export async function runCLI(argv: string[] = process.argv): Promise<number> {
     let exitCode = 0;
@@ -50,7 +48,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
     program
         .name(NAME)
         .version(VERSION)
-        .description('HarmonyOS nullness, resource, closure and memory static analyzer');
+        .description('HarmonyOS nullness, resource and listener static analyzer');
 
     const analyzeCommand = program.command('analyze')
         .description('Analyze a source project with the selected independent checks')
@@ -65,15 +63,13 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
         .option('--no-ui-callbacks', 'disable ViewTree UI callback extraction')
         .addOption(new Option(
             '--checks <checks>',
-            'checks to run: all, nullness, resource, closure, memory, or a comma-separated list'
-        ).argParser(parseChecks).default(['nullness', 'resource', 'closure', 'memory'] as AnalysisCheck[], 'all'))
+            'checks to run: all, nullness, resource, listener, or a comma-separated list'
+        ).argParser(parseChecks).default(['nullness', 'resource', 'listener'] as AnalysisCheck[], 'all'))
         .option('--max-access-path-length <n>', 'maximum nullness access-path length', positiveInteger, 5)
         .option('--max-propagation-depth <n>', 'maximum nullness fact propagation depth', positiveInteger, 40)
         .option('--report-unresolved-returns', 'include low-confidence unresolved-return reports', false)
-        .option('--max-retention-states <n>', 'state budget for closure/memory interpretation', positiveInteger, 20000)
-        .option('--max-retention-call-depth <n>', 'call depth for closure/memory interpretation', positiveInteger, 4)
         .option('--lifecycle-report <path>', 'write lifecycle modeling details to a separate JSON report')
-        .option('--ifds-stats <path>', 'collect resource IFDS statistics and write a separate JSON report')
+        .option('--ifds-stats <path>', 'collect resource/listener IFDS statistics and write a separate JSON report')
         .option('--title <title>', 'custom report title')
         .option('-v, --verbose', 'show lifecycle analysis logs', false)
         .action(async (projectPath: string, options: AnalyzeCliOptions) => {
@@ -89,10 +85,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     extractUICallbacks: options.uiCallbacks,
                     runNullness,
                     runResourceAnalysis,
-                    runClosureAnalysis: selectedChecks.has('closure'),
-                    runMemoryAnalysis: selectedChecks.has('memory'),
-                    maxRetentionStates: options.maxRetentionStates,
-                    maxRetentionCallDepth: options.maxRetentionCallDepth,
+                    runListenerAnalysis: selectedChecks.has('listener'),
                     maxAccessPathLength: options.maxAccessPathLength,
                     maxPropagationDepth: options.maxPropagationDepth,
                     reportUnresolvedReturns: options.reportUnresolvedReturns,
@@ -168,13 +161,13 @@ function parseChecks(value: string): AnalysisCheck[] {
         if (requested.length !== 1) {
             throw new InvalidArgumentError('"all" cannot be combined with other checks');
         }
-        return ['nullness', 'resource', 'closure', 'memory'];
+        return ['nullness', 'resource', 'listener'];
     }
-    const allowed = new Set<AnalysisCheck>(['nullness', 'resource', 'closure', 'memory']);
+    const allowed = new Set<AnalysisCheck>(['nullness', 'resource', 'listener']);
     const invalid = requested.filter(item => !allowed.has(item as AnalysisCheck));
     if (requested.length === 0 || invalid.length > 0) {
         throw new InvalidArgumentError(
-            `expected all, nullness, resource, closure, memory, or a comma-separated list; received: ${value}`
+            `expected all, nullness, resource, listener, or a comma-separated list; received: ${value}`
         );
     }
     return [...new Set(requested)] as AnalysisCheck[];

@@ -28,13 +28,7 @@ export class ReportGenerator {
             summary: {
                 nullDereferences: result.summary.nullDereferences,
                 resourceLeaks: result.resourceAnalysis.diagnostics.length,
-                ...(result.closureAnalysis ? {
-                    registrationLeaks: result.closureAnalysis.registrationLeaks.length,
-                    closureRetentionLeaks: result.closureAnalysis.closureRetentionLeaks.length,
-                } : {}),
-                ...(result.memoryAnalysis ? {
-                    memoryRetentionCandidates: result.memoryAnalysis.memoryRetentionCandidates.length,
-                } : {}),
+                ...(result.listenerAnalysis ? { listenerLeaks: result.listenerAnalysis.diagnostics.length } : {}),
             },
             nullness: {
                 enabled: result.nullness.enabled, success: result.nullness.success,
@@ -42,8 +36,7 @@ export class ReportGenerator {
                 ...(result.nullness.error ? { error: result.nullness.error } : {}),
             },
             resourceAnalysis: resource,
-            ...(result.closureAnalysis ? { closureAnalysis: result.closureAnalysis } : {}),
-            ...(result.memoryAnalysis ? { memoryAnalysis: result.memoryAnalysis } : {}),
+            ...(result.listenerAnalysis ? { listenerAnalysis: this.compactListener(result.listenerAnalysis) } : {}),
             duration: { total: result.duration.total }, warnings: result.warnings, errors: result.errors,
         };
     }
@@ -72,7 +65,7 @@ export class ReportGenerator {
             if (resource.unresolvedRuleIds?.length) lines.push(`未解析规则：${resource.unresolvedRuleIds.join(', ')}。`);
             if (resource.unsupportedApiFamilies?.length) lines.push(`未支持的 API 家族：${resource.unsupportedApiFamilies.join(', ')}。`);
         }
-        lines.push(...this.retentionLines(result, markdown), '', heading('空指针诊断'), '');
+        lines.push(...this.listenerLines(result, markdown), '', heading('空指针诊断'), '');
         if (!result.nullness.enabled) lines.push('未启用空指针分析。');
         else if (!result.nullness.success) lines.push(`分析失败：${result.nullness.error ?? '未知错误'}`);
         else if (!result.nullness.diagnostics.length) lines.push('未检出空指针候选问题。');
@@ -96,49 +89,23 @@ export class ReportGenerator {
 </head><body><h1>${title}</h1>${body}</body></html>`;
     }
 
-    private retentionLines(result: ProjectAnalysisResult, markdown = false): string[] {
-        const lines: string[] = [];
-        const section = (title: string, enabled: boolean, success: boolean, error?: string): void => {
-            lines.push('', markdown ? `## ${title}` : `【${title}】`, '',
-                !enabled ? '未启用。' : !success ? `分析未完成：${error ?? '未知错误'}` : '分析完成，以下均为静态候选。');
-        };
-        const closure = result.closureAnalysis;
-        if (closure) {
-            section('闭包与注册检测', closure.enabled, closure.success, closure.error);
-            if (closure.enabled) {
-                lines.push(`未取消注册：${closure.registrationLeaks.length}；闭包保留：${closure.closureRetentionLeaks.length}。`);
-                const entries = [...closure.registrationLeaks.map(item => ({ item, path: [] })),
-                    ...closure.closureRetentionLeaks.map(item => ({ item, path: item.retentionPath }))];
-                for (const { item, path } of entries) {
-                    lines.push(`- ${item.ruleId} / ${item.reason}（${item.confidence}）`,
-                        `  注册：${this.locationText(item.registration)}；生命周期边界：${this.locationText(item.boundary)}`,
-                        `  注册身份：registrar=${item.registrars.join(', ')}；event=${item.events.join(', ')}；callback=${item.callbacks.join(', ')}${item.timerId ? `；timer=${item.timerId}` : ''}`);
-                    for (const edge of path) {
-                        lines.push(`  保留链：${edge.from} → ${edge.via} → ${edge.to}`);
-                    }
-                }
-                if (closure.unresolvedRuleIds.length) lines.push(`未解析规则：${closure.unresolvedRuleIds.join(', ')}。`);
-                if (closure.unsupportedApiFamilies?.length) lines.push(`未支持的 API 家族：${closure.unsupportedApiFamilies.join(', ')}。`);
-                if (closure.limitations.length) lines.push(`覆盖限制：${closure.limitations.join(', ')}。`);
-            }
-        }
-        const memory = result.memoryAnalysis;
-        if (memory) {
-            section('内存保留检测', memory.enabled, memory.success, memory.error);
-            if (memory.enabled) {
-                lines.push(`内存保留候选：${memory.memoryRetentionCandidates.length}。`);
-                for (const item of memory.memoryRetentionCandidates) {
-                    lines.push(`- ${item.objectType}（${item.confidence}）`,
-                        `  创建：${this.locationText(item.allocation)}；生命周期结束：${this.locationText(item.lifecycleEnd)}`);
-                    for (const edge of item.retentionPath) lines.push(`  保留链：${edge.from} → ${edge.via} → ${edge.to}`);
-                }
-                if (memory.registrationRetentions.length) lines.push(
-                    `另有 ${memory.registrationRetentions.length} 条注册保留链关联证据，主诊断归闭包检测，不计入内存候选。`);
-                if (memory.limitations.length) lines.push(`覆盖限制：${memory.limitations.join(', ')}。`);
-                if (memory.unresolvedRegistrationRuleIds?.length) lines.push(`未解析的注册根规则：${memory.unresolvedRegistrationRuleIds.join(', ')}。`);
-                if (memory.unsupportedRegistrationApiFamilies?.length) lines.push(`未支持的注册根规则：${memory.unsupportedRegistrationApiFamilies.join(', ')}。`);
-            }
-        }
+    private compactListener(listener: NonNullable<ProjectAnalysisResult['listenerAnalysis']>): object {
+        const { solverStatistics: _statistics, ...result } = listener;
+        return result;
+    }
+
+    private listenerLines(result: ProjectAnalysisResult, markdown: boolean): string[] {
+        const listener = result.listenerAnalysis;
+        if (!listener) return [];
+        const lines = ['', markdown ? '## Listener 注册清理' : '【Listener 注册清理】', ''];
+        if (!listener.enabled) return [...lines, '未启用。'];
+        if (!listener.success) lines.push(`分析未完成：${listener.error ?? '未知错误'}`);
+        else lines.push(`未解除注册候选：${listener.diagnostics.length}。`);
+        for (const item of listener.diagnostics) lines.push(
+            `- ${item.ruleId}：${item.reason}（${item.confidence}）`,
+            `  注册：${this.locationText(item.allocation)}；边界：${this.locationText(item.boundary)}`);
+        if (listener.unresolvedRuleIds?.length) lines.push(`未解析规则：${listener.unresolvedRuleIds.join(', ')}。`);
+        if (listener.unsupportedApiFamilies?.length) lines.push(`覆盖限制：${listener.unsupportedApiFamilies.join(', ')}。`);
         return lines;
     }
 

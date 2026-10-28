@@ -19,8 +19,7 @@
 | [生命周期](analysis/lifecycle.md) | 收集框架入口，构造 DummyMain 和回调后继 | 两种可选模型；动态 owner/route 使用保守 fallback |
 | [IFDS](analysis/ifds.md) | 通用事实传播、调用返回摘要、语义去重 | 提供求解机制，不定义缺陷或完整异步调度 |
 | [空指针](analysis/nullness.md) | 空值访问路径、分支约束、库摘要和补充入口 | 有界、摘要驱动，受 ArkIR 与调用解析影响 |
-| [资源](analysis/resource.md) | 精确 SDK 句柄义务 IFDS | 10 个默认资源家族，非全平台覆盖 |
-| [闭包与注册](analysis/closure.md) | 注册身份、取消匹配、捕获链与寿命边界 | 九个摘要家族；没有完整回调执行时序 |
-| [内存保留](analysis/memory.md) | 生命周期后的强引用根可达性 | 不测堆增长；附属对象归属和重复实例存在近似 |
+| [资源](analysis/resource.md) | 精确 SDK 句柄义务 IFDS | 10 个默认家族，包含显式图像内存，非全平台覆盖 |
+| [Listener 注册清理](analysis/listener.md) | 注册者、事件、回调/token 的 IFDS 清理义务 | 不分析闭包保留；复杂别名与重复注册存在限制 |
 
-CLI 默认四类检查、`flat` 模型；资源直接使用规则 IFDS。API 默认仅开启空指针与资源。主报告 schema 为 3，各模块有显式启用/完成状态。
+CLI 默认三类检查、`flat` 模型；资源直接使用规则 IFDS。API 默认仅开启空指针与资源。主报告 schema 为 5，各模块有显式启用/完成状态。

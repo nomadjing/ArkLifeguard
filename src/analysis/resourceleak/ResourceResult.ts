@@ -7,6 +7,8 @@ export interface ResourceLocation {
 }
 
 export type ResourceLeakReason =
+    | 'unregistered'
+    | 'unknown-registration'
     | 'unreleased'
     | 'partially-released'
     | 'overwritten'

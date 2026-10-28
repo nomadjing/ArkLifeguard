@@ -3,36 +3,34 @@ import { ProjectAnalyzer } from '../../src/application';
 import { buildResourceScene, fixturePath } from '../helpers/buildScene';
 
 describe('ProjectAnalyzer module orchestration', () => {
-    it('keeps standalone and combined retention checks identical on the lifecycle entry', async () => {
-        const options = { sdkPaths: [fixturePath('resource', 'platform-sdk')], runNullness: false, runResourceAnalysis: false };
+    it('runs resource and listener obligations independently or together', async () => {
+        const options = { sdkPaths: [fixturePath('resource', 'platform-sdk')], runNullness: false };
         const project = fixturePath('resource', 'retention-app');
-        const closure = await new ProjectAnalyzer({ ...options, runClosureAnalysis: true }).analyze(project);
-        const memory = await new ProjectAnalyzer({ ...options, runMemoryAnalysis: true }).analyze(project);
-        const combined = await new ProjectAnalyzer({ ...options, runClosureAnalysis: true, runMemoryAnalysis: true, runResourceAnalysis: true }).analyze(project);
+        const resource = await new ProjectAnalyzer(options).analyze(project);
+        const listener = await new ProjectAnalyzer({ ...options, runResourceAnalysis: false, runListenerAnalysis: true }).analyze(project);
+        const combined = await new ProjectAnalyzer({ ...options, runListenerAnalysis: true }).analyze(project);
         expect(combined.status, combined.errors.join(', ')).toBe('success');
-        expect(combined.schemaVersion).toBe(3);
-        expect(combined.closureAnalysis?.closureRetentionLeaks).toHaveLength(1);
-        expect(combined.memoryAnalysis?.memoryRetentionCandidates).toHaveLength(1);
-        expect(closure.closureAnalysis).toEqual(combined.closureAnalysis);
-        expect(memory.memoryAnalysis).toEqual(combined.memoryAnalysis);
-        expect(closure.memoryAnalysis).toMatchObject({ enabled: false, success: true, memoryRetentionCandidates: [] });
-        expect(memory.closureAnalysis).toMatchObject({ enabled: false, success: true, closureRetentionLeaks: [] });
-        expect(combined.resourceAnalysis.diagnostics).toEqual([]);
-        expect(combined.summary).toMatchObject({ registrationLeaks: 0, closureRetentionLeaks: 1, memoryRetentionCandidates: 1 });
+        expect(combined.schemaVersion).toBe(5);
+        expect(combined.listenerAnalysis?.diagnostics).toHaveLength(1);
+        expect(combined.resourceAnalysis.diagnostics).toHaveLength(1);
+        expect(combined.resourceAnalysis.diagnostics[0].ruleId).toBe('PixelMapNotReleased');
+        expect(resource.resourceAnalysis).toEqual(combined.resourceAnalysis);
+        expect(listener.listenerAnalysis).toEqual(combined.listenerAnalysis);
+        expect(resource.listenerAnalysis?.enabled).toBe(false);
+        expect(listener.resourceAnalysis.enabled).toBe(false);
+        expect(combined.summary).toMatchObject({ resourceLeaks: 1, listenerLeaks: 1 });
+        expect(combined).not.toHaveProperty('memoryAnalysis');
+        expect(combined).not.toHaveProperty('closureAnalysis');
     });
-    it('preserves other results when closure configuration fails', async () => {
+    it('isolates listener configuration failures from resource results', async () => {
         const result = await new ProjectAnalyzer({ sdkPaths: [fixturePath('resource', 'platform-sdk')],
-            runNullness: false, runResourceAnalysis: false, runClosureAnalysis: true, runMemoryAnalysis: true,
-            closureRules: [] }).analyze(fixturePath('resource', 'retention-app'));
+            runNullness: false, runListenerAnalysis: true, listenerRules: [] })
+            .analyze(fixturePath('resource', 'retention-app'));
         expect(result.status).toBe('failed');
-        expect(result.closureAnalysis?.success).toBe(false);
-        expect(result.memoryAnalysis?.success).toBe(true);
-        expect(result.memoryAnalysis?.memoryRetentionCandidates).toHaveLength(1);
-        expect(result.errors).toContain(result.closureAnalysis?.error);
-    });
-    it('validates retention exploration bounds before building a Scene', () => {
-        expect(() => new ProjectAnalyzer({ maxRetentionStates: 0 })).toThrow('maxRetentionStates');
-        expect(() => new ProjectAnalyzer({ maxRetentionCallDepth: 0 })).toThrow('maxRetentionCallDepth');
+        expect(result.listenerAnalysis?.success).toBe(false);
+        expect(result.resourceAnalysis.success).toBe(true);
+        expect(result.resourceAnalysis.diagnostics).toHaveLength(1);
+        expect(result.errors).toContain(result.listenerAnalysis?.error);
     });
     it('runs the default resource contract alongside nullness on one lifecycle entry', async () => {
         const result = await new ProjectAnalyzer({
@@ -75,14 +73,14 @@ describe('ProjectAnalyzer module orchestration', () => {
 
     it('reports empty rules as failure while preserving independent module results', async () => {
         const result = await new ProjectAnalyzer({ sdkPaths: [fixturePath('resource', 'platform-sdk')],
-            runNullness: false, runResourceAnalysis: true, resourceRules: [], runMemoryAnalysis: true,
+            runNullness: false, runResourceAnalysis: true, resourceRules: [], runListenerAnalysis: true,
         }).analyze(fixturePath('resource', 'retention-app'));
         expect(result.status).toBe('failed');
         expect(result.resourceAnalysis).toMatchObject({ enabled: true, status: 'failed', success: false, diagnostics: [] });
         expect(result.resourceAnalysis.error).toContain('没有可用规则');
         expect(result.errors).toContain(result.resourceAnalysis.error);
-        expect(result.memoryAnalysis?.success).toBe(true);
-        expect(result.memoryAnalysis?.memoryRetentionCandidates).toHaveLength(1);
+        expect(result.listenerAnalysis?.success).toBe(true);
+        expect(result.listenerAnalysis?.diagnostics).toHaveLength(1);
     });
 
     it('uses explicitly injected exact signatures in the sole resource result', async () => {

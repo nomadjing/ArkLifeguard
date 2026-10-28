@@ -1,7 +1,7 @@
 /** Known registration families without a dedicated identity/cancellation summary.
  * This is a coverage catalog, not an executable fallback matcher.
  */
-export const UNSUPPORTED_REGISTRATION_API_FAMILIES: readonly string[] = Object.freeze([
+export const UNSUPPORTED_LISTENER_API_FAMILIES: readonly string[] = Object.freeze([
     'sensor.on',
     'geoLocationManager.on',
     'worker.onmessage',

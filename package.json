@@ -1,7 +1,7 @@
 {
   "name": "arkLifeguard",
   "version": "0.1.0",
-  "description": "HarmonyOS source analyzer for nullness, resource obligations, closure and memory retention.",
+  "description": "HarmonyOS source analyzer for nullness, resource obligations, listener cleanup obligations.",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,8 +21,7 @@
     "test:cli": "vitest run test/application test/report test/cli",
     "test:nullness": "vitest run test/nullness --exclude test/nullness/NullnessArkDefectBench.test.ts",
     "test:resource": "vitest run test/resourceleak",
-    "test:closure": "vitest run test/closure",
-    "test:memory": "vitest run test/memory",
+    "test:listener": "vitest run test/resourceleak/ListenerAnalysis.test.ts",
     "test:nullness:bench": "vite-node scripts/test-nullness-bench.ts",
     "test:nullness:real-apps": "vite-node scripts/test-nullness-real-apps.ts",
     "test:resource:real-apps": "vite-node scripts/test-resource-real-apps.ts",

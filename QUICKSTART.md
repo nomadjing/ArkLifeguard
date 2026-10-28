@@ -24,16 +24,16 @@ SDK 选择按以下顺序：
 ```bash
 npm run cli -- analyze "/path/to/HarmonyOSApp" \
   --sdk "/path/to/openharmony/ets" \
-  --checks nullness,resource,closure,memory \
+  --checks nullness,resource,listener \
   --format json --output out/report.json
 ```
 
-`--checks` 支持 `all`、四个单项和逗号分隔组合。CLI 默认 `all`；未知名称是参数错误。工程路径包含空格或中文时保留引号。
+`--checks` 支持 `all`、三个单项和逗号分隔组合。CLI 默认 `all`；未知名称是参数错误。工程路径包含空格或中文时保留引号。
 
 | 检查 | 实际执行 | 结果 |
 | --- | --- | --- |
 | `--checks resource` | 完整 SDK 签名与资源句柄事实 IFDS | `resourceAnalysis` |
-| `--checks closure,memory` | 两个独立堆解释器 | `closureAnalysis`、`memoryAnalysis`；资源模块关闭 |
+| `--checks listener` | 注册清理义务 IFDS | `listenerAnalysis.diagnostics`；资源模块关闭 |
 
 资源只有一个规则引擎，无需选择实现。覆盖与限制见[资源模块](docs/analysis/resource.md)。
 
@@ -43,8 +43,6 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 | --- | ---: | --- |
 | `--max-access-path-length` | 5 | 空指针访问路径长度 |
 | `--max-propagation-depth` | 40 | 空指针事实传播深度；不约束资源检查 |
-| `--max-retention-states` | 20000 | 每个闭包/内存 Runner 的状态上限 |
-| `--max-retention-call-depth` | 4 | 闭包/内存的调用深度上限 |
 | `--format` | `text` | `json`、`text`、`markdown`、`html` |
 
 资源内部调用事实深度固定为 4，超界转为未知所有权，CLI 的传播深度参数不改变它。完整 API 的 `settings.resourceBounds.maxCallDepth` 单独记录该约束。
@@ -65,7 +63,7 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 
 `--output` 自动创建上级目录；省略时输出到标准输出。生命周期报告单独包含模型配置、Ability、Component、导航和 DummyMain，不进入主报告。
 
-`--ifds-stats` 开启资源求解统计并写入独立 JSON（schema 2）。完整 API 的统计位于 `resourceAnalysis.solverStatistics`，主用户报告省略该字段；未启用资源或统计未产生时旁路 `statistics` 为 null。闭包/内存统计位于各自 `statistics`，不是 IFDS 统计。
+`--ifds-stats` 开启资源/listener IFDS 统计并写入 schema 2 旁路 JSON。完整 API 的 solverStatistics 在主用户报告中省略；未启用模块或未产生统计时 statistics 为 null。
 
 | 退出码 | 含义 |
 | --- | --- |
@@ -73,13 +71,13 @@ npm run cli -- analyze "/path/to/HarmonyOSApp" \
 | 1 | 参数、工程/SDK、构建 Scene 或其他顶层执行错误 |
 | 2 | 已生成报告，但一个或多个分析模块失败 |
 
-主 JSON 为 `schemaVersion: 3`、`analysisKind: "arklifeguard"`。完整 API 的 `settings` 记录检查开关；主报告包含各模块 `enabled` / `success`。资源额外包含 `status: disabled/success/failed`，未启用时仍有显式关闭结果。
+主 JSON 为 `schemaVersion: 5`、`analysisKind: "arklifeguard"`。完整 API 的 `settings` 记录检查开关；主报告包含各模块 `enabled` / `success`。资源和 listener 包含 `status: disabled/success/failed`，未启用时仍有显式关闭结果。
 
-`summary.resourceLeaks` 对应 `resourceAnalysis.diagnostics.length`。注册、闭包、内存数量各自分列，不合并注册关联证据。失败时空数组表示未得到诊断，不表示工程安全。
+`summary.resourceLeaks` 对应 `resourceAnalysis.diagnostics.length`。listener 数量为 summary.listenerLeaks，对应 listenerAnalysis.diagnostics.length。失败时空数组表示未得到诊断，不表示工程安全。
 
-资源的 `unsupportedApiFamilies`、闭包的 `unsupportedApiFamilies` 和内存的 `unsupportedRegistrationApiFamilies` 是默认模型已知缺口目录；不是实际调用清单，不是完整平台覆盖枚举，也不判断自定义规则是否补足这些 API。
+资源与 listener 的 unsupportedApiFamilies 是默认模型已知缺口目录，不是实际调用清单或完整平台覆盖枚举。
 
-`high` 表示当前模型下证据较强，不代表人工确认缺陷。`low`、`unknown-ownership`、`limitations`、未支持或未解析规则均应连同源码审查。`success` 只表示运行完成，不表示全语言或全平台覆盖。
+`high` 表示当前模型下证据较强，不代表人工确认缺陷。`low`、`unknown-ownership`、`unknown-registration`、未支持或未解析规则均应连同源码审查。`success` 只表示运行完成，不表示全语言或全平台覆盖。
 
 ## TypeScript API
 
@@ -90,29 +88,26 @@ const result = await new ProjectAnalyzer({
     sdkPaths: ['/path/to/openharmony/ets'],
     runNullness: true,
     runResourceAnalysis: true,
-    runClosureAnalysis: true,
-    runMemoryAnalysis: true,
-    maxRetentionStates: 20000,
-    maxRetentionCallDepth: 4,
+    runListenerAnalysis: true,
 }).analyze('/path/to/HarmonyOSApp');
 ```
 
-在仓库根目录使用该导入；构建后可从 `./dist` 导入。API 默认 `runNullness=true`、`runResourceAnalysis=true`、`runClosureAnalysis=false`、`runMemoryAnalysis=false`。
+在仓库根目录使用该导入；构建后可从 `./dist` 导入。API 默认 `runNullness=true`、`runResourceAnalysis=true`、`runListenerAnalysis=false`。
 
-API 可注入 `resourceRules` 和 `closureRules`，替代 SDK 默认规则。显式空资源/闭包规则会使对应检查失败；内存可使用空注册摘要，仍检查静态/全局根。`closureRules` 同时供内存解析注册根，与是否开启闭包模块无关。CLI 当前不提供规则文件参数。
+API 可注入 resourceRules 和 listenerRules 替代 SDK 默认规则。显式空规则使对应模块失败；CLI 当前不提供规则文件参数。旧 memory/closure 开关、保留链结果和堆预算参数已移除。
 
-直接运行某个 Runner 时，调用方负责构建 Scene、推断类型、准备入口，并为闭包/内存提供生命周期合同。详细签名见[架构](docs/architecture.md)。
+直接运行某个 Runner 时，调用方负责构建 Scene、推断类型、准备入口，不需要提供旧的 lifetimes 合同。详细签名见[架构](docs/architecture.md)。
 
 ## 构建与问题定位
 
 ```bash
 npm run build
 node dist/cli/main.js analyze "/path/to/HarmonyOSApp" \
-  --sdk "/path/to/openharmony/ets" --checks closure,memory
+  --sdk "/path/to/openharmony/ets" --checks resource,listener
 ```
 
 构建会复制空指针 SDK 摘要 JSON，不能只运行裸 `tsc` 后假定发布产物完整。
 
-没有候选时，依次检查：模块是否启用、运行是否完成、规则是否解析、生命周期边界是否到达、创建调用是否实际可达。独立资源的 `coverage` 提供全部/可达创建与释放调用；保留分析的 `no-observed-lifecycle-end` 表示未观测到寿命终点。
+没有候选时，依次检查模块启用、运行完成、规则解析和获取调用可达性。资源/listener 的 coverage 提供全部与可达的获取、清理调用统计。
 
 SDK 找不到时显式传 `--sdk`；大项目遇到内存不足可为 Node 设置堆上限。调试 IR 和最小测试命令见[测试与调试](docs/testing.md)。

@@ -21,9 +21,7 @@ import {
 } from '../analysis/nullness/NullnessAnalysisRunner';
 import { ResourceRunner } from '../analysis/resourceleak';
 import type { ResourceAnalysisResult, ResourceRule } from '../analysis/resourceleak';
-import { ClosureRunner, type ClosureAnalysisResult, type RegistrationRule } from '../analysis/closure';
-import { MemoryRunner, type MemoryAnalysisResult } from '../analysis/memory';
-import type { LifetimeBoundary } from '../analysis/shared/HeapFlow';
+import { ListenerRunner, type ListenerRule } from '../analysis/resourceleak';
 
 export interface ProjectAnalysisOptions {
     sdkRoot?: string;
@@ -34,11 +32,8 @@ export interface ProjectAnalysisOptions {
     runNullness?: boolean;
     runResourceAnalysis?: boolean;
     resourceRules?: readonly ResourceRule[];
-    runClosureAnalysis?: boolean;
-    runMemoryAnalysis?: boolean;
-    closureRules?: readonly RegistrationRule[];
-    maxRetentionStates?: number;
-    maxRetentionCallDepth?: number;
+    runListenerAnalysis?: boolean;
+    listenerRules?: readonly ListenerRule[];
     maxAccessPathLength?: number;
     maxPropagationDepth?: number;
     reportUnresolvedReturns?: boolean;
@@ -63,7 +58,7 @@ export interface NullnessDiagnosticRecord {
 }
 
 export interface ProjectAnalysisResult {
-    schemaVersion: 3;
+    schemaVersion: 5;
     analysisKind: 'arklifeguard';
     status: 'success' | 'failed';
     project: {
@@ -78,15 +73,14 @@ export interface ProjectAnalysisResult {
         analyzeNavigation: boolean;
         runNullness: boolean;
         runResourceAnalysis: boolean;
-        runClosureAnalysis?: boolean;
-        runMemoryAnalysis?: boolean;
-        retentionBounds?: { maxStates: number; maxCallDepth: number };
+        runListenerAnalysis?: boolean;
         lifecycleModel: 'flat';
         bounds: {
             maxAccessPathLength: number;
             maxPropagationDepth: number;
         };
         resourceBounds: { maxCallDepth: number };
+        listenerBounds?: { maxCallDepth: number };
         boundEnforcement: {
             maxAccessPathLength: 'enforced';
             maxPropagationDepth: 'enforced';
@@ -106,9 +100,7 @@ export interface ProjectAnalysisResult {
         navigations: number;
         nullDereferences: number;
         resourceLeaks: number;
-        registrationLeaks?: number;
-        closureRetentionLeaks?: number;
-        memoryRetentionCandidates?: number;
+        listenerLeaks?: number;
         reachedStatements: number;
         reachedFacts: number;
     };
@@ -127,16 +119,14 @@ export interface ProjectAnalysisResult {
         error?: string;
     };
     resourceAnalysis: ResourceAnalysisResult;
-    closureAnalysis?: ClosureAnalysisResult;
-    memoryAnalysis?: MemoryAnalysisResult;
+    listenerAnalysis?: ResourceAnalysisResult;
     duration: {
         sceneBuilding: number;
         lifecycleModeling: number;
         navigationAnalysis: number;
         nullnessAnalysis: number;
         resourceAnalysis: number;
-        closureAnalysis?: number;
-        memoryAnalysis?: number;
+        listenerAnalysis?: number;
         total: number;
     };
     warnings: string[];
@@ -180,16 +170,13 @@ export interface DummyMainRecord {
     uiCallbackCalls: number;
 }
 
-const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'closureRules'>> = {
+const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'listenerRules'>> = {
     inferTypes: true,
     extractUICallbacks: true,
     analyzeNavigation: true,
     runNullness: true,
     runResourceAnalysis: true,
-    runClosureAnalysis: false,
-    runMemoryAnalysis: false,
-    maxRetentionStates: 20000,
-    maxRetentionCallDepth: 4,
+    runListenerAnalysis: false,
     maxAccessPathLength: 5,
     maxPropagationDepth: 40,
     reportUnresolvedReturns: false,
@@ -199,8 +186,8 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
 
 /** Builds one lifecycle entry and runs the selected independent checks. */
 export class ProjectAnalyzer {
-    private readonly options: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'closureRules'>> &
-        Pick<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'closureRules'>;
+    private readonly options: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'listenerRules'>> &
+        Pick<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPaths' | 'resourceRules' | 'listenerRules'>;
     private readonly warnings: string[] = [];
 
     constructor(options: ProjectAnalysisOptions = {}) {
@@ -262,26 +249,11 @@ export class ProjectAnalyzer {
         }
         const resourceAnalysis = Date.now() - resourceStart;
 
-        const lifetimes: LifetimeBoundary[] = [...new Set([...abilities.map(item => item.arkClass),
-            ...components.map(item => item.arkClass)])].map(arkClass => ({
-                classSignature: arkClass.getSignature().toString(),
-                endMethodSignatures: arkClass.getMethods().filter(method =>
-                    ['onDestroy', 'aboutToDisappear'].includes(method.getName()))
-                    .map(method => method.getSignature().toString()),
-            }));
-        const retentionOptions = { lifetimes, maxStates: this.options.maxRetentionStates,
-            maxCallDepth: this.options.maxRetentionCallDepth };
-        const closureStart = Date.now();
-        const closureResult: ClosureAnalysisResult = this.options.runClosureAnalysis
-            ? new ClosureRunner(scene, this.options.closureRules, retentionOptions).runWithDummyMain(dummyMain)
-            : { enabled: false, success: true, registrationLeaks: [], closureRetentionLeaks: [],
-                unresolvedRuleIds: [], limitations: [] };
-        const closureAnalysis = Date.now() - closureStart;
-        const memoryStart = Date.now();
-        const memoryResult: MemoryAnalysisResult = this.options.runMemoryAnalysis
-            ? new MemoryRunner(scene, retentionOptions, this.options.closureRules).runWithDummyMain(dummyMain)
-            : { enabled: false, success: true, memoryRetentionCandidates: [], registrationRetentions: [], limitations: [] };
-        const memoryAnalysis = Date.now() - memoryStart;
+        const listenerStart = Date.now();
+        const listenerResult: ResourceAnalysisResult = this.options.runListenerAnalysis
+            ? new ListenerRunner(scene, this.options.listenerRules, this.options.collectSolverStatistics).runWithDummyMain(dummyMain)
+            : { enabled: false, status: 'disabled', success: true, entryMethod: '', diagnostics: [] };
+        const listenerAnalysis = Date.now() - listenerStart;
 
         const nullnessStart = Date.now();
         const nullnessResult = this.options.runNullness
@@ -309,8 +281,7 @@ export class ProjectAnalyzer {
             : 0;
         const nullnessSuccess = nullnessResult?.success ?? !this.options.runNullness;
         const errors = [
-            ...(!closureResult.success ? [closureResult.error ?? '闭包分析未完成'] : []),
-            ...(!memoryResult.success ? [memoryResult.error ?? '内存分析未完成'] : []),
+            ...(!listenerResult.success ? [listenerResult.error ?? 'Listener 分析未完成'] : []),
             ...(!nullnessSuccess ? [nullnessResult?.error ?? '空指针分析未完成'] : []),
             ...(!resourceResult.success ? [resourceResult.error ?? '资源分析未完成'] : []),
         ];
@@ -321,7 +292,7 @@ export class ProjectAnalyzer {
         }).length;
 
         return {
-            schemaVersion: 3,
+            schemaVersion: 5,
             analysisKind: 'arklifeguard',
             status: errors.length === 0 ? 'success' : 'failed',
             project: {
@@ -336,15 +307,14 @@ export class ProjectAnalyzer {
                 analyzeNavigation: this.options.analyzeNavigation,
                 runNullness: this.options.runNullness,
                 runResourceAnalysis: this.options.runResourceAnalysis,
-                runClosureAnalysis: this.options.runClosureAnalysis,
-                runMemoryAnalysis: this.options.runMemoryAnalysis,
-                retentionBounds: { maxStates: this.options.maxRetentionStates, maxCallDepth: this.options.maxRetentionCallDepth },
+                runListenerAnalysis: this.options.runListenerAnalysis,
                 lifecycleModel: 'flat',
                 bounds: {
                     maxAccessPathLength: this.options.maxAccessPathLength,
                     maxPropagationDepth: this.options.maxPropagationDepth,
                 },
                 resourceBounds: { maxCallDepth: 4 },
+                listenerBounds: { maxCallDepth: 4 },
                 boundEnforcement: {
                     maxAccessPathLength: 'enforced',
                     maxPropagationDepth: 'enforced',
@@ -365,9 +335,7 @@ export class ProjectAnalyzer {
                 navigations: navigations.length,
                 nullDereferences: diagnostics.length,
                 resourceLeaks: resourceResult.diagnostics.length,
-                registrationLeaks: closureResult.registrationLeaks.length,
-                closureRetentionLeaks: closureResult.closureRetentionLeaks.length,
-                memoryRetentionCandidates: memoryResult.memoryRetentionCandidates.length,
+                listenerLeaks: listenerResult.diagnostics.length,
                 reachedStatements,
                 reachedFacts,
             },
@@ -386,16 +354,14 @@ export class ProjectAnalyzer {
                 ...(nullnessResult?.error ? { error: nullnessResult.error } : {}),
             },
             resourceAnalysis: resourceResult,
-            closureAnalysis: closureResult,
-            memoryAnalysis: memoryResult,
+            listenerAnalysis: listenerResult,
             duration: {
                 sceneBuilding,
                 lifecycleModeling,
                 navigationAnalysis,
                 nullnessAnalysis,
                 resourceAnalysis,
-                closureAnalysis,
-                memoryAnalysis,
+                listenerAnalysis,
                 total: Date.now() - totalStart,
             },
             warnings: [...this.warnings],
@@ -591,8 +557,6 @@ export class ProjectAnalyzer {
         for (const [name, value] of [
             ['maxAccessPathLength', this.options.maxAccessPathLength],
             ['maxPropagationDepth', this.options.maxPropagationDepth],
-            ['maxRetentionStates', this.options.maxRetentionStates],
-            ['maxRetentionCallDepth', this.options.maxRetentionCallDepth],
         ] as const) {
             if (!Number.isInteger(value) || value < 1) {
                 throw new Error(`${name} must be a positive integer: ${value}`);
