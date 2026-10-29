@@ -36,6 +36,7 @@ interface AnalyzeCliOptions {
     reportUnresolvedReturns: boolean;
     lifecycleReport?: string;
     ifdsStats?: string;
+    ifdsProgress?: string;
     title?: string;
     verbose: boolean;
 }
@@ -70,6 +71,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
         .option('--report-unresolved-returns', 'include low-confidence unresolved-return reports', false)
         .option('--lifecycle-report <path>', 'write lifecycle modeling details to a separate JSON report')
         .option('--ifds-stats <path>', 'collect resource/listener IFDS statistics and write a separate JSON report')
+        .option('--ifds-progress <prefix>', 'write live resource/listener solver snapshots with this path prefix')
         .option('--title <title>', 'custom report title')
         .option('-v, --verbose', 'show lifecycle analysis logs', false)
         .action(async (projectPath: string, options: AnalyzeCliOptions) => {
@@ -90,6 +92,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     maxPropagationDepth: options.maxPropagationDepth,
                     reportUnresolvedReturns: options.reportUnresolvedReturns,
                     collectSolverStatistics: options.ifdsStats !== undefined,
+                    solverProgressPath: options.ifdsProgress ? path.resolve(options.ifdsProgress) : undefined,
                     verbose: options.verbose,
                 };
                 const result = await new ProjectAnalyzer(analysisOptions).analyze(projectPath);

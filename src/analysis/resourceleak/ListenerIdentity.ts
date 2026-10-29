@@ -11,6 +11,9 @@ import { resourceValueKey } from './ResourceFact';
 export class ListenerIdentity {
     private readonly ids = new WeakMap<object, number>();
     private nextId = 1;
+    private readonly resolved = new Map<string, string | undefined>();
+    private readonly definitionCache = new Map<string, ArkAssignStmt[]>();
+    private readonly predecessorCache = new WeakMap<object, Map<Stmt, Stmt[]>>();
     private readonly callers = new Map<string, Stmt[]>();
     private readonly fieldWrites = new Map<string, number>();
     constructor(scene: Scene, private readonly successors: (stmt: Stmt) => readonly Stmt[]) {
@@ -34,6 +37,16 @@ export class ListenerIdentity {
     }
     resolve(value: Value | undefined, at: Stmt, seen = new Set<string>()): string | undefined {
         if (!value) return undefined;
+        if (seen.size === 0) {
+            const key = `${this.id(value)}:${this.id(at)}`;
+            if (this.resolved.has(key)) return this.resolved.get(key);
+            const result = this.resolveUncached(value, at, seen);
+            this.resolved.set(key, result);
+            return result;
+        }
+        return this.resolveUncached(value, at, seen);
+    }
+    private resolveUncached(value: Value, at: Stmt, seen: Set<string>): string | undefined {
         if (value instanceof ArkCastExpr) return this.resolve(value.getOp(), at, seen);
         if (value instanceof Constant) return `constant:${value.getType()}:${value.toString()}`;
         const key = `${this.id(value)}:${this.id(at)}`;
@@ -89,11 +102,18 @@ export class ListenerIdentity {
         return values.length && values.every(value => value !== undefined && value === values[0]) ? values[0] : undefined;
     }
     private definitions(value: Local, at: Stmt): ArkAssignStmt[] {
-        const statements = at.getCfg()?.getStmts() ?? [];
-        const predecessors = new Map<Stmt, Stmt[]>();
-        for (const stmt of statements) for (const successor of this.successors(stmt)) {
-            const entries = predecessors.get(successor) ?? [];
-            entries.push(stmt); predecessors.set(successor, entries);
+        const cacheKey = `${this.id(value)}:${this.id(at)}`;
+        const cached = this.definitionCache.get(cacheKey);
+        if (cached) return cached;
+        const cfg = at.getCfg();
+        let predecessors = cfg ? this.predecessorCache.get(cfg) : undefined;
+        if (!predecessors) {
+            predecessors = new Map<Stmt, Stmt[]>();
+            for (const stmt of cfg?.getStmts() ?? []) for (const successor of this.successors(stmt)) {
+                const entries = predecessors.get(successor) ?? [];
+                entries.push(stmt); predecessors.set(successor, entries);
+            }
+            if (cfg) this.predecessorCache.set(cfg, predecessors);
         }
         const pending = [...(predecessors.get(at) ?? [])];
         const visited = new Set<Stmt>();
@@ -110,6 +130,7 @@ export class ListenerIdentity {
         const declaration = value.getDeclaringStmt();
         if (!result.length && declaration instanceof ArkAssignStmt &&
             (declaration.getRightOp() instanceof ArkParameterRef || declaration.getRightOp() instanceof ArkThisRef)) result.push(declaration);
+        this.definitionCache.set(cacheKey, result);
         return result;
     }
 }

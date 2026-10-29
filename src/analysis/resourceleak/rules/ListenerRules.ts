@@ -65,7 +65,9 @@ export function resolveListenerRules(scene: Scene): {
         const candidates = [...signatures.values()].filter(signature => {
             const cls = signature.getDeclaringClassSignature();
             const filename = cls.getDeclaringFileSignature().getFileName().replace(/\\/g, '/');
-            return filename.split('/').at(-1) === definition.file && cls.getClassName() === definition.owner;
+            const matchesFile = filename.split('/').at(-1) === definition.file ||
+                (definition.id === 'EventHubRegistration' && filename.endsWith('/application/EventHub.d.ts'));
+            return matchesFile && cls.getClassName() === definition.owner;
         });
         const on = candidates.filter(signature => definition.on.includes(signature.getMethodSubSignature().getMethodName()));
         const off = candidates.filter(signature => definition.off.includes(signature.getMethodSubSignature().getMethodName()));

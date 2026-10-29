@@ -45,7 +45,7 @@ export class DataflowSolver<D> {
     constructor(
         problem: DataflowProblem<D>,
         scene: Scene,
-        options: DataflowSolverOptions = {},
+        private readonly options: DataflowSolverOptions = {},
         icfg: InterproceduralCFG = new ArkInterproceduralCFG(scene)
     ) {
         this.problem = problem;
@@ -55,15 +55,33 @@ export class DataflowSolver<D> {
         this.pathEdgeStore = new PathEdgeStore(problem);
         this.summaryStore = new SummaryStore(problem);
         this.icfg = icfg;
-        if (options.collectStatistics) {
+        if (options.collectStatistics || options.onProgress) {
             this.statistics = createSolverStatistics('two-tier-control-flow');
         }
     }
 
+    private solveStarted = 0;
+    private lastProgress = 0;
+    private readonly factKinds = new Map<string, number>();
+    private readonly hotMethods = new Map<string, number>();
+
+    private emitProgress(completed: boolean): void {
+        this.options.onProgress?.({ completed, elapsedMs: Date.now() - this.solveStarted,
+            processedEdges: this.statistics?.processedEdges ?? 0, pathEdges: this.pathEdgeStore.size,
+            heapUsedBytes: process.memoryUsage().heapUsed, factKinds: Object.fromEntries(this.factKinds), summaries: { ...this.summaryStore.counts },
+            hotMethods: [...this.hotMethods].sort((a, b) => b[1] - a[1]).slice(0, 20)
+                .map(([method, processed]) => ({ method, processed })),
+        });
+        this.lastProgress = Date.now();
+    }
+
     public solve(): void {
         const startTime = Date.now();
+        this.solveStarted = startTime;
         this.init();
+        this.emitProgress(false);
         this.doSolve();
+        this.emitProgress(true);
         if (this.statistics) {
             this.statistics.solveTimeMs = Date.now() - startTime;
             this.statistics.finalPathEdgeCount = this.pathEdgeStore.size;
@@ -150,7 +168,7 @@ export class DataflowSolver<D> {
         }
         const startEdgePoint = edge.edgeStart;
         const exitEdgePoint = edge.edgeEnd;
-        this.summaryStore.addEndSummary(startEdgePoint, exitEdgePoint);
+        if (!this.summaryStore.addEndSummary(startEdgePoint, exitEdgePoint)) return;
         const callerEdges = this.summaryStore.getIncoming(startEdgePoint);
         if (callerEdges === undefined) {
             if (this.isRootMethod(startEdgePoint.node.getCfg()!.getDeclaringMethod())) {
@@ -162,7 +180,7 @@ export class DataflowSolver<D> {
             const callEdgePoint = callerEdge.edgeEnd;
             const returnSite = this.icfg.getReturnSiteOfCallAt(callEdgePoint.node);
             if (!returnSite) continue;
-            const returnFlowFunc = this.problem.getExitToReturnFlowFunction(exitEdgePoint.node, returnSite, callEdgePoint.node);
+            const returnFlowFunc = this.problem.getExitToReturnFlowFunction(exitEdgePoint.node, returnSite, callEdgePoint.node, callEdgePoint.fact);
             for (const fact of returnFlowFunc.getDataFacts(exitEdgePoint.fact)) {
                 const returnSitePoint = new PathEdgePoint<D>(returnSite, fact);
                 if (!this.summaryStore.addCallSummary(callEdgePoint, returnSitePoint)) continue;
@@ -197,7 +215,7 @@ export class DataflowSolver<D> {
 
         for (const handler of handlers) {
             const handlerTarget = this.icfg.getHandlerContinuation(handler);
-            const exitFlow = this.problem.getExceptionalExitToReturnFlowFunction(exceptionalExitPoint.node, handler, callEdgePoint.node);
+            const exitFlow = this.problem.getExceptionalExitToReturnFlowFunction(exceptionalExitPoint.node, handler, callEdgePoint.node, callEdgePoint.fact);
             this.addExceptionalCallSummaries(callerEdges, callEdgePoint, handlerTarget, exitFlow.getDataFacts(exceptionalExitPoint.fact));
 
             const callerFlow = this.problem.getCallToExceptionalReturnFlowFunction(
@@ -223,7 +241,7 @@ export class DataflowSolver<D> {
         const rootEntry = callEdgePoint.node.getCfg?.()?.getDeclaringMethod() === this.problem.getEntryMethod()
             ? this.problem.getEntryPoint() : undefined;
         if (!startOfCaller && !rootEntry) throw new Error('caller method has no start point');
-        for (const callerEdge of callerEdges) {
+        for (const callerEdge of this.summaryStore.matchingIncoming(callerEdges, callEdgePoint)) {
             if (callerEdge.edgeEnd.node !== callEdgePoint.node || !this.problem.factEqual(callerEdge.edgeEnd.fact, callEdgePoint.fact)) continue;
             if (callerEdge.edgeStart.node !== startOfCaller && callerEdge.edgeStart.node !== rootEntry) continue;
             this.propagate(new PathEdge<D>(callerEdge.edgeStart, returnSitePoint));
@@ -327,7 +345,7 @@ export class DataflowSolver<D> {
         this.summaryStore.addIncoming(startEdgePoint, edge);
         for (const exitEdgePoint of this.summaryStore.getEndSummaries(startEdgePoint)) {
             if (!returnSite) continue;
-            const returnFlowFunc = this.problem.getExitToReturnFlowFunction(exitEdgePoint.node, returnSite, callEdgePoint.node);
+            const returnFlowFunc = this.problem.getExitToReturnFlowFunction(exitEdgePoint.node, returnSite, callEdgePoint.node, callEdgePoint.fact);
             for (const returnFact of returnFlowFunc.getDataFacts(exitEdgePoint.fact)) {
                 this.summaryStore.addCallSummary(edge.edgeEnd, new PathEdgePoint<D>(returnSite, returnFact));
             }
@@ -346,6 +364,13 @@ export class DataflowSolver<D> {
             const pathEdge = this.takeNextEdge()!;
             if (this.statistics) this.statistics.processedEdges++;
             const targetStmt = pathEdge.edgeEnd.node;
+            if (this.options.onProgress) {
+                const kind = this.problem.getFactStatisticsKey(pathEdge.edgeEnd.fact);
+                this.factKinds.set(kind, (this.factKinds.get(kind) ?? 0) + 1);
+                const method = targetStmt.getCfg()?.getDeclaringMethod().getSignature().toString() ?? 'unknown';
+                this.hotMethods.set(method, (this.hotMethods.get(method) ?? 0) + 1);
+                if ((this.statistics!.processedEdges % 10000) === 0 && Date.now() - this.lastProgress >= 1000) this.emitProgress(false);
+            }
             if (!targetStmt) continue;
             if (this.icfg.isCallStatement(targetStmt)) {
                 this.processCallNode(pathEdge);

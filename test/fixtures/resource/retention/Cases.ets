@@ -1,6 +1,6 @@
 import emitter from '@ohos.events.emitter';
 import EventHub from '@ohos.app.ability.EventHub';
-class Roots { static owner: Object | null = null; static buffer: ArrayBuffer | null = null; static items: Object[] = []; static map: Map<number, Object> = new Map(); static weak: WeakRef<Object> | null = null; static first: EventHub; static second: EventHub; }
+class Roots { static owner: Object | null = null; static buffer: ArrayBuffer | null = null; static items: Object[] = []; static map: Map<number, Object> = new Map(); static weak: WeakRef<Object> | null = null; static first: EventHub; static second: EventHub; static interval: number = 0; static other: number = 0; }
 class EventLeak { value = 1; onCreate() { emitter.on({eventId: 1}, () => { this.value++; }); } onDestroy() {} }
 class EventRelease { value = 1; listener = () => { this.value++; }; onCreate() { emitter.on({eventId: 1}, this.listener); } onDestroy() { emitter.off(1, this.listener); } }
 class WrongEvent { value = 1; listener = () => { this.value++; }; onCreate() { emitter.on({eventId: 1}, this.listener); } onDestroy() { emitter.off(2, this.listener); } }
@@ -10,6 +10,7 @@ class NoCapture { onCreate() { emitter.on({eventId: 1}, () => { console.log('tic
 class CapturedCellCleared { value = 1; onCreate() { let owner: CapturedCellCleared | null = this; emitter.on({eventId: 1}, () => { owner?.value; }); owner = null; } onDestroy() {} }
 class IntervalLeak { value = 1; timer = 0; onCreate() { this.timer = setInterval(() => { this.value++; }, 1); } onDestroy() {} }
 class IntervalRelease { value = 1; timer = 0; onCreate() { this.timer = setInterval(() => { this.value++; }, 1); } onDestroy() { const alias = this.timer; clearInterval(alias); } }
+class TimerFieldHelper { timer = 0; other = 0; onCreate() { this.timer = setInterval(() => {}, 10); } unrelated() { this.other = 1; } cleanup() { clearInterval(this.timer); } cleanupWrapper() { this.cleanup(); } }
 class CallbackCleanup { value = 1; listener = () => { this.value++; }; onCreate() { emitter.on({eventId: 1}, this.listener); } onDestroy() { Promise.resolve().then(() => { emitter.off(1, this.listener); }); } }
 class WrongRegistrar { value = 1; listener = () => { this.value++; }; onCreate() { Roots.first.on('tick', this.listener); } onDestroy() { Roots.second.off('tick', this.listener); } }
 class LocalRegistrar { value = 1; hub = new EventHub(); onCreate() { this.hub.on('tick', () => { this.value++; }); } onDestroy() {} }
@@ -47,6 +48,7 @@ export class Cases {
  static CapturedCellClearedCase() {  const owner = new CapturedCellCleared(); owner.onCreate(); owner.onDestroy(); }
  static IntervalLeakCase() {  const owner = new IntervalLeak(); owner.onCreate(); owner.onDestroy(); }
  static IntervalReleaseCase() {  const owner = new IntervalRelease(); owner.onCreate(); owner.onDestroy(); }
+ static TimerFieldHelperCase() { const owner = new TimerFieldHelper(); owner.onCreate(); owner.unrelated(); owner.cleanupWrapper(); }
  static CallbackCleanupCase() {  const owner = new CallbackCleanup(); owner.onCreate(); owner.onDestroy(); }
  static WrongRegistrarCase() { Roots.first = new EventHub(); Roots.second = new EventHub(); const owner = new WrongRegistrar(); owner.onCreate(); owner.onDestroy(); }
  static LocalRegistrarCase() {  const owner = new LocalRegistrar(); owner.onCreate(); owner.onDestroy(); }
@@ -79,6 +81,74 @@ export class Cases {
      const callback = () => {};
      const alias = callback;
      emitter.on({eventId: 1}, callback); emitter.off(1, alias);
+ }
+ static cancelTimer(token: number) { clearInterval(token); }
+ static TimerHelperCase() {
+     const timer = setInterval(() => {}, 10);
+     Cases.cancelTimer(timer);
+ }
+ static deepTimerOne(token: number) { Cases.deepTimerTwo(token); }
+ static deepTimerTwo(token: number) { Cases.deepTimerThree(token); }
+ static deepTimerThree(token: number) { Cases.deepTimerFour(token); }
+ static deepTimerFour(token: number) { Cases.deepTimerFive(token); }
+ static deepTimerFive(token: number) { clearInterval(token); }
+ static DeepTimerHelperCase() { const token = setInterval(() => {}, 10); Cases.deepTimerOne(token); }
+ static TwoTimerCallersCase() {
+     const first = setInterval(() => {}, 10);
+     const second = setInterval(() => {}, 10);
+     Cases.cancelTimer(first);
+ }
+ static timerFactory(): number { return setInterval(() => {}, 10); }
+ static TwoTimerFactoryCallersCase() {
+     const first = Cases.timerFactory();
+     const second = Cases.timerFactory();
+     clearInterval(first);
+ }
+ static BothTimerFactoryCallersCase() {
+     const first = Cases.timerFactory();
+     const second = Cases.timerFactory();
+     clearInterval(first); clearInterval(second);
+ }
+ static throwingTimerCleanup(token: number) { clearInterval(token); throw new Error('after cleanup'); }
+ static ExceptionalTimerReturnCase() {
+     const token = setInterval(() => {}, 10);
+     try { Cases.throwingTimerCleanup(token); } catch (error) {}
+ }
+ static WrongTimerHelperCase() {
+     const timer = setInterval(() => {}, 10);
+     Cases.cancelTimer(99);
+ }
+ static opaqueWork() { console.log('unrelated work'); }
+ static EventUnrelatedHelperCase() {
+     emitter.on({eventId: 1}, () => {});
+     Cases.opaqueWork();
+ }
+ static cancelEventAll() { emitter.off(1); }
+ static cancelEventWrapper() { Cases.cancelEventAll(); }
+ static EventOffAllHelperCase() {
+     emitter.on({eventId: 1}, () => {});
+     Cases.cancelEventWrapper();
+ }
+ static registerOtherEvent() { emitter.on({eventId: 2}, () => {}); }
+ static EventNewRegistrationHelperCase() {
+     emitter.on({eventId: 1}, () => {});
+     Cases.registerOtherEvent();
+ }
+ static clearStaticTimer() { clearInterval(Roots.interval); }
+ static clearStaticTimerWrapper() { Cases.clearStaticTimer(); }
+ static replaceStaticTimer() { Roots.interval = 99; }
+ static changeOtherField() { Roots.other = 1; console.log('unrelated'); }
+ static StaticTimerReleaseCase() {
+     Roots.interval = setInterval(() => {}, 10);
+     Cases.clearStaticTimerWrapper();
+ }
+ static StaticTimerOverwriteCase() {
+     Roots.interval = setInterval(() => {}, 10);
+     Cases.replaceStaticTimer();
+ }
+ static StaticTimerUnrelatedCase() {
+     Roots.interval = setInterval(() => {}, 10);
+     Cases.changeOtherField();
  }
  static BoundAliasCase() {
      const owner = new MethodIdentity();

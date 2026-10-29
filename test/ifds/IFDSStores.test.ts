@@ -23,6 +23,41 @@ const point = (node: Stmt, value: string): PathEdgePoint<TestFact> =>
     new PathEdgePoint(node, fact(value));
 
 describe('IFDS stores', () => {
+    it('indexes matching callers without merging colliding input facts or call sites', () => {
+        const store = new SummaryStore(semantics);
+        const entry = point({} as Stmt, 'ENTRY');
+        const call = {} as Stmt;
+        const otherCall = {} as Stmt;
+        const first = new PathEdge(point({} as Stmt, 'ROOT'), point(call, 'AA'));
+        const second = new PathEdge(point({} as Stmt, 'ROOT'), point(call, 'BB'));
+        const third = new PathEdge(point({} as Stmt, 'ROOT'), point(otherCall, 'AA'));
+        for (const edge of [first, second, third]) store.addIncoming(entry, edge);
+        const incoming = store.getIncoming(entry)!;
+        expect([...store.matchingIncoming(incoming, point(call, 'AA'))]).toEqual([first]);
+        expect([...store.matchingIncoming(incoming, point(call, 'BB'))]).toEqual([second]);
+        // Late incoming callers must also be visible in the index.
+        const fourth = new PathEdge(point({} as Stmt, 'LATE'), point(call, 'AA'));
+        store.addIncoming(entry, fourth);
+        expect([...store.matchingIncoming(incoming, point(call, 'AA'))]).toEqual([first, fourth]);
+    });
+
+    it('deduplicates equivalent normal and exceptional exits while preserving hash collisions', () => {
+        const store = new SummaryStore(semantics);
+        const node = {} as Stmt;
+        const exit = {} as Stmt;
+        expect(store.addEndSummary(point(node, 'IN'), point(exit, 'AA'))).toBe(true);
+        expect(store.addEndSummary(point(node, 'IN'), point(exit, 'AA'))).toBe(false);
+        expect(store.addEndSummary(point(node, 'IN'), point(exit, 'BB'))).toBe(true);
+        expect(store.addExceptionalEndSummary(point(node, 'IN'), point(exit, 'AA'))).toBe(true);
+        expect(store.addExceptionalEndSummary(point(node, 'IN'), point(exit, 'AA'))).toBe(false);
+        expect(store.addExceptionalEndSummary(point(node, 'IN'), point(exit, 'BB'))).toBe(true);
+        expect(store.getEndSummaries(point(node, 'IN')).size).toBe(2);
+        expect(store.getExceptionalEndSummaries(point(node, 'IN')).size).toBe(2);
+        expect(store.counts.duplicateExits).toBe(2);
+        store.clear();
+        expect(store.getIncoming(point(node, 'IN'))).toBeUndefined();
+        expect(store.counts.normal).toBe(0);
+    });
     it('deduplicates PathEdges semantically and keeps hash collisions distinct', () => {
         const startNode = {} as Stmt;
         const endNode = {} as Stmt;

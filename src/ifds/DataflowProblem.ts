@@ -20,7 +20,7 @@ export abstract class DataflowProblem<D> {
 
     abstract getCallFlowFunction(srcStmt: Stmt, method: ArkMethod): FlowFunction<D>;
 
-    abstract getExitToReturnFlowFunction(srcStmt: Stmt, tgtStmt: Stmt, callStmt: Stmt): FlowFunction<D>;
+    abstract getExitToReturnFlowFunction(srcStmt: Stmt, tgtStmt: Stmt, callStmt: Stmt, callerFact?: D): FlowFunction<D>;
 
     abstract getCallToReturnFlowFunction(srcStmt: Stmt, tgtStmt: Stmt, callees?: ReadonlySet<ArkMethod>): FlowFunction<D>;
 
@@ -49,7 +49,8 @@ export abstract class DataflowProblem<D> {
     getExceptionalExitToReturnFlowFunction(
         _exitStmt: Stmt,
         _handlerStmt: Stmt,
-        _callStmt: Stmt
+        _callStmt: Stmt,
+        _callerFact?: D
     ): FlowFunction<D> {
         return this.identityFlowFunction();
     }
@@ -61,6 +62,8 @@ export abstract class DataflowProblem<D> {
     abstract getEntryMethod(): ArkMethod;
 
     abstract factEqual(d1: D, d2: D): boolean;
+
+    getFactStatisticsKey(_fact: D): string { return 'unclassified'; }
 
     /**
      * Return a stable semantic hash for one fact. Equal facts must have the same

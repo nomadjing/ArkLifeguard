@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
     ArkAwaitExpr,
     ArkCastExpr,
@@ -12,8 +14,9 @@ import {
 import { DataflowSolver } from '../../ifds/DataflowSolver';
 import { ArkInterproceduralCFG } from '../../ifds/icfg/ArkInterproceduralCFG';
 import type { InterproceduralCFG } from '../../ifds/icfg/InterproceduralCFG';
-import { ResourceFact, hasResourceHandle } from './ResourceFact';
+import { ResourceFact, hasResourceHandle, resourceValueKey } from './ResourceFact';
 import { ResourceProblem } from './ResourceProblem';
+import { OwnerBoundaryProblem, type ReleaseOwner } from './OwnerBoundaryProblem';
 import type { ResourceAnalysisResult, ResourceDiagnostic, ResourceLeakReason, ResourceLocation } from './ResourceResult';
 import type { ResourceRule } from './rules/ResourceRule';
 
@@ -33,7 +36,9 @@ export class ReleaseObligationRunner {
             readonly scope: 'resource' | 'listener';
             readonly unresolvedRuleIds: readonly string[];
             readonly unsupportedApiFamilies: readonly string[];
-        } = { label: '释放义务', scope: 'resource', unresolvedRuleIds: [], unsupportedApiFamilies: [] }
+        } = { label: '释放义务', scope: 'resource', unresolvedRuleIds: [], unsupportedApiFamilies: [] },
+        private readonly owners: readonly ReleaseOwner[] = [],
+        private readonly progressPath?: string,
     ) {}
 
     runWithDummyMain(dummyMain: ArkMethod, onSolved?: (solver: DataflowSolver<ResourceFact>) => void): ResourceAnalysisResult {
@@ -62,7 +67,16 @@ export class ReleaseObligationRunner {
             if (!entry) throw new Error(`${this.metadata.label}分析入口没有 CFG 语句`);
             const icfg = new ArkInterproceduralCFG(this.scene);
             const problem = this.createProblem(entry, dummyMain, this.rules, stmt => icfg.getNormalSuccessors(stmt));
-            const solver = new DataflowSolver(problem, this.scene, { collectStatistics: this.collectStatistics }, icfg);
+            const solver = new DataflowSolver(new OwnerBoundaryProblem(problem, dummyMain, this.owners),
+                this.scene, { collectStatistics: this.collectStatistics,
+                    onProgress: this.progressPath ? snapshot => {
+                        fs.mkdirSync(path.dirname(this.progressPath!), { recursive: true });
+                        const temporary = `${this.progressPath}.${process.pid}.tmp`;
+                        fs.writeFileSync(temporary, JSON.stringify({ scope: this.metadata.scope, ...snapshot,
+                            propagation: problem.getPropagationStatistics() }));
+                        fs.renameSync(temporary, this.progressPath!);
+                    } : undefined,
+                }, icfg);
             solver.solve();
             onSolved?.(solver);
             const byStatement = new Map<Stmt, ResourceFact[]>();
@@ -84,6 +98,7 @@ export class ReleaseObligationRunner {
                 reachedFacts: [...byStatement.values()].reduce((sum, facts) => sum + facts.length, 0),
                 unresolvedRuleIds: this.metadata.unresolvedRuleIds,
                 solverStatistics: solver.getStatistics(),
+                propagationStatistics: this.collectStatistics ? problem.getPropagationStatistics() : undefined,
                 coverage: this.rules.map(rule => {
                     const allocators = new Set(rule.allocators.map(api => api.methodSignature));
                     const releasers = new Set(rule.releasers.map(api => api.methodSignature));
@@ -150,11 +165,17 @@ export class ReleaseObligationRunner {
             }
             return id;
         };
-        const obligationKey = (fact: ResourceFact): string => `${fact.ruleId}|${siteId(fact.allocationSite!)}|${fact.acquisitionContext.map(siteId).join(',')}`;
+        const keyOf = (fact: ResourceFact) => `${fact.ruleId}|${siteId(fact.allocationSite!)}|${fact.acquisitionContext.map(siteId).join(',')}|${fact.owner ?? ''}`;
         const released = new Set<string>();
-        for (const facts of byStatement.values()) {
-            for (const fact of facts) {
-                if (fact.state === 'released' && fact.allocationSite) released.add(obligationKey(fact));
+        const releasedTimerHandles = new Map<string, Set<string>>();
+        for (const facts of byStatement.values()) for (const fact of facts) {
+            if (fact.state !== 'released' || !fact.allocationSite) continue;
+            const key = keyOf(fact);
+            released.add(key);
+            if (fact.registration?.event === 'timer') {
+                const handles = releasedTimerHandles.get(key) ?? new Set<string>();
+                for (const handle of fact.handles) handles.add(resourceValueKey(handle));
+                releasedTimerHandles.set(key, handles);
             }
         }
         for (const [exit, facts] of byStatement) {
@@ -163,23 +184,25 @@ export class ReleaseObligationRunner {
             if (!method) continue;
             for (const fact of facts) {
                 if (fact.isZero() || !fact.allocationSite || fact.frames.length > 0) continue;
-                if (fact.registration && (method !== entryMethod || !atExit)) continue;
+                if (!fact.boundary && fact.registration && (method !== entryMethod || !atExit)) continue;
+                if (!fact.boundary && fact.owner && method !== entryMethod) continue;
                 const lost = fact.hasLostHandles();
-                if (!lost && !atExit) continue;
-                // The contract asks for a reachable matching release, not cleanup
-                // on every path. Losing the last handle is separate evidence:
-                // releasing its replacement cannot discharge the old obligation.
-                if (!lost && released.has(obligationKey(fact))) continue;
-                if (!fact.registration && !lost && this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
+                if (!lost && !atExit && !fact.boundary) continue;
+                // Preserve the existing contract until branch/exception classification is implemented.
+                const matchingRelease = fact.registration?.event === 'timer'
+                    ? fact.handles.some(handle => releasedTimerHandles.get(keyOf(fact))?.has(resourceValueKey(handle)))
+                    : released.has(keyOf(fact));
+                if (!fact.boundary && !lost && matchingRelease) continue;
+                if (!fact.boundary && !fact.registration && !lost && this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
                 // Multiple lifecycle exits are evidence for one allocation, not independent leaks.
-                const key = `${fact.ruleId}|${siteId(fact.allocationSite)}`;
+                const key = `${fact.ruleId}|${siteId(fact.allocationSite)}|${fact.owner ?? ''}|${fact.boundary ? siteId(fact.boundary) : 0}`;
                 if (lost) {
                     const overwriteKey = `${key}|${siteId(fact.eventSite!)}|${fact.state}`;
                     if (seenOverwrites.has(overwriteKey)) continue;
                     seenOverwrites.add(overwriteKey);
                 }
                 const group = groups.get(key) ?? [];
-                group.push({ fact, exit: lost ? fact.eventSite! : exit });
+                group.push({ fact, exit: lost ? fact.eventSite! : fact.boundary ?? exit });
                 groups.set(key, group);
             }
         }

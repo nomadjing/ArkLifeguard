@@ -38,6 +38,7 @@ export interface ResourceAnalysisResult {
     readonly unsupportedApiFamilies?: readonly string[];
     readonly unresolvedRuleIds?: readonly string[];
     readonly solverStatistics?: Readonly<import('../../ifds').IFDSSolverStatistics>;
+    readonly propagationStatistics?: Readonly<{ entered: number; skipped: number; emptyHandleEntries: number }>;
     readonly coverage?: readonly ResourceRuleCoverage[];
 }
 

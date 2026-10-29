@@ -1,6 +1,7 @@
 export interface DataflowSolverOptions {
     /** Collect low-overhead aggregate solver statistics. Disabled by default. */
     collectStatistics?: boolean;
+    onProgress?: (snapshot: IFDSSolverProgress) => void;
 }
 
 export interface IFDSSolverStatistics {
@@ -51,4 +52,12 @@ export function createSolverStatistics(
         finalLaterEdgesSize: 0,
         finalPathEdgeCount: 0,
     };
+}
+
+export interface IFDSSolverProgress {
+    completed: boolean; elapsedMs: number; processedEdges: number; pathEdges: number;
+    heapUsedBytes: number;
+    summaries: Readonly<{ incoming: number; normal: number; exceptional: number; calls: number; duplicateExits: number }>;
+    factKinds: Readonly<Record<string, number>>;
+    hotMethods: readonly { method: string; processed: number }[];
 }

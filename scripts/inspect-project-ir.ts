@@ -43,7 +43,7 @@ function printHelp(): void {
         '',
         'Examples:',
         '  npm run inspect:project-ir -- "../../../ArkLifeguard/ArkDefectBench/Null Pointer Dereference/BasicNull/DirectNull"',
-        '  npm run inspect:project-ir -- ../../../ArkLifeguard/Demo4tests/OxHornCampus --sdk-root ../../../hapflow_artifact/sdk/default',
+        '  npm run inspect:project-ir -- Demo4tests/OxHornCampus --sdk-root sdk/default',
         '  npm run inspect:project-ir -- ../../../ArkLifeguard/Demo4tests/OxHornCampus --method EntryAbility --verbose-ir',
     ].join('\n'));
 }

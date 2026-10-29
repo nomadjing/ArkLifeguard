@@ -144,6 +144,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return {
             getDataFacts: fact => {
                 if (fact.isZero()) return new Set([fact]);
+                if (!this.shouldEnterCallee(srcStmt, method, fact)) return new Set();
                 if (this.isRuleApi(srcStmt)) return new Set();
                 if (fact.frames.length >= this.maxCallDepth) {
                     return new Set();
@@ -183,6 +184,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return { getDataFacts: fact => {
             if (fromCallee && !fact.isZero() && !this.isRuleApi(srcStmt) && [...(callees ?? [])].some(method =>
                 method.getCfg() && this.isDirectCallee(srcStmt, method) &&
+                this.shouldEnterCallee(srcStmt, method, fact) &&
                 (fact.registration || this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0))) {
                 // The actual callee summary owns these handles; an identity bypass would undo cleanup.
                 return new Set();
@@ -191,7 +193,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         } };
     }
 
-    getExceptionalExitToReturnFlowFunction(_exitStmt: Stmt, _handlerStmt: Stmt, callStmt: Stmt): FlowFunction<ResourceFact> {
+    getExceptionalExitToReturnFlowFunction(_exitStmt: Stmt, _handlerStmt: Stmt, callStmt: Stmt, _callerFact?: ResourceFact): FlowFunction<ResourceFact> {
         return { getDataFacts: fact => {
             if (fact.isZero()) return new Set([fact]);
             // Uncaught intermediate calls keep the original throw payload. Restore the
@@ -208,7 +210,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         } };
     }
 
-    getExitToReturnFlowFunction(exitStmt: Stmt, _returnSite: Stmt, callStmt: Stmt): FlowFunction<ResourceFact> {
+    getExitToReturnFlowFunction(exitStmt: Stmt, _returnSite: Stmt, callStmt: Stmt, _callerFact?: ResourceFact): FlowFunction<ResourceFact> {
         return {
             getDataFacts: fact => {
                 if (fact.isZero()) return new Set([fact]);
@@ -279,6 +281,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 const directCallees = [...(callees ?? [])].filter(method =>
                     method.getCfg() && this.isDirectCallee(srcStmt, method));
                 if (directCallees.some(method =>
+                    this.shouldEnterCallee(srcStmt, method, fact) &&
                     (fact.registration || this.mapCallerHandlesToCallee(srcStmt, method, fact.handles).length > 0))) {
                     // The callee summary owns this path. Keeping an unchanged bypass
                     // would reintroduce a leak after a definite release in the callee.
@@ -289,7 +292,23 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         };
     }
 
+    override getFactStatisticsKey(fact: ResourceFact): string {
+        if (fact.isZero()) return 'zero';
+        const site = fact.allocationSite!;
+        const origin = `${site.getCfg()?.getDeclaringMethod().getSignature()}:${site.getOriginPositionInfo()?.getLineNo()}`;
+        const fields = [...new Set(fact.handles.filter(handle =>
+            handle instanceof ArkInstanceFieldRef || handle instanceof ArkStaticFieldRef)
+            .map(handle => (handle as ArkInstanceFieldRef | ArkStaticFieldRef).getFieldSignature().toString()))].sort();
+        return `${fact.ruleId}/${fact.state}/depth=${fact.frames.length}/handles=${fact.handles.length}/origin=${origin}/fields=${fields.join(',')}`;
+    }
+
     createZeroValue(): ResourceFact { return this.zero; }
+
+    protected shouldEnterCallee(_stmt: Stmt, _method: ArkMethod, _fact: ResourceFact): boolean { return true; }
+
+    getPropagationStatistics(): Readonly<{ entered: number; skipped: number; emptyHandleEntries: number }> | undefined {
+        return undefined;
+    }
     getEntryPoint(): Stmt { return this.entryPoint; }
     getEntryMethod(): ArkMethod { return this.entryMethod; }
 
@@ -317,8 +336,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         const key = [fact.ruleId, this.id(fact.allocationSite!),
             fact.acquisitionContext.map(site => this.id(site)).join(','), fact.state,
             fact.handles.map(resourceValueKey).sort().join(','), fact.event ?? '',
-            fact.eventSite ? this.id(fact.eventSite) : 0,
+            // Unknown ownership sites are evidence, not distinct registration
+            // states. Retain one real witness on the representative fact.
+            fact.eventSite && !(fact.registration && fact.event === 'unknown-ownership') ? this.id(fact.eventSite) : 0,
             JSON.stringify(fact.registration ?? null),
+            fact.owner ?? '', fact.boundary ? this.id(fact.boundary) : 0,
             ...fact.frames.map(frame => `${this.id(frame.callSite)}:${frame.callerHandles
                 .map(resourceValueKey).sort().join(',')}`)].join('|');
         this.factKeys.set(fact, key);
@@ -513,7 +535,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return null;
     }
 
-    private mapCallerHandlesToCallee(stmt: Stmt, method: ArkMethod, handles: readonly Value[]): Value[] {
+    protected mapCallerHandlesToCallee(stmt: Stmt, method: ArkMethod, handles: readonly Value[]): Value[] {
         const invoke = stmt.getInvokeExpr();
         if (!invoke) return [];
         const mapped: Value[] = [];

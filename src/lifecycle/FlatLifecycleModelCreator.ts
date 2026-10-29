@@ -130,6 +130,13 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
     returnBlock.addStmt(new ArkReturnVoidStmt());
     cfg.addBlock(returnBlock);
     this.linkBlocks(loopBlock, returnBlock);
+    if (this.config.singleCallback) {
+      for (const block of cfg.getBlocks()) {
+        if (block !== returnBlock && block.getSuccessors().length === 0) {
+          this.linkBlocks(block, returnBlock);
+        }
+      }
+    }
 
     this.dummyMain.setBody(
       new ArkBody(new Set(this.classInstanceMap.values()), cfg),
@@ -202,7 +209,7 @@ export class FlatLifecycleModelCreator extends LifecycleModelCreator {
   private addEventBlock(cfg: Cfg, dispatcher: BasicBlock, event: BasicBlock): void {
     cfg.addBlock(event);
     this.linkBlocks(dispatcher, event);
-    this.linkBlocks(event, dispatcher);
+    if (!this.config.singleCallback) this.linkBlocks(event, dispatcher);
   }
 
   private uniqueComponents(): ComponentInfo[] {

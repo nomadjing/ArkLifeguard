@@ -67,8 +67,20 @@ class SemanticPointMap<D, V> {
   }
 }
 
+class SemanticPointSet<D> extends Set<PathEdgePoint<D>> {
+  private readonly index: SemanticPointMap<D, boolean>;
+  constructor(semantics: FactSemantics<D>) { super(); this.index = new SemanticPointMap(semantics); }
+  override add(point: PathEdgePoint<D>): this {
+    if (this.index.get(point)) return this;
+    this.index.getOrCreate(point, () => true);
+    return super.add(point);
+  }
+}
+
 /** Owns collision-safe incoming, end-summary and call-summary state. */
 export class SummaryStore<D> {
+  private readonly incomingByCall = new WeakMap<ReadonlySet<PathEdge<D>>, SemanticPointMap<D, Set<PathEdge<D>>>>();
+  readonly counts = { incoming: 0, normal: 0, exceptional: 0, calls: 0, duplicateExits: 0 };
   private readonly incoming: SemanticPointMap<D, Set<PathEdge<D>>>;
   private readonly endSummaries: SemanticPointMap<D, Set<PathEdgePoint<D>>>;
   private readonly exceptionalEndSummaries: SemanticPointMap<
@@ -85,7 +97,12 @@ export class SummaryStore<D> {
   }
 
   addIncoming(calleeEntry: PathEdgePoint<D>, callerEdge: PathEdge<D>): void {
-    this.incoming.getOrCreate(calleeEntry, () => new Set()).add(callerEdge);
+    const edges = this.incoming.getOrCreate(calleeEntry, () => new Set());
+    if (!edges.has(callerEdge)) this.counts.incoming++;
+    edges.add(callerEdge);
+    let index = this.incomingByCall.get(edges);
+    if (!index) { index = new SemanticPointMap(this.semantics); this.incomingByCall.set(edges, index); }
+    index.getOrCreate(callerEdge.edgeEnd, () => new Set()).add(callerEdge);
   }
 
   getIncoming(
@@ -94,8 +111,15 @@ export class SummaryStore<D> {
     return this.incoming.get(calleeEntry);
   }
 
-  addEndSummary(entry: PathEdgePoint<D>, exit: PathEdgePoint<D>): void {
-    this.endSummaries.getOrCreate(entry, () => new Set()).add(exit);
+  matchingIncoming(edges: ReadonlySet<PathEdge<D>>, call: PathEdgePoint<D>): ReadonlySet<PathEdge<D>> {
+    return this.incomingByCall.get(edges)?.get(call) ?? edges;
+  }
+
+  addEndSummary(entry: PathEdgePoint<D>, exit: PathEdgePoint<D>): boolean {
+    const exits = this.endSummaries.getOrCreate(entry, () => new SemanticPointSet(this.semantics));
+    const size = exits.size; exits.add(exit);
+    if (size === exits.size) { this.counts.duplicateExits++; return false; }
+    this.counts.normal++; return true;
   }
 
   getEndSummaries(entry: PathEdgePoint<D>): ReadonlySet<PathEdgePoint<D>> {
@@ -108,10 +132,12 @@ export class SummaryStore<D> {
   ): boolean {
     const summaries = this.exceptionalEndSummaries.getOrCreate(
       entry,
-      () => new Set(),
+      () => new SemanticPointSet(this.semantics),
     );
     const size = summaries.size;
     summaries.add(exit);
+    if (summaries.size === size) this.counts.duplicateExits++;
+    else this.counts.exceptional++;
     return summaries.size !== size;
   }
 
@@ -143,6 +169,7 @@ export class SummaryStore<D> {
     ) {
       return false;
     }
+    this.counts.calls++;
     summaries.points.push(returnPoint);
     if (bucket) {
       bucket.push(returnPoint);
@@ -163,6 +190,7 @@ export class SummaryStore<D> {
   }
 
   clear(): void {
+    for (const key of Object.keys(this.counts) as (keyof typeof this.counts)[]) this.counts[key] = 0;
     this.incoming.clear();
     this.endSummaries.clear();
     this.exceptionalEndSummaries.clear();

@@ -1,8 +1,9 @@
-import { ArkInstanceInvokeExpr, type ArkMethod, type Scene, type Stmt } from '../../adapter/arkanalyzer';
+import { ArkInstanceInvokeExpr, ArkInstanceFieldRef, ArkStaticFieldRef, type ArkMethod, type Scene, type Stmt } from '../../adapter/arkanalyzer';
 import type { FlowFunction } from '../../ifds/DataflowProblem';
 import { ResourceProblem } from './ResourceProblem';
 import { ResourceFact, hasResourceHandle } from './ResourceFact';
 import { ListenerIdentity } from './ListenerIdentity';
+import { ListenerEffects } from './ListenerEffects';
 import type { ListenerRule } from './rules/ListenerRules';
 import type { ResourceRule } from './rules/ResourceRule';
 
@@ -19,6 +20,7 @@ export function listenerContracts(rules: readonly ListenerRule[]): ResourceRule[
 /** IFDS registration obligations. Callback bodies are never executed as registration effects. */
 export class ListenerProblem extends ResourceProblem {
     private readonly identities: ListenerIdentity;
+    private readonly effects: ListenerEffects;
     constructor(entry: Stmt, method: ArkMethod, private readonly listenerRules: readonly ListenerRule[],
         scene: Scene, successors: (stmt: Stmt) => readonly Stmt[]) {
         super(entry, method, listenerContracts(listenerRules), successors);
@@ -28,6 +30,7 @@ export class ListenerProblem extends ResourceProblem {
             }
         }
         this.identities = new ListenerIdentity(scene, successors);
+        this.effects = new ListenerEffects(scene, listenerRules);
     }
     override getCallFlowFunction(stmt: Stmt, method: ArkMethod): FlowFunction<ResourceFact> {
         const signature = stmt.getInvokeExpr()?.getMethodSignature().toString();
@@ -37,7 +40,70 @@ export class ListenerProblem extends ResourceProblem {
             rule.allocators.includes(signature!) || rule.releasers.includes(signature!))) {
             return { getDataFacts: () => new Set() };
         }
-        return super.getCallFlowFunction(stmt, method);
+        const flow = super.getCallFlowFunction(stmt, method);
+        return { getDataFacts: fact => {
+            const result = new Set([...flow.getDataFacts(fact)].map(output =>
+                output.isZero() ? output : output.derive({ frames: [] })));
+            if (!fact.isZero()) {
+                if (result.size) this.effects.statistics.entered++;
+                else this.effects.statistics.skipped++;
+                for (const output of result) if (!output.handles.length) this.effects.statistics.emptyHandleEntries++;
+            }
+            return result;
+        } };
+    }
+    private restoreCallerFrame(fact: ResourceFact, call: Stmt, caller?: ResourceFact): ResourceFact {
+        if (!caller || caller.isZero() || fact.isZero() || fact.allocationSite !== caller.allocationSite ||
+            fact.ruleId !== caller.ruleId || fact.acquisitionContext.length !== caller.acquisitionContext.length ||
+            !fact.acquisitionContext.every((site, index) => site === caller.acquisitionContext[index])) return fact;
+        // Recovery data belongs to this incoming call, not the reusable callee input.
+        return fact.derive({ frames: [{ callSite: call, callerHandles: caller.handles }] });
+    }
+    override getExitToReturnFlowFunction(exit: Stmt, target: Stmt, call: Stmt, caller?: ResourceFact): FlowFunction<ResourceFact> {
+        const flow = super.getExitToReturnFlowFunction(exit, target, call);
+        return { getDataFacts: fact => new Set([...flow.getDataFacts(this.restoreCallerFrame(fact, call, caller))]
+            .map(output => output.isZero() ? output : output.derive({ acquisitionContext: [] }))) };
+    }
+    override getExceptionalExitToReturnFlowFunction(exit: Stmt, target: Stmt, call: Stmt, caller?: ResourceFact): FlowFunction<ResourceFact> {
+        const flow = super.getExceptionalExitToReturnFlowFunction(exit, target, call);
+        return { getDataFacts: fact => new Set([...flow.getDataFacts(this.restoreCallerFrame(fact, call, caller))]
+            .map(output => output.isZero() ? output : output.derive({ acquisitionContext: [] }))) };
+    }
+    protected override shouldEnterCallee(stmt: Stmt, method: ArkMethod, fact: ResourceFact): boolean {
+        if (this.bypassUnmappedRegistration(stmt, method, fact)) return false;
+        return fact.state !== 'released' && fact.state !== 'escaped' && this.effects.mayAffect(method, fact.ruleId);
+    }
+    private bypassUnmappedRegistration(stmt: Stmt, method: ArkMethod, fact: ResourceFact): boolean {
+        const mapped = this.mapCallerHandlesToCallee(stmt, method, fact.handles);
+        if (mapped.length > 0) {
+            // Skip unmapped field obligations only when the body and its resolved
+            // callees never access those field signatures;
+            // unknown external effects still lower the bypass to unknown.
+            const unrelatedFieldsOnly = mapped.every(handle =>
+                (handle instanceof ArkStaticFieldRef || handle instanceof ArkInstanceFieldRef) &&
+                !this.effects.mayAccessField(method, handle.getFieldSignature().toString()));
+            if (!unrelatedFieldsOnly) return false;
+        }
+        // Timers require a token. Events may cancel by registrar/event alone,
+        // so preserve all transitive cancellation bodies, including off-all.
+        return this.listenerRules.find(rule => rule.id === fact.ruleId)?.kind === 'timer' ||
+            !this.effects.mayCancel(method, fact.ruleId);
+    }
+    override getPropagationStatistics() { return this.effects.statistics; }
+    override getCallToReturnFlowFunction(stmt: Stmt, target: Stmt, callees?: ReadonlySet<ArkMethod>): FlowFunction<ResourceFact> {
+        const flow = super.getCallToReturnFlowFunction(stmt, target, callees);
+        return { getDataFacts: fact => {
+            const outputs = flow.getDataFacts(fact);
+            const uncertainSkip = !fact.isZero() && fact.state !== 'released' && fact.state !== 'escaped' &&
+                [...(callees ?? [])].some(method => this.effects.mayAffect(method, fact.ruleId) &&
+                    this.bypassUnmappedRegistration(stmt, method, fact));
+            // Skipping opaque bodies is not proof of non-release. Keep the duty
+            // and uncertainty, without a new evidence identity at every call.
+            return uncertainSkip ? new Set([...outputs].map(output =>
+                output.hasLostHandles() || output.state === 'released' || output.state === 'escaped' ? output : output.derive({
+                state: 'unknown', event: 'unknown-ownership', eventSite: output.allocationSite,
+            }))) : outputs;
+        } };
     }
     protected override transfer(stmt: Stmt, fact: ResourceFact): Set<ResourceFact> {
         const invoke = stmt.getInvokeExpr();

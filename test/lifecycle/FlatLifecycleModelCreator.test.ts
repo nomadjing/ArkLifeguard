@@ -137,3 +137,19 @@ describe('standard flat DummyMain generator', () => {
         )).toThrow('Lifecycle configuration must be an object');
     });
 });
+
+ it('single callback exits through teardown without reaching another event', () => {
+    const creator = createLifecycleModelCreator(buildLifecycleScene('simple'), { singleCallback: true });
+    creator.create();
+    const blocks = [...creator.getDummyMain().getCfg()!.getBlocks()];
+    expect(hasCycle(blocks)).toBe(false);
+    const dispatcher = blocks.find(b => b.getTail() instanceof ArkIfStmt)!;
+    const end = blocks.find(b => b.getSuccessors().length === 0)!;
+    const events = dispatcher.getSuccessors().filter(b => b !== end);
+    expect(events).toHaveLength(5);
+    for (const event of events) {
+        expect(event.getSuccessors()).toEqual([end]);
+        expect(event.getPredecessors()).toEqual([dispatcher]);
+    }
+    expect(invokedNames(end)).toContain('onDestroy');
+ });

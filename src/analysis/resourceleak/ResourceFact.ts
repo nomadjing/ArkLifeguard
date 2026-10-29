@@ -38,6 +38,8 @@ export class ResourceFact {
         /** Bounded inner-to-outer acquisition returns; stable through cleanup calls. */
         readonly acquisitionContext: readonly Stmt[] = [],
         readonly registration?: RegistrationIdentity,
+        readonly owner?: string,
+        readonly boundary?: Stmt,
     ) {}
 
     static zeroFact(): ResourceFact {
@@ -74,7 +76,10 @@ export class ResourceFact {
         eventSite?: Stmt;
         acquisitionContext?: readonly Stmt[];
         registration?: RegistrationIdentity;
+        owner?: string;
+        boundary?: Stmt;
     }): ResourceFact {
+        if (Object.entries(change).every(([key, value]) => value === undefined || value === this[key as keyof ResourceFact])) return this;
         return new ResourceFact(
             this.ruleId,
             this.allocationSite,
@@ -85,6 +90,8 @@ export class ResourceFact {
             change.eventSite ?? this.eventSite,
             change.acquisitionContext ?? this.acquisitionContext,
             change.registration ?? this.registration,
+            change.owner ?? this.owner,
+            change.boundary ?? this.boundary,
         );
     }
 }

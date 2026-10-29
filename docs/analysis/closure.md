@@ -1,8 +1,12 @@
-# Listener 注册清理义务
+# 闭包泄漏分析
 
 ## 范围与入口
 
-检测事件监听、订阅和定时器的清理义务：注册 API 是 Source，匹配的注销/取消 API 是 Sink。结果表示未发现符合合同的清理，不证明对象被保留或发生实际内存泄漏。无需回调捕获页面；局部注册者也按 API 清理合同检查。
+本项目的闭包泄漏主要指：通过事件监听、订阅或定时器 API 注册回调后，没有按要求注销或取消。注册 API 是 Source，匹配的注销/取消 API 是 Sink，分析追踪一项注册的清理义务。
+
+例如，emitter.on 注册后缺少匹配的 off，或 setInterval 创建周期定时器后缺少匹配的 clearInterval，均属于本分析关注的问题。回调不必捕获页面、this 或其他业务对象；无捕获回调和局部注册者同样按 API 合同检查。
+
+闭包被普通容器保存、捕获页面或形成引用环，不单独构成本项目的告警条件。分析不构建捕获对象保留链，不检查 GC 根可达性或实际堆增长，也不以这些能力作为后续调整目标。告警表示注册清理义务的缺陷候选，不证明捕获对象发生内存泄漏。
 
 ```bash
 npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
@@ -15,13 +19,13 @@ npm run cli -- analyze "/path/to/app" --sdk "/path/to/ets" \
 
 默认 SDK 规则见 [ListenerRules](../../src/analysis/resourceleak/rules/ListenerRules.ts)，按模块、类和完整方法签名匹配，不按 on/off 名字兜底。
 
-| 家族 | Source / Sink | 匹配条件 |
-| --- | --- | --- |
-| interval | setInterval / clearInterval | 相同 timer token，支持别名和字段传递 |
-| emitter | on / off | 相同事件和回调；省略回调时按规则取消该事件全部注册 |
-| EventHub、Window、WindowStage、DataObject | on / off | 额外要求相同注册者 |
-| Display | on / off | 系统注册者、事件和回调 |
-| timeout、emitter once | setTimeout、once | 默认 selfExpiring 合同，不建立必须显式取消的义务 |
+| 家族                                      | Source / Sink               | 匹配条件                                           |
+| ----------------------------------------- | --------------------------- | -------------------------------------------------- |
+| interval                                  | setInterval / clearInterval | 相同 timer token，支持别名和字段传递               |
+| emitter                                   | on / off                    | 相同事件和回调；省略回调时按规则取消该事件全部注册 |
+| EventHub、Window、WindowStage、DataObject | on / off                    | 额外要求相同注册者                                 |
+| Display                                   | on / off                    | 系统注册者、事件和回调                             |
+| timeout、emitter once                     | setTimeout、once            | 默认 selfExpiring 合同，不建立必须显式取消的义务   |
 
 selfExpiring 不表示回调必然已经执行，也不证明等待期间没有保留；这些属于本项目不检查的行为。
 
@@ -29,9 +33,13 @@ selfExpiring 不表示回调必然已经执行，也不证明等待期间没有�
 
 动态事件、多调用者的不同身份、字段替换等无法唯一解析时保留低置信度未知候选，不任意挑选一个身份。匹配取消需要已知事件/注册者，不能把两个未知值当相同。当前有限调用上下文和分配点不区分同一位置的所有运行时注册实例；重复注册计数、复杂别名和容器存储尚未完整支持。
 
-## 求解与诊断合同
+## 当前实现与目标合同
 
-与资源检查一致，同一获取上下文存在可达的匹配取消，即解除义务；不要求所有分支或异常路径都成功取消。off 调用抛异常不单独构成缺少清理。回调中或 Promise.then 中的延后取消不视为已经同步执行；完整异步调度不在当前范围。
+当前实现汇总同一获取上下文的可达匹配取消，只要存在匹配取消，就可能过滤其他分支的未取消候选。这比目标合同更宽，不能把它解释为已经正确处理条件清理。
+
+目标是在责任 owner 的生命周期边界检查注册是否仍未清理。匹配 off/取消操作自身可能抛异常，不单独形成缺少清理证据；条件分支绕过取消则需要保留。释放前异常、异步完成和不可行路径的处理仍需明确，具体建议见[清理义务改进方案](../architecture.md#清理义务改进方案待实现)。
+
+回调中或 Promise.then 中的延后取消不视为已经同步执行；完整异步调度不在当前范围。
 
 注册义务从辅助方法传播到入口出口，避免在注册 helper 返回时过早报告。共同 DummyMain 连接生命周期方法；当前检查不是按 owner 指定最早释放期限的模型。源代码与合成入口的退出位置作为 boundary 证据，不能直接称为真实对象寿命终点。
 
@@ -39,7 +47,7 @@ selfExpiring 不表示回调必然已经执行，也不证明等待期间没有�
 
 模块有独立 enabled/status/success/error、未解析规则、未支持 API 目录、创建/取消调用覆盖和可选 IFDS 统计。显式空规则、规则全部未解析、非法配置或求解异常返回失败。未覆盖平台 API 不生成冒名候选。
 
-## API 与测试
+## API、覆盖与验证
 
 使用 `new ListenerRunner(scene, rules?, collectStatistics?).runWithDummyMain(entry)`；工程 API 为 runListenerAnalysis / listenerRules。直接入口无需 lifetimes 或堆状态预算。
 

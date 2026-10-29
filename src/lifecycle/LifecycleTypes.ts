@@ -369,6 +369,8 @@ export enum UIEventType {
  * 扩展 DummyMain 的配置选项
  */
 export interface LifecycleModelConfig {
+  /** Experimental underapproximation: one dispatched event, then teardown. */
+  singleCallback?: boolean;
   /** 是否精细化建模 UI 回调（按控件实例化） */
   enableFineGrainedUICallbacks: boolean;
 

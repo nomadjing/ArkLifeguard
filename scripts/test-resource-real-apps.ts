@@ -63,6 +63,8 @@ interface ProjectResult {
     lifecycleStatistics?: LifecycleModelStatistics;
     dummyMain?: DummyMainRecord;
     resourceAnalysis?: ResourceAnalysisResult;
+    listenerAnalysis?: ResourceAnalysisResult;
+    listenerAnalysisTimeMs?: number;
     highConfidenceCount: number;
     unknownOwnershipCount: number;
     matchedAllocatorCalls: number;
@@ -180,7 +182,7 @@ function help(): void {
         '  --output <file>             Persist the JSON report; omitted means console only',
         '  --real-apps-root <path>     HarmonyRealApps directory containing meta.json',
         '  --sdk-root <path>           SDK root containing openharmony/ets and hms/ets',
-        '  --timeout-ms <n>            Hard per-project timeout; default: 180000',
+        '  --timeout-ms <n>            Hard per-project timeout; default: 600000',
         '  --ifds-stats                Collect aggregate IFDS solver statistics',
         '  --list                      List projects without analyzing',
         '  -h, --help                  Show this help',
@@ -210,7 +212,7 @@ function parseArgs(args: string[]): Options {
     let sdkRoot: string | undefined;
     const projects: string[] = [];
     let outputPath: string | undefined;
-    let timeoutMs = 180_000;
+    let timeoutMs = 600_000;
     let collectSolverStatistics = false;
     let limit: number | undefined;
     let listOnly = false;
@@ -336,6 +338,7 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
             sdkRoot: options.sdkRoot,
             runNullness: false,
             runResourceAnalysis: true,
+            runListenerAnalysis: false,
             analyzeNavigation: false,
             collectSolverStatistics: options.collectSolverStatistics,
         }).analyze(projectPath);
@@ -343,6 +346,8 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         record.classes = result.summary.classes;
         record.methods = result.summary.methods;
         record.resourceAnalysis = result.resourceAnalysis;
+        record.listenerAnalysis = result.listenerAnalysis;
+        record.listenerAnalysisTimeMs = result.duration.listenerAnalysis;
         const diagnostics = result.resourceAnalysis.diagnostics;
         record.resourceLeakCount = diagnostics.length;
         record.highConfidenceCount = diagnostics.filter(item => item.confidence === 'high').length;
@@ -537,7 +542,7 @@ async function main(): Promise<void> {
             maxBuffer: 16 * 1024 * 1024,
             env: {
                 ...process.env,
-                NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --max-old-space-size=4096`.trim(),
+                NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --max-old-space-size=8192`.trim(),
             },
         });
 

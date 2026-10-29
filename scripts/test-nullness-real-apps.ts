@@ -652,7 +652,7 @@ function runParent(options: Options): void {
                 maxBuffer: 16 * 1024 * 1024,
                 env: {
                     ...process.env,
-                    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --max-old-space-size=4096`.trim(),
+                    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --max-old-space-size=8192`.trim(),
                 },
             }
         );

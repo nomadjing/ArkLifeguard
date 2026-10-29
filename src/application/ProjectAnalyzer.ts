@@ -23,6 +23,7 @@ import {
 import { ResourceRunner } from '../analysis/resourceleak';
 import type { ResourceAnalysisResult, ResourceRule } from '../analysis/resourceleak';
 import { ListenerRunner, type ListenerRule } from '../analysis/resourceleak';
+import { ABILITY_END_STAGES, ComponentLifecycleStage } from '../lifecycle/LifecycleTypes';
 
 export interface ProjectAnalysisOptions {
     sdkRoot?: string;
@@ -39,6 +40,7 @@ export interface ProjectAnalysisOptions {
     maxPropagationDepth?: number;
     reportUnresolvedReturns?: boolean;
     collectSolverStatistics?: boolean;
+    solverProgressPath?: string;
     verbose?: boolean;
 }
 
@@ -182,6 +184,7 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     maxPropagationDepth: 40,
     reportUnresolvedReturns: false,
     collectSolverStatistics: false,
+    solverProgressPath: '',
     verbose: false,
 };
 
@@ -225,6 +228,19 @@ export class ProjectAnalyzer {
         const abilities = creator.getAbilities();
         const components = creator.getComponents();
         const dummyMain = creator.getDummyMain();
+        const releaseOwners = [
+            ...abilities.map(ability => ({
+                classSignature: ability.arkClass.getSignature().toString(),
+                endMethods: [...ability.lifecycleMethods].filter(([stage]) => ABILITY_END_STAGES.has(stage))
+                    .map(([, method]) => method.getSignature().toString()),
+            })),
+            ...components.map(component => ({
+                classSignature: component.arkClass.getSignature().toString(),
+                endMethods: [...component.lifecycleMethods].filter(([stage]) =>
+                    stage === ComponentLifecycleStage.ABOUT_TO_DISAPPEAR || stage === ComponentLifecycleStage.DETACHED)
+                    .map(([, method]) => method.getSignature().toString()),
+            })),
+        ];
 
         const navigationStart = Date.now();
         const navigations = this.options.analyzeNavigation
@@ -239,7 +255,7 @@ export class ProjectAnalyzer {
         if (this.options.runResourceAnalysis) {
             try {
                 resourceResult = new ResourceRunner(scene, this.options.resourceRules,
-                    this.options.collectSolverStatistics).runWithDummyMain(dummyMain);
+                    this.options.collectSolverStatistics, releaseOwners, this.options.solverProgressPath ? `${this.options.solverProgressPath}.resource.json` : undefined).runWithDummyMain(dummyMain);
             } catch (error) {
                 resourceResult = {
                     enabled: true, status: 'failed', success: false,
@@ -252,7 +268,7 @@ export class ProjectAnalyzer {
 
         const listenerStart = Date.now();
         const listenerResult: ResourceAnalysisResult = this.options.runListenerAnalysis
-            ? new ListenerRunner(scene, this.options.listenerRules, this.options.collectSolverStatistics).runWithDummyMain(dummyMain)
+            ? new ListenerRunner(scene, this.options.listenerRules, this.options.collectSolverStatistics, releaseOwners, this.options.solverProgressPath ? `${this.options.solverProgressPath}.listener.json` : undefined).runWithDummyMain(dummyMain)
             : { enabled: false, status: 'disabled', success: true, entryMethod: '', diagnostics: [] };
         const listenerAnalysis = Date.now() - listenerStart;
 

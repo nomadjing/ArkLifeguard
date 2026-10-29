@@ -5,6 +5,7 @@ import { ListenerProblem, listenerContracts } from './ListenerProblem';
 import { resolveListenerRules, type ListenerRule } from './rules/ListenerRules';
 import type { ResourceRule } from './rules/ResourceRule';
 import { UNSUPPORTED_LISTENER_API_FAMILIES } from './rules/ListenerCapabilities';
+import type { ReleaseOwner } from './OwnerBoundaryProblem';
 
 /** Listener/timer cleanup only; no captured-object retention analysis. */
 export class ListenerRunner extends ReleaseObligationRunner {
@@ -12,7 +13,9 @@ export class ListenerRunner extends ReleaseObligationRunner {
     constructor(
         private readonly listenerScene: Scene,
         rules?: readonly ListenerRule[],
-        collectStatistics = false
+        collectStatistics = false,
+        owners: readonly ReleaseOwner[] = [],
+        progressPath?: string,
     ) {
         const resolved = rules === undefined ? resolveListenerRules(listenerScene) : undefined;
         const selected = rules ?? resolved!.rules;
@@ -26,7 +29,7 @@ export class ListenerRunner extends ReleaseObligationRunner {
                 'repeated registrations at one allocation site',
                 'asynchronous cancellation scheduling',
             ],
-        });
+        }, owners, progressPath);
         this.sourceRules = selected;
     }
     override runWithDummyMain(entry: ArkMethod): ResourceAnalysisResult {
