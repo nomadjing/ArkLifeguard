@@ -23,8 +23,8 @@ function buildScene(): Scene {
     return scene;
 }
 
-describe('project return summaries and evidence confidence', () => {
-    it('resolves imported functions and keeps guarded field reloads safe', () => {
+describe('synchronous project returns and evidence confidence', () => {
+    it('uses concrete imported returns without assuming overload or module-order contracts', () => {
         const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
 
         expect(result.success, result.error).toBe(true);
@@ -33,15 +33,10 @@ describe('project return summaries and evidence confidence', () => {
             sink: diagnostic.dereferenceStmt.getOriginalText(),
             confidence: diagnostic.confidence,
         }));
-        expect(reports).toHaveLength(2);
+        expect(reports).toHaveLength(1);
         expect(reports.some(report =>
             report.source?.includes('return null') &&
             report.sink?.includes('selected!.refresh()') &&
-            report.confidence === 'high'
-        )).toBe(true);
-        expect(reports.some(report =>
-            report.source?.includes('return uninitializedModuleAccount') &&
-            report.sink?.includes('moduleMissing!.refresh()') &&
             report.confidence === 'high'
         )).toBe(true);
         expect(reports.some(report =>

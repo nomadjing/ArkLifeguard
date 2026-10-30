@@ -21,7 +21,7 @@ function buildScene(): Scene {
 }
 
 describe('Nullness Map summary', () => {
-    it('uses the generic container rule while excluding a project-defined get()', () => {
+    it('models exact Map.get signatures without assuming key presence implies a non-null value', () => {
         const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
 
         expect(result.success, result.error).toBe(true);
@@ -29,10 +29,10 @@ describe('Nullness Map summary', () => {
             diagnostic.dereferenceStmt.getOriginalText()
         );
         expect(dereferences.some(text => text?.includes("missingAccounts.get('missing')"))).toBe(true);
-        expect(dereferences.some(text => text?.includes("knownAccounts.get('known')"))).toBe(false);
-        expect(dereferences.some(text => text?.includes("guardedAccounts.get('known')"))).toBe(false);
+        expect(dereferences.some(text => text?.includes("knownAccounts.get('known')"))).toBe(true);
+        expect(dereferences.some(text => text?.includes("guardedAccounts.get('known')"))).toBe(true);
         expect(dereferences.some(text => text?.includes("repository.get('known')"))).toBe(false);
-        expect(result.diagnostics).toHaveLength(1);
-        expect(result.diagnostics[0].nullness).toBe('maybe-undefined');
+        expect(result.diagnostics).toHaveLength(3);
+        expect(result.diagnostics[0].nullness).toBe('maybe-nullish');
     });
 });

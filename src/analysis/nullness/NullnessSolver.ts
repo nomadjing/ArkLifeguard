@@ -22,6 +22,8 @@ import type { DataflowSolverOptions, InterproceduralCFG } from '../../ifds';
 import { NullnessFact } from './NullnessFact';
 import { NullnessProblem } from './NullnessProblem';
 import { findRecursiveMethods } from '../../ifds/CallResolver';
+import { ArkInterproceduralCFG } from '../../ifds';
+import { createSynchronousCallbackModel } from './library/SynchronousCallbackModels';
 
 /** Nullness-specific fact abstraction and propagation bounds over the shared IFDS solver. */
 export class NullnessSolver extends DataflowSolver<NullnessFact> {
@@ -35,7 +37,7 @@ export class NullnessSolver extends DataflowSolver<NullnessFact> {
         recursiveMethods?: ReadonlySet<ArkMethod>,
         icfg?: InterproceduralCFG
     ) {
-        super(problem, scene, options, icfg);
+        super(problem, scene, options, icfg ?? new ArkInterproceduralCFG(scene, false, true, createSynchronousCallbackModel(scene)));
         this.recursiveMethods = problem.getConfig().recursiveSccWidening
             ? recursiveMethods ?? findRecursiveMethods(scene)
             : new Set();
@@ -44,6 +46,8 @@ export class NullnessSolver extends DataflowSolver<NullnessFact> {
 
     protected prepareEdgeForPropagation(edge: PathEdge<NullnessFact>): PathEdge<NullnessFact> | null {
         edge = this.abstractEdgeFacts(edge);
+        // A configured depth is a coverage bound, not a proof that discarded paths are safe.
+        // Scope limitations are maintained in docs/analysis/nullness.md, not user reports.
         if (!edge.edgeEnd.fact.isZeroFact() && edge.edgeEnd.fact.propagationDepth > (this.problem as NullnessProblem).getConfig().maxPropagationDepth) {
             return null;
         }

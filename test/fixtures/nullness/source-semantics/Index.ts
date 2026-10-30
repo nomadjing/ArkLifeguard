@@ -1,5 +1,111 @@
 class Account {
+    value: number = 1;
     touch(): boolean { return true; }
+}
+
+export function castOptionalProperty(): number | undefined {
+    const value = nullable();
+    return (value as Account | null)?.value;
+}
+
+export function castUnprotectedProperty(): number {
+    const value = nullable();
+    return (value as Account)!.value;
+}
+
+export function typeofOptionalProperty(): number {
+    const value = nullable();
+    return typeof value?.value === 'number' ? value.value : 0;
+}
+
+export function continueAfterNullGuard(): void {
+    for (let i = 0; i < 2; i++) {
+        const value = nullable();
+        if (!value || i === 1) continue;
+        value.touch();
+    }
+}
+
+function cachedWidths(present = false): number[] | undefined {
+    return present ? [10] : undefined;
+}
+class WidthOwner {
+    widths: number[] = [];
+    initialize(): void {
+        const cached = cachedWidths();
+        const count = 1;
+        if (cached && cached.length === count) {
+            this.widths = cached;
+            return;
+        }
+        this.widths = [];
+    }
+    read(): number { return this.widths[0] || 140; }
+}
+export function guardedWidthAssignment(): number {
+    const owner = new WidthOwner();
+    owner.initialize();
+    return owner.read();
+}
+
+class Heading { type: string = 'heading'; level: number = 1; }
+function absentHeading(): Heading | undefined { return undefined; }
+export function guardedSwitchReceiver(): number {
+    const base = absentHeading();
+    if (base?.type === 'heading') {
+        switch (base.level) { case 1: return 10; default: return 20; }
+    }
+    return 0;
+}
+export function staleSwitchReceiver(): number {
+    let base = absentHeading();
+    const type = base?.type;
+    base = undefined;
+    if (type === 'heading') {
+        switch (base!.level) { case 1: return 10; default: return 20; }
+    }
+    return 0;
+}
+
+export function explicitFalsyComparisonStillUndefined(): number {
+    const cached = cachedWidths();
+    if (cached === undefined) return cached!.length;
+    return 0;
+}
+
+export function reversePropertyGuard(): number {
+    const node = absentHeading();
+    if ('heading' === node?.type) {
+        switch (node.level) { case 1: return 10; default: return 20; }
+    }
+    return 0;
+}
+
+export function earlyExitPropertyGuard(): number {
+    const node = absentHeading();
+    if (node?.type !== 'heading') return 0;
+    switch (node.level) { case 1: return 10; default: return 20; }
+}
+
+export function earlyExitCompoundGuard(): number {
+    const entries = cachedWidths();
+    if (!entries || entries.length !== 1) return 0;
+    return entries[0];
+}
+
+export function nullablePropertyComparison(): number {
+    const node = absentHeading();
+    if (node?.type === undefined) return node!.level;
+    return 0;
+}
+
+export function mutatedPropertyGuard(): number {
+    const holder = { node: absentHeading() };
+    if (holder.node?.type === 'heading') {
+        holder.node = undefined;
+        return holder.node!.level;
+    }
+    return 0;
 }
 
 function nullable(present = false): Account | null { return present ? new Account() : null; }

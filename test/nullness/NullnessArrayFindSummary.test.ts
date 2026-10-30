@@ -29,7 +29,7 @@ describe('Nullness Array.find summary', () => {
             diagnostic.dereferenceStmt.getOriginalText()?.includes('.find(')
         );
         expect(findDiagnostics).toHaveLength(1);
-        expect(findDiagnostics[0].nullness).toBe('maybe-undefined');
+        expect(findDiagnostics[0].nullness).toBe('maybe-nullish');
         expect(result.diagnostics.some(diagnostic =>
             diagnostic.dereferenceStmt.getOriginalText()?.includes('guarded.refresh()')
         )).toBe(false);

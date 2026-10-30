@@ -43,6 +43,17 @@ describe('source access semantics', () => {
         ['x instanceof Account && x!.run();', NULL | UNDEFINED],
         ['if (!x) return; x!.run();', 0], // Top-level return has no enclosing method block.
         ['function f() { if (!x) return; x!.run(); }', NULL | UNDEFINED],
+        ['while (true) { if (!x || flag) continue; x!.run(); }', NULL | UNDEFINED],
+        ['while (true) { if (!x) break; x!.run(); }', NULL | UNDEFINED],
+        ['while (true) { if (!x) { while (flag) { break; } } x!.run(); }', 0],
+        ['while (true) { if (!x) continue; x = null; x!.run(); }', 0],
+        ['if (typeof x?.value === "number") x!.run();', NULL | UNDEFINED],
+        ['typeof x?.value === "string" ? x!.run() : 0;', NULL | UNDEFINED],
+        ['if (typeof x?.value === "object") x!.run();', NULL | UNDEFINED],
+        ['if (typeof x === "object") x!.run();', UNDEFINED],
+        ['if (typeof x?.value === "undefined") x!.run();', 0],
+        ['if (typeof x?.value !== "number") x!.run();', 0],
+        ['if (typeof x?.value === "number") { x = null; x!.run(); }', 0],
         ['if (x) { x = null; x!.run(); }', 0],
         ['this.x && reset() && this.x!.run();', 0],
         ['if (this.x) { reset(); this.x!.run(); }', 0],
@@ -113,9 +124,11 @@ describe('nullness source recovery regressions', () => {
     );
 
     it.each(['optionalIndex', 'optionalUnknownIndex', 'guardedArrayRead', 'guardedStringRead', 'guardedStringArgument',
-        'guardedFieldAlias', 'ternaryFieldAlias', 'templateReturnCoercion', 'guardedCalleeArgument', 'mapGuardInLoop',
-        'preservedFieldSnapshot', 'arrayGuardWithNestedComparison', 'shadowedCallbackCapture',
-        'preservedSnapshotArgument', 'compoundFieldGuard'])(
+        'guardedFieldAlias', 'ternaryFieldAlias', 'templateReturnCoercion', 'guardedCalleeArgument',
+        'preservedFieldSnapshot', 'arrayGuardWithNestedComparison',
+        'preservedSnapshotArgument', 'compoundFieldGuard', 'castOptionalProperty',
+        'typeofOptionalProperty', 'continueAfterNullGuard', 'guardedWidthAssignment', 'guardedSwitchReceiver',
+        'reversePropertyGuard', 'earlyExitPropertyGuard', 'earlyExitCompoundGuard'])(
         'does not report protected access in %s', name => {
         const method = scene.getMethods().find(method => method.getName() === name)!;
         const problem = new NullnessProblem(method.getCfg()!.getStartingStmt(), method);
@@ -127,9 +140,11 @@ describe('nullness source recovery regressions', () => {
         'arbitraryPredicateStillNull', 'staleTypeofStillNull', 'explicitPredicateComparisonStillNull',
         'sameNamedPredicateStillNull', 'mixedIndexedAccesses', 'explicitReturnToString',
         'nullOnlyFallbackStillUndefined', 'unguardedCalleeArgument', 'mapGuardThenDelete',
-        'nullableFieldSnapshot', 'realCallbackCapture', 'nullableSnapshotArgument', 'mapFalseGuard',
+        'nullableFieldSnapshot', 'mapGuardInLoop', 'nullableSnapshotArgument', 'mapFalseGuard',
         'mapGuardThenUnknownCall', 'staleSnapshotGuardStillNull',
-        'compoundFieldGuardThenMutation'])('retains a null dereference in %s', name => {
+        'compoundFieldGuardThenMutation', 'castUnprotectedProperty', 'staleSwitchReceiver',
+        'explicitFalsyComparisonStillUndefined', 'nullablePropertyComparison',
+        'mutatedPropertyGuard'])('retains a null dereference in %s', name => {
         const method = scene.getMethods().find(method => method.getName() === name)!;
         const problem = new NullnessProblem(method.getCfg()!.getStartingStmt(), method);
         new NullnessSolver(problem, scene).solve();

@@ -14,7 +14,7 @@
  */
 
 import { Scene } from '../../adapter/arkanalyzer';
-import { NullConstant, UndefinedConstant } from '../../adapter/arkanalyzer';
+import { AliasType, FunctionType, ModifierType, NullConstant, UndefinedConstant, UnionType, type Type } from '../../adapter/arkanalyzer';
 import { ArkAssignStmt, Stmt } from '../../adapter/arkanalyzer';
 import { ArkMethod } from '../../adapter/arkanalyzer';
 import {
@@ -38,6 +38,7 @@ import { NullnessSourceSemantics } from './NullnessSourceSemantics';
 import { NullnessSolver } from './NullnessSolver';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
 import { ArkInterproceduralCFG, type IFDSSolverStatistics } from '../../ifds';
+import { createSynchronousCallbackModel } from './library/SynchronousCallbackModels';
 
 export interface NullnessRunnerConfig {
     problem?: NullnessAnalysisConfig;
@@ -45,7 +46,7 @@ export interface NullnessRunnerConfig {
     libraryRegistry?: NullnessLibraryRegistry;
     /** Analyze project-file module initializers that can introduce nullish facts. */
     analyzeModuleInitializers?: boolean;
-    /** Analyze project methods containing registered framework argument sinks. */
+    /** @deprecated Framework argument models are not part of the synchronous core. */
     analyzeFrameworkSinkMethods?: boolean;
     /** Collect and aggregate IFDS statistics across the lifecycle and supplemental roots. */
     collectSolverStatistics?: boolean;
@@ -181,15 +182,6 @@ export class NullnessAnalysisRunner {
                     supplementalRoots.add(method);
                 }
             }
-            if (this.config.analyzeFrameworkSinkMethods !== false) {
-                const frameworkSinkMethods = this.getNonNullSinkMethods(
-                    dummyMain,
-                    libraryRegistry
-                );
-                for (const method of frameworkSinkMethods) {
-                    supplementalRoots.add(method);
-                }
-            }
             // Keep independent roots in independent solver instances. A unified
             // solver retains every contextual PathEdge from every root until the
             // last root finishes, which makes large projects peak at the sum of
@@ -201,7 +193,7 @@ export class NullnessAnalysisRunner {
                 : undefined;
             // All roots already belong to this fixed Scene. Reuse its CFG
             // index within this run; call resolution is reset for each root.
-            const icfg = new ArkInterproceduralCFG(this.scene, true);
+            const icfg = new ArkInterproceduralCFG(this.scene, true, true, createSynchronousCallbackModel(this.scene));
             const solver = new NullnessSolver(problem, this.scene, {
                 collectStatistics: this.config.collectSolverStatistics,
             }, recursiveMethods, icfg);
@@ -217,6 +209,12 @@ export class NullnessAnalysisRunner {
                 (sum, facts) => sum + facts.length,
                 0
             );
+            // Inspect callback-local code without inventing registration -> synchronous execution,
+            // captured state, event order, or Promise payload effects. These roots start with ZERO.
+            const reachedMethods = new Set([...reachedFacts.keys()].map(stmt => stmt.getCfg()?.getDeclaringMethod()));
+            for (const callback of this.getCallbackBodyRoots()) {
+                if (!reachedMethods.has(callback)) supplementalRoots.add(callback);
+            }
             for (const method of supplementalRoots) {
                 const supplementalCfg = method.getCfg();
                 const supplementalEntry = supplementalCfg?.getStartingStmt() ??
@@ -366,32 +364,27 @@ export class NullnessAnalysisRunner {
         return methods;
     }
 
-    /**
-     * UI builder methods can be reached through framework routing that is not
-     * present in the project call graph. Analyze only methods containing a
-     * registered collection boundary or non-null sink instead of widening every public method.
-     */
-    private getNonNullSinkMethods(
-        dummyMain: ArkMethod,
-        libraryRegistry: NullnessLibraryRegistry
-    ): ArkMethod[] {
-        const methods: ArkMethod[] = [];
-        for (const file of this.scene.getFiles()) {
-            for (const arkClass of file.getClasses()) {
-                for (const method of arkClass.getMethods()) {
-                    const cfg = method.getCfg();
-                    if (!cfg || method === dummyMain) continue;
-                    const containsSink = [...cfg.getBlocks()].some(block =>
-                        block.getStmts().some(stmt =>
-                            libraryRegistry.isFrameworkCollectionCall(stmt) ||
-                            libraryRegistry.getNonNullArgumentIndices(stmt).length > 0
-                        )
-                    );
-                    if (containsSink) methods.push(method);
-                }
+    private getCallbackBodyRoots(): Set<ArkMethod> {
+        const roots = new Set<ArkMethod>();
+        const visit = (type: Type, seen: Set<Type>): void => {
+            if (seen.has(type)) return;
+            seen.add(type);
+            if (type instanceof AliasType) visit(type.getOriginalType(), seen);
+            else if (type instanceof UnionType) type.getTypes().forEach(member => visit(member, seen));
+            else if (type instanceof FunctionType) {
+                const signature = type.getMethodSignature();
+                const file = signature.getDeclaringClassSignature().getDeclaringFileSignature();
+                if (!this.scene.getFile(file) || this.scene.hasSdkFile(file)) return;
+                const method = this.scene.getMethod(signature);
+                if (method?.getCfg() && !method.containsModifier(ModifierType.ASYNC)) roots.add(method);
+            }
+        };
+        for (const file of this.scene.getFiles()) for (const owner of file.getClasses()) {
+            for (const method of owner.getMethods()) for (const stmt of method.getCfg()?.getStmts() ?? []) {
+                for (const argument of stmt.getInvokeExpr()?.getArgs() ?? []) visit(argument.getType(), new Set());
             }
         }
-        return methods;
+        return roots;
     }
 
     private mergeDiagnostics(

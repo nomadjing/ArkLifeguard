@@ -8,16 +8,20 @@ import {
     ClassHierarchyAnalysis,
     Scene,
     Stmt,
+    ModifierType,
 } from '../../adapter/arkanalyzer';
-import { CallResolver, resolveProjectMethods } from '../CallResolver';
+import { CallResolver, resolveProjectMethods, type SynchronousCallbackModel } from '../CallResolver';
 
 /** Owns CHA dispatch and per-analysis, per-call-site callee resolution caches. */
 export class CallGraphManager {
     private resolver?: CallResolver;
+    private synchronousCallees = new WeakMap<Stmt, Set<ArkMethod>>();
 
-    constructor(private readonly scene: Scene) {}
+    constructor(private readonly scene: Scene, private readonly synchronousOnly = false,
+        private readonly synchronousCallbackModel?: SynchronousCallbackModel) {}
 
     initialize(entryMethod: ArkMethod): void {
+        this.synchronousCallees = new WeakMap();
         const graph = new CallGraph(this.scene);
         const analysis = new ClassHierarchyAnalysis(this.scene, graph, new CallGraphBuilder(graph, this.scene));
         this.resolver = new CallResolver(this.scene, call => {
@@ -47,7 +51,7 @@ export class CallGraphManager {
                 if (method?.getCfg()) methods.add(method);
             }
             return methods;
-        });
+        }, this.synchronousOnly, this.synchronousCallbackModel);
     }
 
     getAllCalleeMethods(call: Stmt): Set<ArkMethod> {
@@ -56,7 +60,14 @@ export class CallGraphManager {
 
     getCalleesOfCallAt(call: Stmt): Set<ArkMethod> {
         if (!this.resolver) throw new Error('CallGraphManager must be initialized before querying callees');
-        return this.resolver.getCallees(call);
+        if (!this.synchronousOnly) return this.resolver.getCallees(call);
+        const cached = this.synchronousCallees.get(call);
+        if (cached) return cached;
+        // Keep proven synchronous parameter calls and lowered component builders; no SDK callback guessing.
+        const result = new Set([...this.resolver.getCallees(call)]
+            .filter(method => !method.containsModifier(ModifierType.ASYNC)));
+        this.synchronousCallees.set(call, result);
+        return result;
     }
 
     isCallStatement(stmt: Stmt): boolean {

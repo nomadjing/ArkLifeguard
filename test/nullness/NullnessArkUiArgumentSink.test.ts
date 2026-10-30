@@ -31,12 +31,12 @@ describe('Nullness ArkUI collection boundaries', () => {
         expect(diagnostics).toHaveLength(0);
     });
 
-    it('retains supplemental analysis of collection owners and their real defects', () => {
+    it('checks callback bodies without treating their uncalled owner as a root', () => {
         const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
         expect(result.success, result.error).toBe(true);
         expect(result.solverBreakdown!.supplementalRootCount).toBeGreaterThan(0);
         expect(result.diagnostics.some(diagnostic =>
             diagnostic.dereferenceStmt.getCfg()?.getDeclaringMethod().getName() === 'uncalledCollectionOwner' &&
-            diagnostic.dereferenceStmt.getOriginalText()?.includes('account!.touch()'))).toBe(true);
+            diagnostic.dereferenceStmt.getOriginalText()?.includes('account!.touch()'))).toBe(false);
     });
 });

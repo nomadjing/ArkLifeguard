@@ -2,6 +2,7 @@ import type { ArkMethod, Scene, Stmt } from '../../adapter/arkanalyzer';
 import { CallGraphManager } from './CallGraphManager';
 import { CfgIndex } from './CfgIndex';
 import type { InterproceduralCFG } from './InterproceduralCFG';
+import type { SynchronousCallbackModel } from '../CallResolver';
 
 /** Default ICFG backed by ArkAnalyzer CFGs and a CHA call graph. */
 export class ArkInterproceduralCFG implements InterproceduralCFG {
@@ -10,9 +11,10 @@ export class ArkInterproceduralCFG implements InterproceduralCFG {
     private cfgInitialized = false;
 
     /** Reuse requires a fixed Scene containing all roots before the first initialization. */
-    constructor(scene: Scene, private readonly reuseCfgIndex = false) {
+    constructor(scene: Scene, private readonly reuseCfgIndex = false, synchronousOnly = false,
+        synchronousCallbackModel?: SynchronousCallbackModel) {
         this.cfgIndex = new CfgIndex(scene);
-        this.callGraphManager = new CallGraphManager(scene);
+        this.callGraphManager = new CallGraphManager(scene, synchronousOnly, synchronousCallbackModel);
     }
 
     initialize(entryMethod: ArkMethod): void {

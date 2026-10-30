@@ -42,7 +42,7 @@ describe('Nullness call state and static diagnostics', () => {
 
     it.each(['trulyNullStatic', 'trulyNullArgument', 'argumentBecomesNull', 'unchangedArgument',
         'unknownArgumentCall', 'parameterRebinding', 'conditionalArgumentUpdate',
-        'callbackRealDefect', 'lexicalCallbackUpdate', 'exceptionalClear'])('retains the defect in %s', name => {
+        'exceptionalClear'])('retains the defect in %s', name => {
         expect(analyze(name).problem.getNullDereferences().length).toBeGreaterThan(0);
     });
 

@@ -4,7 +4,8 @@
  */
 
 import { ts } from '../../adapter/arkanalyzer';
-import type { ArkFile, ArkMethod, Stmt } from '../../adapter/arkanalyzer';
+import type { ArkFile, ArkMethod, Stmt, Value } from '../../adapter/arkanalyzer';
+import { assignedBeforeUse } from './DefiniteAssignment';
 
 export const NULL = 1;
 export const UNDEFINED = 2;
@@ -27,6 +28,7 @@ interface SourceIndex {
     accesses: Array<{ start: number; end: number; access: SourceAccess }>;
     conditionEnds: Map<number, number>;
     equalityConditions: Set<number>;
+    truthinessConditions: Map<number, Set<string>>;
 }
 
 interface SourceEffect {
@@ -41,7 +43,60 @@ interface SourceEffect {
 export class NullnessSourceSemantics {
     private readonly files = new WeakMap<ArkFile, SourceIndex>();
     private readonly statements = new WeakMap<Stmt, readonly SourceAccess[]>();
+    private readonly operands = new WeakMap<Stmt, WeakMap<Value, readonly SourceAccess[] | null>>();
     private readonly arrowMethods = new WeakMap<ArkMethod, boolean>();
+    private readonly assignmentProofs = new WeakMap<Stmt, Map<string, { declaration: ts.VariableDeclaration; proven: boolean } | null>>();
+
+    excludesUninitializedLocal(stmt: Stmt, name: string, origin: Stmt): boolean {
+        if (!/^[A-Za-z_$][\w$]*$/.test(name)) return false;
+        const file = stmt.getCfg()?.getDeclaringMethod().getDeclaringArkFile();
+        if (!file || file !== origin.getCfg()?.getDeclaringMethod().getDeclaringArkFile()) return false;
+        this.getAccesses(stmt);
+        const index = this.files.get(file);
+        if (!index) return false;
+        const position = stmt.getOriginPositionInfo();
+        const line = index.source.getLineStarts()[position.getLineNo() - 1];
+        if (line === undefined) return false;
+        const offset = line + position.getColNo() - 1;
+        const proofs = this.assignmentProofs.get(stmt) ?? new Map();
+        this.assignmentProofs.set(stmt, proofs);
+        if (!proofs.has(name)) {
+            let body: ts.Block | undefined;
+            const locate = (node: ts.Node): void => {
+                if (node.pos > offset || node.end <= offset) return;
+                if (ts.isFunctionLike(node) && 'body' in node && node.body && ts.isBlock(node.body as ts.Node)) {
+                    body = node.body as ts.Block;
+                }
+                ts.forEachChild(node, locate);
+            };
+            locate(index.source);
+            let declaration: ts.VariableDeclaration | undefined;
+            let target: ts.Node | undefined;
+            const inspect = (node: ts.Node): void => {
+                if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+                    node.name.text === name && !node.initializer) declaration = node;
+                if (!target && node.getStart() >= offset &&
+                    (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+                    pathName(node.expression) === name) target = node;
+                if (!target && node.getStart() >= offset && ts.isForOfStatement(node) &&
+                    pathName(node.expression) === name) target = node.expression;
+                if (!target && node.getStart() >= offset && ts.isCallExpression(node)) {
+                    target = node.arguments.find(argument => pathName(argument) === name);
+                }
+                ts.forEachChild(node, inspect);
+            };
+            if (body) inspect(body);
+            proofs.set(name, body && declaration && target
+                ? { declaration, proven: assignedBeforeUse(body, target, name) } : null);
+        }
+        const proof = proofs.get(name);
+        const originPosition = origin.getOriginPositionInfo();
+        const originLine = index.source.getLineStarts()[originPosition.getLineNo() - 1];
+        if (!proof?.proven || originLine === undefined) return false;
+        const originOffset = originLine + originPosition.getColNo() - 1;
+        const declarationStatement = proof.declaration.parent.parent;
+        return declarationStatement.getStart() <= originOffset && originOffset < declarationStatement.end;
+    }
 
     isArrowMethod(method: ArkMethod): boolean {
         const cached = this.arrowMethods.get(method);
@@ -69,6 +124,16 @@ export class NullnessSourceSemantics {
         const position = stmt.getOriginPositionInfo();
         const line = index.source.getLineStarts()[position.getLineNo() - 1];
         return line !== undefined && index.equalityConditions.has(line + position.getColNo() - 1);
+    }
+
+    isTruthinessCondition(stmt: Stmt, receiver: string): boolean {
+        this.getAccesses(stmt);
+        const file = stmt.getCfg()?.getDeclaringMethod().getDeclaringArkFile();
+        const index = file && this.files.get(file);
+        const position = stmt.getOriginPositionInfo();
+        const line = index?.source.getLineStarts()[position.getLineNo() - 1];
+        return line !== undefined && !!index?.truthinessConditions
+            .get(line + position.getColNo() - 1)?.has(receiver);
     }
 
     getAccesses(stmt: Stmt): readonly SourceAccess[] {
@@ -105,10 +170,43 @@ export class NullnessSourceSemantics {
         return result;
     }
 
+    /** Operand positions distinguish accesses lowered from the same containing expression. */
+    getOperandAccesses(stmt: Stmt, operand: Value): readonly SourceAccess[] | null {
+        const cache = this.operands.get(stmt) ?? new WeakMap();
+        this.operands.set(stmt, cache);
+        if (cache.has(operand)) return cache.get(operand)!;
+        this.getAccesses(stmt);
+        const file = stmt.getCfg()?.getDeclaringMethod().getDeclaringArkFile();
+        const index = file && this.files.get(file);
+        const position = stmt.getOperandOriginalPosition?.(operand);
+        const lines = index?.source.getLineStarts();
+        const first = position ? lines?.[position.getFirstLine() - 1] : undefined;
+        const last = position ? lines?.[position.getLastLine() - 1] : undefined;
+        let result: readonly SourceAccess[] | null = null;
+        if (index && position && first !== undefined && last !== undefined &&
+            position.getFirstCol() > 0 && position.getLastCol() > 0) {
+            const start = first + position.getFirstCol() - 1;
+            const end = last + position.getLastCol() - 1;
+            let low = 0, high = index.accesses.length;
+            while (low < high) {
+                const middle = (low + high) >>> 1;
+                if (index.accesses[middle].start < start) low = middle + 1; else high = middle;
+            }
+            const matches: SourceIndex['accesses'] = [];
+            for (let i = low; i < index.accesses.length && index.accesses[i].start === start; i++) {
+                if (index.accesses[i].end === end) matches.push(index.accesses[i]);
+            }
+            if (matches.length) result = matches.map(match => match.access);
+        }
+        cache.set(operand, result);
+        return result;
+    }
+
     private buildIndex(file: ArkFile): SourceIndex {
         const source = ts.createSourceFile(file.getFilePath(), file.getCode(), ts.ScriptTarget.Latest,
             true, ts.ScriptKind.ETS);
-        const index: SourceIndex = { source, accesses: [], conditionEnds: new Map(), equalityConditions: new Set() };
+        const index: SourceIndex = { source, accesses: [], conditionEnds: new Map(), equalityConditions: new Set(),
+            truthinessConditions: new Map() };
         const effects: SourceEffect[] = [];
         const collectEffects = (node: ts.Node): void => {
             let write: string | null = null;
@@ -130,6 +228,33 @@ export class NullnessSourceSemantics {
             if (ts.isIfStatement(node)) {
                 const start = node.getStart(source);
                 index.conditionEnds.set(start, node.expression.end);
+                const paths = new Set<string>();
+                const comparedPaths = new Set<string>();
+                const collectTruthTests = (expression: ts.Expression): void => {
+                    expression = unwrap(expression);
+                    if (ts.isBinaryExpression(expression) &&
+                        (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+                            expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+                        collectTruthTests(expression.left);
+                        collectTruthTests(expression.right);
+                    } else if (ts.isPrefixUnaryExpression(expression) &&
+                        expression.operator === ts.SyntaxKind.ExclamationToken) {
+                        collectTruthTests(expression.operand);
+                    } else if (ts.isBinaryExpression(expression)) {
+                        // Do not guess which test produced the IR sentinel if the same
+                        // receiver is also explicitly compared in this source condition.
+                        for (const operand of [expression.left, expression.right]) {
+                            const path = pathName(operand);
+                            if (path) comparedPaths.add(path);
+                        }
+                    } else {
+                        const path = pathName(expression);
+                        if (path) paths.add(path);
+                    }
+                };
+                collectTruthTests(node.expression);
+                for (const path of comparedPaths) paths.delete(path);
+                index.truthinessConditions.set(start, paths);
             }
             if (ts.isBinaryExpression(node) && [ts.SyntaxKind.EqualsEqualsToken,
                 ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken,
@@ -341,6 +466,19 @@ function excludedBy(expression: ts.Expression, truth: boolean, receiver: string,
         }
         const equal = operator === ts.SyntaxKind.EqualsEqualsToken || operator === ts.SyntaxKind.EqualsEqualsEqualsToken;
         const unequal = operator === ts.SyntaxKind.ExclamationEqualsToken || operator === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+        if ((equal && truth) || (unequal && !truth)) {
+            const left = unwrap(expression.left);
+            const right = unwrap(expression.right);
+            const typeOf = ts.isTypeOfExpression(left) ? left : ts.isTypeOfExpression(right) ? right : undefined;
+            const tag = typeOf === left ? right : left;
+            if (typeOf && ts.isStringLiteral(tag) &&
+                ['string', 'number', 'boolean', 'bigint', 'symbol', 'function', 'object'].includes(tag.text)) {
+                const path = pathName(typeOf.expression);
+                if (path === receiver) return tag.text === 'object' ? UNDEFINED : NULLISH;
+                // An optional property cannot have a defined typeof result when its receiver is nullish.
+                if (path?.startsWith(`${receiver}.`) || path?.startsWith(`${receiver}[`)) return NULLISH;
+            }
+        }
         if ((equal && !truth) || (unequal && truth)) {
             const left = pathName(expression.left);
             const right = pathName(expression.right);
@@ -380,5 +518,6 @@ function alwaysExits(statement: ts.Statement): boolean {
         const last = statement.statements[statement.statements.length - 1];
         return !!last && alwaysExits(last);
     }
-    return ts.isReturnStatement(statement) || ts.isThrowStatement(statement);
+    return ts.isReturnStatement(statement) || ts.isThrowStatement(statement) ||
+        ts.isContinueStatement(statement) || ts.isBreakStatement(statement);
 }

@@ -1,15 +1,74 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "methods": [
     {
-      "className": "AppStorage",
-      "methodName": "get",
-      "returnNullness": "maybe-undefined"
+      "signature": "@built-in/lib.es5.d.ts: RegExp.exec(string)",
+      "returnNullness": "maybe-null",
+      "evidence": "RegExp.exec returns a match array or null."
     },
     {
-      "className": "Button",
-      "methodName": "create",
-      "returnNullness": "non-null"
+      "signature": "@built-in/lib.es2015.collection.d.ts: Map.get(K)",
+      "returnNullness": "maybe-nullish",
+      "evidence": "Map.get may miss or return a stored null/undefined; key presence does not prove a non-null value."
+    },
+    {
+      "signature": "@built-in/lib.es2015.core.d.ts: Array.find(@built-in/lib.es2015.core.d.ts: Array.%AM0(void, T, number, T[]), any)",
+      "returnNullness": "maybe-nullish",
+      "evidence": "Array.find may miss or return a null/undefined element. Predicate callback execution is not modeled."
+    },
+    {
+      "signature": "@built-in/lib.es2015.collection.d.ts: Map.has(K)",
+      "returnNullness": "non-null",
+      "evidence": "Map.has returns a boolean without asserting non-null stored values."
+    },
+    {
+      "signature": "@built-in/lib.es2015.collection.d.ts: Map.set(K, V)",
+      "returnNullness": "non-null",
+      "evidence": "Map.set returns its receiver; element state is not summarized."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: ArrayConstructor.isArray(any)",
+      "returnNullness": "non-null",
+      "predicate": "array",
+      "evidence": "Array.isArray returns a boolean and its true edge excludes null/undefined; project lookalikes must not inherit this predicate."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: JSON.parse(string, @built-in/lib.es5.d.ts: JSON.%AM0(any, string, any))",
+      "returnNullness": "maybe-nullish",
+      "semantics": "json-parse",
+      "evidence": "ECMA-262 JSON.parse: normal return may be null; undefined requires a callable reviver. Absent/null/undefined reviver excludes undefined. Malformed input throws; reviver execution is not modeled. https://tc39.es/ecma262/multipage/structured-data.html#sec-json.parse"
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: JSON.stringify(any, @built-in/lib.es5.d.ts: JSON.%AM1(any, string, any), string|number)",
+      "returnNullness": "maybe-undefined",
+      "evidence": "JSON.stringify may return undefined for a non-serializable top-level value or a replacer result."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: String.trim()",
+      "returnNullness": "non-null",
+      "evidence": "String.trim returns a string on normal completion."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: String.split(string|@built-in/lib.es5.d.ts: RegExp, number)",
+      "returnNullness": "non-null",
+      "evidence": "String.split returns an array on normal completion."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: Array.slice(number, number)",
+      "returnNullness": "non-null",
+      "evidence": "Array.slice returns an array on normal completion; element nullness is not inferred."
+    },
+    {
+      "signature": "@ohosSdk/api/@ohos.util.json.d.ts: json.%dflt.parse(string, @ohosSdk/api/@ohos.util.json.d.ts: json.%dflt.[static]%dflt()#Transformer, @ohosSdk/api/@ohos.util.json.d.ts: json.ParseOptions)",
+      "returnNullness": "maybe-null",
+      "evidence": "Loaded OpenHarmony @ohos.util.json.d.ts parse declaration returns Object | null. Exact @kit.ArkTS JSON alias target; Transformer execution is not modeled."
+    }
+  ],
+  "fields": [
+    {
+      "signature": "@built-in/lib.es5.d.ts: Error.stack",
+      "returnNullness": "maybe-undefined",
+      "evidence": "Optional stack field; only the exact built-in Error field is modeled."
     }
   ]
 }

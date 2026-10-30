@@ -23,6 +23,7 @@ import {
     ArkStaticInvokeExpr,
     FunctionType,
     Local,
+    ModifierType,
     ModelUtils,
     Scene,
     Stmt,
@@ -76,6 +77,9 @@ interface ParameterUse {
     dependencies: Array<{ callee: ArkMethod; arguments: Set<number>[] }>;
 }
 
+/** External contracts identify synchronously invoked callback argument positions. */
+export type SynchronousCallbackModel = (call: Stmt) => ReadonlySet<number>;
+
 /**
  * HapFlow Definition 3.1 / Algorithm 1: expression targets plus invoked callback
  * arguments. Summaries propagate parameter uses through project wrappers to a
@@ -92,6 +96,8 @@ export class CallResolver {
     constructor(
         private readonly scene: Scene,
         private readonly resolveExpression: (call: Stmt) => Set<ArkMethod>,
+        private readonly synchronousOnly = false,
+        private readonly synchronousCallbackModel?: SynchronousCallbackModel,
     ) {}
 
     getCallees(call: Stmt): Set<ArkMethod> {
@@ -114,13 +120,15 @@ export class CallResolver {
         return result;
     }
 
-    private getExpressionCallees(call: Stmt): Set<ArkMethod> {
+    getExpressionCallees(call: Stmt): Set<ArkMethod> {
         const cached = this.expressions.get(call);
         if (cached) return cached;
         const invoke = call.getInvokeExpr();
-        const result = invoke instanceof ArkPtrInvokeExpr
+        const resolved = invoke instanceof ArkPtrInvokeExpr
             ? this.valueToMethods(invoke.getFuncPtrLocal(), call)
             : this.resolveExpression(call);
+        const result = this.synchronousOnly ? new Set([...resolved]
+            .filter(method => !method.containsModifier(ModifierType.ASYNC))) : resolved;
         this.expressions.set(call, result);
         return result;
     }
@@ -128,6 +136,7 @@ export class CallResolver {
     private invokedArguments(call: Stmt): Set<number> {
         const targets = this.getExpressionCallees(call);
         if (targets.size === 0) {
+            if (this.synchronousOnly) return new Set(this.synchronousCallbackModel?.(call) ?? []);
             // Unavailable SDK/library bodies: retain every callback argument.
             // A project parameter invocation is not an SDK registration.
             const invoke = call.getInvokeExpr();
@@ -190,6 +199,7 @@ export class CallResolver {
             if (origins.every(indices => indices.size === 0)) continue;
             const callees = this.getExpressionCallees(stmt);
             if (callees.size === 0) {
+                if (this.synchronousOnly) continue; // Unavailable bodies do not prove synchronous invocation.
                 // A passed callback may be executed by an unavailable body,
                 // including an unknown function-valued formal parameter.
                 for (const indices of origins) for (const index of indices) summary.invoked.add(index);
