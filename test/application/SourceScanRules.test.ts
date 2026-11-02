@@ -3,6 +3,8 @@ import { isApplicationSource } from '../../src/application/SourceScanRules';
 
 describe('application source scan boundaries', () => {
     it.each(['entry/src/test/Case.ets', 'entry/src/ohosTest/Case.ets', 'tests/input.ts',
+        '.agents/skills/templates/demo/entry/src/main/ets/Index.ets', '.codex/examples/Index.ts',
+        '.git/samples/example.js', '.vscode/samples/demo.ts',
         'entry/src/main/ets/Case.test.ets', 'entry/src/main/resources/rawfile/mermaid/main.js'])(
         'excludes test or resource input: %s', file => {
             expect(isApplicationSource('/project', `/project/${file}`)).toBe(false);

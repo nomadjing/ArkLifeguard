@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { Sdk } from '../src/adapter/arkanalyzer';
 import { Scene, SceneConfig } from '../src/adapter/arkanalyzer';
+import { isApplicationSource } from '../src/application/SourceScanRules';
 import type { IFDSSolverStatistics } from '../src/ifds';
 import {
     NullnessAnalysisRunner,
@@ -400,6 +401,9 @@ function analyzeProject(
         const config = new SceneConfig();
         config.buildConfig(metadata.name, projectPath, sdks);
         config.buildFromProjectDir(projectPath);
+        const files = config.getProjectFiles();
+        const applicationFiles = files.filter(file => isApplicationSource(projectPath, file));
+        files.splice(0, files.length, ...applicationFiles);
         const scene = new Scene();
 
         scene.buildSceneFromProjectDir(config);
