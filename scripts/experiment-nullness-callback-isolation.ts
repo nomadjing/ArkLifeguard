@@ -73,7 +73,6 @@ const analyzeStart = performance.now();
 const result = new NullnessAnalysisRunner(scene, {
     collectSolverStatistics: true,
     analyzeModuleInitializers: !lifecycleOnly,
-    analyzeFrameworkSinkMethods: !lifecycleOnly,
 }).runWithDummyMain(main,
     (solver, kind) => {
         const inspectStart = performance.now();

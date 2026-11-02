@@ -6,8 +6,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isApplicationSource } from './SourceScanRules';
-import { Scene, SceneConfig, Sdk } from '../adapter/arkanalyzer';
+import { buildApplicationScene } from './ApplicationScene';
+import { Scene, Sdk } from '../adapter/arkanalyzer';
 import {
     AbilityInfo,
     ComponentInfo,
@@ -382,16 +382,12 @@ export class ProjectAnalyzer {
     }
 
     private buildScene(projectPath: string, sdks: Sdk[]): Scene {
-        const config = new SceneConfig();
-        config.buildConfig(path.basename(projectPath), projectPath, sdks);
-        config.buildFromProjectDir(projectPath);
-        const files = config.getProjectFiles();
-        const applicationFiles = files.filter(file => isApplicationSource(projectPath, file));
-        files.splice(0, files.length, ...applicationFiles);
-        const scene = new Scene();
-        scene.buildSceneFromProjectDir(config);
-        if (this.options.inferTypes) scene.inferTypes();
-        return scene;
+        return buildApplicationScene(
+            path.basename(projectPath),
+            projectPath,
+            sdks,
+            this.options.inferTypes
+        );
     }
 
     private discoverSdks(): Sdk[] {

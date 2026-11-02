@@ -9,3 +9,8 @@ export {
     ProjectAnalysisResult,
     ProjectAnalyzer,
 } from './ProjectAnalyzer';
+
+export {
+    buildApplicationScene,
+    createApplicationSceneConfig,
+} from './ApplicationScene';

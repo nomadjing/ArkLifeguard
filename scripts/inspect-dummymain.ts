@@ -11,9 +11,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Sdk } from 'arkanalyzer/lib/Config';
-import { Scene, SceneConfig, SourceMethodPrinter } from 'arkanalyzer/lib/';
+import { SourceMethodPrinter } from 'arkanalyzer/lib/';
 import { Stmt } from 'arkanalyzer/lib/core/base/Stmt';
 import type { ArkMethod } from 'arkanalyzer/lib/core/model/ArkMethod';
+import { buildApplicationScene } from '../src/application/ApplicationScene';
 import {
     createLifecycleModelCreator,
 } from '../src/lifecycle/LifecycleModelEntry';
@@ -266,11 +267,12 @@ function main(): void {
         throw new Error(`Project path is not a directory: ${projectPath}`);
     }
     const sdks = discoverSdks(options);
-    const config = new SceneConfig();
-    config.buildConfig(path.basename(projectPath), projectPath, sdks);
-    const scene = new Scene();
-    scene.buildSceneFromProjectDir(config);
-    if (options.inferTypes) scene.inferTypes();
+    const scene = buildApplicationScene(
+        path.basename(projectPath),
+        projectPath,
+        sdks,
+        options.inferTypes
+    );
     const creator = createLifecycleModelCreator(scene);
     creator.create();
     const dummyMain = creator.getDummyMain();
