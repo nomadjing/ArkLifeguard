@@ -47,15 +47,10 @@ describe('synchronous project returns and evidence confidence', () => {
         expect(reports.some(report => report.sink?.includes('required.refresh()'))).toBe(false);
     });
 
-    it('can expose unresolved calls separately as low-confidence evidence', () => {
-        const result = new NullnessAnalysisRunner(buildScene(), {
-            problem: { reportUnresolvedReturns: true },
-        }).runFromDummyMain();
-
+    it('does not report or create facts for unresolved returns', () => {
+        const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
         expect(result.success, result.error).toBe(true);
-        const unresolved = result.diagnostics.find(diagnostic =>
-            diagnostic.dereferenceStmt.getOriginalText()?.includes('unknownValue!.refresh()')
-        );
-        expect(unresolved?.confidence).toBe('low');
+        expect(result.diagnostics.some(d => d.dereferenceStmt.getOriginalText()?.includes('unknownValue!.refresh()'))).toBe(false);
+        expect([...result.reachedFacts.values()].flat().some(f => f.origin?.description?.includes('outside the supported synchronous models'))).toBe(false);
     });
 });

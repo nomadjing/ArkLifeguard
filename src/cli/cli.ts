@@ -33,7 +33,6 @@ interface AnalyzeCliOptions {
     checks: AnalysisCheck[];
     maxAccessPathLength: number;
     maxPropagationDepth: number;
-    reportUnresolvedReturns: boolean;
     lifecycleReport?: string;
     ifdsStats?: string;
     ifdsProgress?: string;
@@ -68,7 +67,6 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
         ).argParser(parseChecks).default(['nullness', 'resource', 'listener'] as AnalysisCheck[], 'all'))
         .option('--max-access-path-length <n>', 'maximum nullness access-path length', positiveInteger, 5)
         .option('--max-propagation-depth <n>', 'maximum nullness fact propagation depth', positiveInteger, 40)
-        .option('--report-unresolved-returns', 'include low-confidence unresolved-return reports', false)
         .option('--lifecycle-report <path>', 'write lifecycle modeling details to a separate JSON report')
         .option('--ifds-stats <path>', 'collect resource/listener IFDS statistics and write a separate JSON report')
         .option('--ifds-progress <prefix>', 'write live resource/listener solver snapshots with this path prefix')
@@ -90,7 +88,6 @@ export async function runCLI(argv: string[] = process.argv): Promise<number> {
                     runListenerAnalysis: selectedChecks.has('listener'),
                     maxAccessPathLength: options.maxAccessPathLength,
                     maxPropagationDepth: options.maxPropagationDepth,
-                    reportUnresolvedReturns: options.reportUnresolvedReturns,
                     collectSolverStatistics: options.ifdsStats !== undefined,
                     solverProgressPath: options.ifdsProgress ? path.resolve(options.ifdsProgress) : undefined,
                     verbose: options.verbose,

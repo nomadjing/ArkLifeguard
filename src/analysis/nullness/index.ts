@@ -17,11 +17,13 @@ export {
 } from './NullnessFact';
 
 export {
-    NullDereferenceDiagnostic,
     NullnessAnalysisConfig,
     NullnessProblem,
-    NullnessSourceLocation,
 } from './NullnessProblem';
+export type {
+    NullDereferenceDiagnostic,
+    NullnessSourceLocation,
+} from './NullnessReporter';
 export { NullnessSolver } from './NullnessSolver';
 export { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
 export { NullnessLibrarySummary } from './library/NullnessLibrarySummary';

@@ -2,6 +2,21 @@
   "schemaVersion": 2,
   "methods": [
     {
+      "signature": "@built-in/lib.es5.d.ts: NumberConstructor.create(any)",
+      "returnNullness": "non-null",
+      "evidence": "Number(value) returns a numeric primitive on normal completion, including NaN; coercion may throw."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: Number.toString(number)",
+      "returnNullness": "non-null",
+      "evidence": "Number.prototype.toString returns a string on normal completion; invalid receivers or radix may throw."
+    },
+    {
+      "signature": "@built-in/lib.es5.d.ts: String.match(string|@built-in/lib.es5.d.ts: RegExp)",
+      "returnNullness": "maybe-null",
+      "evidence": "String.match returns a match array or null; a non-null assertion does not guard its result."
+    },
+    {
       "signature": "@built-in/lib.es5.d.ts: RegExp.exec(string)",
       "returnNullness": "maybe-null",
       "evidence": "RegExp.exec returns a match array or null."

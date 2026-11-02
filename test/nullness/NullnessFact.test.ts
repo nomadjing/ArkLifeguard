@@ -64,6 +64,7 @@ function applyGuard(
     };
     ifStmt.setCfg({
         getBlocks: () => new Set([sourceBlock, trueBlock, falseBlock]),
+        getDeclaringMethod: () => ({ getDeclaringArkFile: () => undefined }),
     } as any);
 
     const source = NullnessFact.create(
@@ -188,22 +189,6 @@ describe('NullnessFact', () => {
 
         expect(first.equals(second)).toBe(true);
         expect(first.hashCode()).toBe(second.hashCode());
-    });
-
-    it('keeps unresolved return evidence separate from explicit nullable evidence', () => {
-        const path = new NullnessAccessPath(local('result'));
-        const explicit = NullnessFact.create(path, NullnessKind.MaybeNullish, {
-            kind: NullnessOriginKind.LibraryModel,
-            stmt: stmt(10),
-        });
-        const unresolved = NullnessFact.create(path, NullnessKind.MaybeNullish, {
-            kind: NullnessOriginKind.UnresolvedReturn,
-            stmt: stmt(20),
-        });
-
-        expect(explicit.equals(unresolved)).toBe(false);
-        expect(explicit.hashCode()).not.toBe(unresolved.hashCode());
-        expect(unresolved.isUnresolvedEvidence()).toBe(true);
     });
 
     it('keeps null and undefined as different facts', () => {
@@ -421,7 +406,7 @@ describe('Nullness flow and approximation', () => {
         )).toBe(true);
     });
 
-    it('propagates a fact through an ArkAwaitExpr assignment', () => {
+    it('does not propagate a promise value through an unsupported await assignment', () => {
         const entry = stmt(1);
         const promiseResult = new ArkLocal('%promiseResult');
         const account = new ArkLocal('account');
@@ -441,6 +426,6 @@ describe('Nullness flow and approximation', () => {
         ];
         expect(propagated.some(fact =>
             fact.accessPath.equals(NullnessAccessPath.fromValue(account))
-        )).toBe(true);
+        )).toBe(false);
     });
 });

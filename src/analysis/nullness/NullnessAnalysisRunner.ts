@@ -32,13 +32,14 @@ import {
     NullDereferenceDiagnostic,
     NullnessAnalysisConfig,
     NullnessProblem,
+    NullnessMetadataCache,
 } from './NullnessProblem';
 import { findRecursiveMethods } from '../../ifds/CallResolver';
 import { NullnessSourceSemantics } from './NullnessSourceSemantics';
 import { NullnessSolver } from './NullnessSolver';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
-import { ArkInterproceduralCFG, type IFDSSolverStatistics } from '../../ifds';
-import { createSynchronousCallbackModel } from './library/SynchronousCallbackModels';
+import { type IFDSSolverStatistics } from '../../ifds';
+import { createNullnessInterproceduralCFG } from './NullnessCallGraph';
 
 export interface NullnessRunnerConfig {
     problem?: NullnessAnalysisConfig;
@@ -46,8 +47,6 @@ export interface NullnessRunnerConfig {
     libraryRegistry?: NullnessLibraryRegistry;
     /** Analyze project-file module initializers that can introduce nullish facts. */
     analyzeModuleInitializers?: boolean;
-    /** @deprecated Framework argument models are not part of the synchronous core. */
-    analyzeFrameworkSinkMethods?: boolean;
     /** Collect and aggregate IFDS statistics across the lifecycle and supplemental roots. */
     collectSolverStatistics?: boolean;
 }
@@ -165,12 +164,14 @@ export class NullnessAnalysisRunner {
             const libraryRegistry = this.config.libraryRegistry ??
                 NullnessLibraryRegistry.createDefault(this.scene);
             const sourceSemantics = new NullnessSourceSemantics();
+            const metadata = new NullnessMetadataCache(libraryRegistry, sourceSemantics);
             const problem = new NullnessProblem(
                 entryStmt,
                 dummyMain,
                 this.config.problem,
                 libraryRegistry,
-                sourceSemantics
+                sourceSemantics,
+                metadata
             );
             const supplementalRoots = new Set<ArkMethod>();
             if (this.config.analyzeModuleInitializers !== false) {
@@ -193,7 +194,7 @@ export class NullnessAnalysisRunner {
                 : undefined;
             // All roots already belong to this fixed Scene. Reuse its CFG
             // index within this run; call resolution is reset for each root.
-            const icfg = new ArkInterproceduralCFG(this.scene, true, true, createSynchronousCallbackModel(this.scene));
+            const icfg = createNullnessInterproceduralCFG(this.scene, true);
             const solver = new NullnessSolver(problem, this.scene, {
                 collectStatistics: this.config.collectSolverStatistics,
             }, recursiveMethods, icfg);
@@ -226,7 +227,8 @@ export class NullnessAnalysisRunner {
                     method,
                     this.config.problem,
                     libraryRegistry,
-                    sourceSemantics
+                    sourceSemantics,
+                    metadata
                 );
                 const supplementalSolver = new NullnessSolver(
                     supplementalProblem,
@@ -356,7 +358,7 @@ export class NullnessAnalysisRunner {
                         return true;
                     }
                     return [...libraryRegistry.getCallToReturnFacts(stmt, zeroFact)]
-                        .some(fact => !fact.isZeroFact() && !fact.isUnresolvedEvidence());
+                        .some(fact => !fact.isZeroFact());
                 })
             );
             if (hasNullishSource) methods.push(method);

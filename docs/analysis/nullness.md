@@ -2,7 +2,7 @@
 
 ## 设计前提与范围
 
-当前实现收缩为同步空值传播核心。输入 ArkTS（`.ets`）应已通过编译检查：显式可空类型的解引用需要先消除空值，或使用非空断言 `!`、可选链 `?.`。分析保留这个语言前提，重点检查非空断言、明确的可空返回证据和已建模的非空参数义务；不把所有类型上合法的普通 ArkTS 属性访问一律视为运行时缺陷。JavaScript/TypeScript 访问不套用这一 ArkTS 前提。源码无法准确匹配时保留 IR 证据。
+当前实现收缩为同步空值传播核心。实验评价限定为已成功构建的 ArkTS 应用（successfully-built ArkTS apps），成功构建需要对应应用及 SDK、工具链版本的实际构建证据；分析器成功完成不等于应用构建成功。输入 ArkTS（`.ets`）应已通过编译检查：显式可空类型的解引用需要先消除空值，或使用非空断言 `!`、可选链 `?.`。分析保留这个语言前提，重点检查非空断言、明确的可空返回证据和已建模的非空参数义务；不把所有类型上合法的普通 ArkTS 属性访问一律视为运行时缺陷。JavaScript/TypeScript 访问不套用这一 ArkTS 前提。当前源码无法准确匹配时保留 IR 证据，但若 IR 未完整表达可选链控制流，这一回退可能产生误报，不能直接据此认定运行时缺陷。
 
 报告仍输出候选来源、访问路径、使用位置和置信度。本次收缩不在用户报告中增加“暂不支持”字段或提示；能力边界仅在本文和代码注释中维护。运行成功表示本轮求解完成，零候选不能证明整个应用没有缺陷。
 
@@ -20,7 +20,7 @@ ArkTS 的空安全检查依赖编译器掌握的静态类型。对于已知可�
 | 写法 | 实际作用 |
 | --- | --- |
 | `if (x !== null && x !== undefined)` | 检查运行时值，只在非空分支继续访问。 |
-| `x?.field` | 遇到 null 或 undefined 时跳过本次属性访问。 |
+| `x?.field` | 运行时 guard：接收者为 null 或 undefined 时跳过受保护的访问，表达式返回 undefined；不证明接收者此后全局非空。 |
 | `x!.field` | 断言 x 非空；不会将实际的空值变成对象，断言错误仍可能导致运行时异常。 |
 | `x as SomeType` | 提供类型断言，不能替代对外部数据内容和结构的校验。 |
 
@@ -32,6 +32,54 @@ value!.trim();
 ```
 
 这里的 `!` 表达的是开发者的承诺。如果 getValue 实际返回 undefined，访问仍会失败。分析器需要检查这种承诺是否与赋值、调用返回值及路径条件一致，而不是将 `!` 本身当作非空证明。
+
+### 可选链的问题与 CFG 修复
+
+Aigis 的旧报告 `out/nullness/1029/report.json` 第 5 条将 `importers/index.ets:26` 返回的 undefined 报在 `EntryAbility.ets:843`：
+
+```typescript
+const importer = dispatchImporter(data.type);
+const key = importer?.schema.export_password_required
+    ? data.password : masterKey.keyAlias;
+const result = await importer?.save(file.fd, key ?? '', content);
+```
+
+当 importer 为 undefined 时，连续可选链会跳过 schema 及 export_password_required 的访问，条件值为 undefined，选择三元表达式的备用分支；下一行的可选调用也不执行。该 undefined 来源不能导致所报位置的解引用异常，因此此条为误报。这里并不要求忽略所有包含 `?.` 的语句：保护范围之外的访问，以及实际存在的 importer 对象上的其他可空字段，仍需单独检查。
+
+修复前的实现并非完全忽略可选链，但处理依赖源码恢复，存在以下不足：
+
+- `NullnessSourceSemantics.getAccesses()` / `getOperandAccesses()` 根据语句、操作数的源码位置匹配 AST；访问节点以 `questionDotToken` 标记 optional。单个节点上的标记不能独立表达整条连续可选链的短路范围，例如 `importer?.schema.export_password_required` 中后一次属性访问没有自己的 `?.`。
+- `NullnessProblem.isReportableSourceUse()` 在诊断阶段根据匹配结果排除 optional 访问；没有匹配项时保留 IR 证据。临时变量、同一源码表达式降低出的多个语句，以及位置范围不精确，都可能使安全访问重新进入报告。这属于报告过滤，不能替代执行路径上的 guard。
+- `propagateAssignment()` 配合 `isOptionalChainStmt()`，对识别出的部分实例字段读取将接收者空值映射为结果 undefined。该规则仍依赖源码匹配，且本身不建立“空值分支跳过整条链”的控制流，不能独立保证连续属性访问、元素访问和可选调用语义一致。
+
+以上是修复前可确认的设计问题。旧报告已确认违反可选链语义，但没有该次历史运行的 IR/CFG 和 fact 轨迹，不将其具体失效环节当作已复现事实。已检查的 ArkAnalyzer 1.0.94、1.0.95 和 2.0.0-beta1 都会将可选属性访问降低为不带判空分支的普通读取。
+
+修复在 IR/CFG 层表达可选链 guard，使 IFDS 沿实际分支传播，而不是依赖源码位置映射做诊断后过滤。以 `r = x?.a.b` 为例，目标控制流为：
+
+```text
+计算 x（一次）
+  ├─ x 为 null/undefined → r = undefined ─────────┐
+  └─ x 非空 → 读取 x.a → 读取其 b → r = 结果 ────┤
+                                                 ↓
+                                               合流
+```
+
+空值分支不执行受保护链上的属性访问或调用；非空分支只排除被检查接收者的 null/undefined fact，不据此证明 a 等后续值非空。合流后保留结果可能为 undefined，也保留原接收者在空值分支上的事实。`x?.a.b`、`(x?.a).b`、`x?.a?.b` 的保护范围不同，必须在降低时区分；可选调用和元素访问还应保证短路时跳过受保护的实参或索引求值。
+
+非空断言 `!` 则是 compiler assertion, no runtime guard。对 Nullness 分析，它只改变编译器的类型判断，不应 kill 或收窄既有 null/undefined fact。Aigis 的 `code.match(/.{1,2}/g)!.join(' ')` 等报告已有空串输入路径的源码证据，属于 TP；不能为了消除可选链误报而删除这些事实。保留断言后的运行时风险，正是分析器相对于编译器空安全检查的价值。
+
+验证要求：
+
+- Aigis 第 5 条因正确的 guard 语义消失，不使用应用名、行号或整条语句免报规则。
+- 连续链、括号打断链、多级可选链、元素访问和可选调用分别验证保护范围；结果 undefined 在保护范围外被直接解引用时仍应报告。
+- 同一接收者上受保护与未受保护的访问分别处理；可选访问不永久清除接收者的空值事实。
+- `match(...)!` 后的 null fact 保留，已确认的 TP 不因可选链修正而被抑制。
+
+[OptionalChainLowering](../../src/adapter/OptionalChainLowering.ts) 在适配层补充 AST 到 IR 的降低：通过 ArkAnalyzer 的条件表达式标记构建真实 CFG 分支；保留连续链范围，括号结束链，可选元素访问与调用的索引及实参留在非空分支内。接收者在求值点保存，可选 delete 的短路结果为 true。已有源码恢复规则仍保留作兼容，但新增安全用例关闭源码访问匹配后也应通过。
+
+降低还记录“结果非 undefined 意味着局部接收者通过了 guard”的关系。Nullness 在具体字面值比较的对应分支使用该关系，并要求接收者局部变量未被重新赋值；不据此恢复可变字段或任意跨调用不变量。非空断言沿原有值身份传播，不清除 fact。String.match 使用已检查的完整内建签名保留可空返回契约，避免当前签名模型的覆盖缺口使原有 TP 消失。
+
+已对 Aigis 原始导出回调和 splitDigits 做局部求解：关闭源码访问匹配后，dispatchImporter 返回 undefined 的事实仍到达调用者，导出回调无诊断，splitDigits 四处 match 断言诊断保留。这是局部验证，不是整批重跑或成功构建评价。兼容补丁依赖 ArkAnalyzer 的值转换入口及条件 CFG 标记；升级依赖时需要重新核对。
 
 ### JSON 的类型断言不等于数据验证
 
@@ -59,6 +107,18 @@ const obj = JSON.parse(text) as Record<string, Object>;
 
 参考：[华为 ArkTS 静态类型与空安全说明](https://developer.huawei.com/consumer/en/doc/harmonyos-guides-V14/arkts-migration-background-V14)、[ECMAScript JSON.parse 规范](https://tc39.es/ecma262/multipage/structured-data.html#sec-json.parse)。以上讨论针对本项目分析的 ArkTS 输入与已核对的 API，不将其他语言版本或不同 SDK 的行为自动视为相同。
 
+## 字符串与正则相关 warning
+
+本项目追踪 null/undefined 的来源、传播及运行时防护，不进行字符串内容、长度和正则匹配约束的值分析。对于 `RegExp.exec`、`String.match` 等可空返回，能够检查匹配结果是否未经判空即被解引用，但不能普遍证明调用实参一定匹配或一定不匹配。调用处的前缀检查、输入构造或格式校验是否足以保证匹配成功，需要进一步核查；不能把非空字符串检查等同于匹配成功。
+
+这类报告具有价值：它指出方法内部缺少防护的位置，以及“匹配失败即发生空解引用”的触发条件，便于检查外部输入和调用契约。报告应使用 **warning（条件性空解引用风险）**，提示进一步验证调用路径，并建议在解引用前增加运行时判空，匹配失败时按业务要求返回备用值、跳过处理或显式报告解析失败。`!` 不能代替这种防护；防护必须先于属性访问、索引访问及日志参数求值。
+
+建议提示：
+
+> warning：正则匹配结果可能为 null，此处未经判空即被解引用。当前分析不追踪字符串内容，调用输入是否保证匹配成功仍需核查。建议在使用匹配结果前增加判空及匹配失败处理。
+
+方法内存在条件性风险，不等于应用实际调用路径已确认触发 NPE。有具体输入路径证据时人工标为 TP；已证明所有相关调用路径排除触发条件时标为 FP；证据不足时保留 UNKNOWN。不能因缺少字符串分析将候选统一计作 TP，也不能因此丢弃有检查价值的 warning。此处明确报告表达与人工复核约定，尚未修改诊断输出格式或级别。
+
 ## 保留的同步机制
 
 - 显式 null、undefined、未初始化值；普通赋值、字段和数组元素访问。
@@ -77,8 +137,8 @@ const obj = JSON.parse(text) as Record<string, Object>;
 - methods 使用完整 ArkIR 方法签名，包括声明文件、声明类、方法及参数。
 - fields 使用完整字段签名。
 - 每条规则记录 returnNullness 和 evidence；不按 get、then、on 等名称，不按未知类名或宽泛接收者类型继承规则。
-- 当前保留内建 RegExp.exec、Map.get/has/set、Array.find/isArray、JSON.parse/stringify、String.trim/split、Array.slice 的明确签名，以及内建 Error.stack 字段；另以完整签名单独支持加载的 OpenHarmony JSON.parse。Map.get 和 Array.find 保守包含“缺失”及“取到已存储的空值”，不因 has/set 认定返回值非空。Array.find 的模型仅描述返回值可能性，不执行其谓词回调。
-- 未列入模型的调用返回保留为未解析证据，不提升为已知非空；默认不报告这种未解析返回，显式启用 reportUnresolvedReturns 时仍为低置信度候选。
+- 当前保留内建 String.match、RegExp.exec、Map.get/has/set、Array.find/isArray、JSON.parse/stringify、String.trim/split、Array.slice 的明确签名，以及内建 Error.stack 字段；另以完整签名单独支持加载的 OpenHarmony JSON.parse。Map.get 和 Array.find 保守包含“缺失”及“取到已存储的空值”，不因 has/set 认定返回值非空。Array.find 的模型仅描述返回值可能性，不执行其谓词回调。
+- 未列入模型且无法通过受支持的同步函数体分析的调用，不生成空值事实；这不证明返回值非空，相关缺陷可能无法检出。
 - JSON.parse 保留 null 可能性；全局 ECMAScript JSON.parse 在省略 reviver 或显式传入 null、undefined 时排除 undefined，其他实参保守保留 reviver 可能产生 undefined 的情况。JSON.stringify 不因声明返回 string 就排除实际返回 undefined 的情况。回调本身的执行效果不在模型内。
 - 构建仍通过 scripts/copy-nullness-assets.mjs 复制该资产。
 
@@ -111,6 +171,8 @@ const obj = JSON.parse(text) as Record<string, Object>;
 
 本轮定向测试包含签名匹配、同步空值返回、getter 判空及写入失效、布尔标记确定赋值、未知异步注册不展开、同步调用契约和局部回调体入口、容器可空返回和 ArkTS 源码策略。旧异步、容器及框架测试按收缩后的边界调整，不再把不执行的部分计作“已证明安全”。
 
-已有真实应用报告属于旧实现快照，不能作为收缩后实现的覆盖率或准确率结论。需要比较时应保留输入、配置及原始结果，另行运行。
+实验准确率、误报率等评价仅针对有成功构建证据的 ArkTS 应用；应记录应用版本、SDK/工具链、构建命令与结果，并固定分析配置。构建失败或未验证构建的应用不纳入该评价集合，可另列探索结果；不得把分析状态 success 当作构建证据。
+
+已有真实应用报告属于旧实现快照，且其分析成功状态本身不能证明成功构建，不能作为收缩后实现的覆盖率或准确率结论。需要比较时应保留输入、配置及原始结果，另行运行。
 
 相关实现：[NullnessProblem](../../src/analysis/nullness/NullnessProblem.ts)、[NullnessSourceSemantics](../../src/analysis/nullness/NullnessSourceSemantics.ts)、[GetterReadSummary](../../src/analysis/nullness/GetterReadSummary.ts)、[DefiniteAssignment](../../src/analysis/nullness/DefiniteAssignment.ts)、[NullnessAnalysisRunner](../../src/analysis/nullness/NullnessAnalysisRunner.ts)。

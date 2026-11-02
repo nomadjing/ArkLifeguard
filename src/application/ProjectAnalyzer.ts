@@ -38,7 +38,6 @@ export interface ProjectAnalysisOptions {
     listenerRules?: readonly ListenerRule[];
     maxAccessPathLength?: number;
     maxPropagationDepth?: number;
-    reportUnresolvedReturns?: boolean;
     collectSolverStatistics?: boolean;
     solverProgressPath?: string;
     verbose?: boolean;
@@ -88,7 +87,6 @@ export interface ProjectAnalysisResult {
             maxAccessPathLength: 'enforced';
             maxPropagationDepth: 'enforced';
         };
-        reportUnresolvedReturns: boolean;
         collectSolverStatistics: boolean;
     };
     summary: {
@@ -182,7 +180,6 @@ const DEFAULT_OPTIONS: Required<Omit<ProjectAnalysisOptions, 'sdkRoot' | 'sdkPat
     runListenerAnalysis: false,
     maxAccessPathLength: 5,
     maxPropagationDepth: 40,
-    reportUnresolvedReturns: false,
     collectSolverStatistics: false,
     solverProgressPath: '',
     verbose: false,
@@ -278,7 +275,6 @@ export class ProjectAnalyzer {
                 problem: {
                     maxAccessPathLength: this.options.maxAccessPathLength,
                     maxPropagationDepth: this.options.maxPropagationDepth,
-                    reportUnresolvedReturns: this.options.reportUnresolvedReturns,
                 },
             }).runWithDummyMain(dummyMain)
             : null;
@@ -336,7 +332,6 @@ export class ProjectAnalyzer {
                     maxAccessPathLength: 'enforced',
                     maxPropagationDepth: 'enforced',
                 },
-                reportUnresolvedReturns: this.options.reportUnresolvedReturns,
                 collectSolverStatistics: this.options.collectSolverStatistics,
             },
             summary: {

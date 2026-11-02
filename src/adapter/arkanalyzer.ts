@@ -1,3 +1,5 @@
+import "./OptionalChainLowering";
+
 export {
   Scene,
   ts,

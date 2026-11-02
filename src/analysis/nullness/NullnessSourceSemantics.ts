@@ -34,7 +34,6 @@ interface SourceIndex {
 interface SourceEffect {
     start: number;
     end: number;
-    scope: ts.Node | undefined;
     write: string | null;
     call: boolean;
 }
@@ -139,12 +138,17 @@ export class NullnessSourceSemantics {
     getAccesses(stmt: Stmt): readonly SourceAccess[] {
         const cached = this.statements.get(stmt);
         if (cached) return cached;
+        const empty = (): readonly SourceAccess[] => {
+            const result: readonly SourceAccess[] = [];
+            this.statements.set(stmt, result);
+            return result;
+        };
         const text = stmt.getOriginalText?.();
-        if (!text) return [];
+        if (!text) return empty();
         const position = stmt.getOriginPositionInfo();
-        if (position.getLineNo() < 1 || position.getColNo() < 1) return [];
+        if (position.getLineNo() < 1 || position.getColNo() < 1) return empty();
         const file = stmt.getCfg()?.getDeclaringMethod().getDeclaringArkFile();
-        if (!file) return [];
+        if (!file) return empty();
         let index = this.files.get(file);
         if (!index) {
             index = this.buildIndex(file);
@@ -152,7 +156,7 @@ export class NullnessSourceSemantics {
         }
         const lines = index.source.getLineStarts();
         const line = lines[position.getLineNo() - 1];
-        if (line === undefined) return [];
+        if (line === undefined) return empty();
         const start = line + position.getColNo() - 1;
         const end = index.conditionEnds.get(start) ?? start + text.length;
         let low = 0;
@@ -207,8 +211,10 @@ export class NullnessSourceSemantics {
             true, ts.ScriptKind.ETS);
         const index: SourceIndex = { source, accesses: [], conditionEnds: new Map(), equalityConditions: new Set(),
             truthinessConditions: new Map() };
-        const effects: SourceEffect[] = [];
-        const collectEffects = (node: ts.Node): void => {
+        const effectsByScope = new Map<ts.Node | undefined, SourceEffect[]>();
+        const scopes = new WeakMap<ts.Node, ts.Node | undefined>();
+        const collectEffects = (node: ts.Node, scope?: ts.Node): void => {
+            scopes.set(node, scope);
             let write: string | null = null;
             if ((ts.isVariableDeclaration(node) || ts.isBindingElement(node)) && ts.isIdentifier(node.name)) {
                 write = node.name.text;
@@ -219,11 +225,17 @@ export class NullnessSourceSemantics {
                 (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
                 write = pathName(node.operand);
             }
-            if (write || ts.isCallExpression(node)) effects.push({ start: node.getStart(source), end: node.end,
-                scope: enclosingFunction(node), write, call: ts.isCallExpression(node) });
-            ts.forEachChild(node, collectEffects);
+            if (write || ts.isCallExpression(node)) {
+                const effects = effectsByScope.get(scope) ?? [];
+                effects.push({ start: node.getStart(source), end: node.end,
+                    write, call: ts.isCallExpression(node) });
+                effectsByScope.set(scope, effects);
+            }
+            const childScope = ts.isFunctionLike(node) ? node : scope;
+            ts.forEachChild(node, child => collectEffects(child, childScope));
         };
         collectEffects(source);
+        for (const effects of effectsByScope.values()) effects.sort((a, b) => a.start - b.start);
         const visit = (node: ts.Node): void => {
             if (ts.isIfStatement(node)) {
                 const start = node.getStart(source);
@@ -282,7 +294,7 @@ export class NullnessSourceSemantics {
                         indexed: ts.isElementAccessExpression(node),
                         optional: !!node.questionDotToken,
                         asserted: hasAssertion(node.expression),
-                        excluded: this.excludedAt(node, receiver, effects),
+                        excluded: this.excludedAt(node, receiver, effectsByScope.get(scopes.get(node)) ?? []),
                         checkedLater: lateNullCheck(node, receiver),
                     } });
                 }
@@ -291,7 +303,7 @@ export class NullnessSourceSemantics {
                         const receiver = pathName(argument);
                         index.accesses.push({ start: argument.getStart(source), end: argument.end,
                             access: { receiver, member: null, optional: false, asserted: false,
-                                excluded: this.excludedAt(argument, receiver, effects), argumentIndex } });
+                                excluded: this.excludedAt(argument, receiver, effectsByScope.get(scopes.get(argument)) ?? []), argumentIndex } });
                     });
                 }
             } else if (ts.isTemplateSpan(node)) {
@@ -337,14 +349,14 @@ export class NullnessSourceSemantics {
                 }
             }
         }
+        const accessStart = access.getStart();
         const known = new Map(conditions.map(condition => [condition.expression.getText(), condition.truth]));
         let excluded = 0;
         for (const condition of conditions) {
             // Relating a later ternary test to an earlier disjunction requires unchanged state.
-            const changed = effects.some(effect => effect.scope === enclosingFunction(access) &&
-                effect.start >= condition.expression.end && effect.end <= access.getStart());
+            const changed = hasEffectBetween(effects, condition.expression.end, accessStart);
             excluded |= excludedBy(condition.expression, condition.truth, receiver, changed ? new Map() : known,
-                leaf => !hasInterveningEffect(leaf, access, receiver, effects));
+                leaf => !hasInterveningEffect(leaf, accessStart, receiver, effects));
         }
         return excluded;
     }
@@ -498,19 +510,27 @@ function excludedBy(expression: ts.Expression, truth: boolean, receiver: string,
 }
 
 /** Source guard recovery must not survive a write, or a possibly mutating call for fields. */
-function hasInterveningEffect(condition: ts.Expression, target: ts.Node, receiver: string,
+function hasInterveningEffect(condition: ts.Expression, targetStart: number, receiver: string,
     effects: SourceEffect[]): boolean {
-    const scope = enclosingFunction(target);
-    return effects.some(effect => effect.scope === scope && effect.start >= condition.end &&
-        effect.end <= target.getStart() &&
-        ((effect.write && (effect.write === receiver || receiver.startsWith(`${effect.write}.`))) ||
-            (receiver.includes('.') && effect.call)));
+    const field = receiver.includes('.');
+    return hasEffectBetween(effects, condition.end, targetStart, effect =>
+        !!((effect.write && (effect.write === receiver || receiver.startsWith(`${effect.write}.`))) ||
+            (field && effect.call)));
 }
 
-function enclosingFunction(node: ts.Node): ts.Node | undefined {
-    let parent = node.parent;
-    while (parent && !ts.isFunctionLike(parent)) parent = parent.parent;
-    return parent;
+/** Effects are sorted and already restricted to the access's enclosing function. */
+function hasEffectBetween(effects: readonly SourceEffect[], after: number, before: number,
+    matches: (effect: SourceEffect) => boolean = () => true): boolean {
+    let low = 0, high = effects.length;
+    while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (effects[middle].start < after) low = middle + 1;
+        else high = middle;
+    }
+    for (let i = low; i < effects.length && effects[i].start <= before; i++) {
+        if (effects[i].end <= before && matches(effects[i])) return true;
+    }
+    return false;
 }
 
 function alwaysExits(statement: ts.Statement): boolean {

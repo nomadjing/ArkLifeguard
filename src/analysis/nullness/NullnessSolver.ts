@@ -22,8 +22,7 @@ import type { DataflowSolverOptions, InterproceduralCFG } from '../../ifds';
 import { NullnessFact } from './NullnessFact';
 import { NullnessProblem } from './NullnessProblem';
 import { findRecursiveMethods } from '../../ifds/CallResolver';
-import { ArkInterproceduralCFG } from '../../ifds';
-import { createSynchronousCallbackModel } from './library/SynchronousCallbackModels';
+import { createNullnessInterproceduralCFG } from './NullnessCallGraph';
 
 /** Nullness-specific fact abstraction and propagation bounds over the shared IFDS solver. */
 export class NullnessSolver extends DataflowSolver<NullnessFact> {
@@ -37,7 +36,7 @@ export class NullnessSolver extends DataflowSolver<NullnessFact> {
         recursiveMethods?: ReadonlySet<ArkMethod>,
         icfg?: InterproceduralCFG
     ) {
-        super(problem, scene, options, icfg ?? new ArkInterproceduralCFG(scene, false, true, createSynchronousCallbackModel(scene)));
+        super(problem, scene, options, icfg ?? createNullnessInterproceduralCFG(scene));
         this.recursiveMethods = problem.getConfig().recursiveSccWidening
             ? recursiveMethods ?? findRecursiveMethods(scene)
             : new Set();

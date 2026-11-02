@@ -49,13 +49,8 @@ import { DataflowProblem, FlowFunction } from '../../ifds';
 import { isModeledArrayPredicate } from './library/SdkSignatureSummary';
 import { ArkMethod } from '../../adapter/arkanalyzer';
 import {
-    AliasType,
     FunctionType,
     LexicalEnvType,
-    NullType,
-    Type,
-    UndefinedType,
-    UnionType,
 } from '../../adapter/arkanalyzer';
 import { Value } from '../../adapter/arkanalyzer';
 import {
@@ -65,25 +60,32 @@ import {
     NullnessOriginKind,
     keepOnlyNull,
     keepOnlyUndefined,
-    mayBeNull,
-    nullnessFromAlternatives,
-    mayBeUndefined,
     removeNull,
     removeNullish,
     removeUndefined,
 } from './NullnessFact';
 import { NullnessLibraryRegistry } from './library/NullnessLibraryRegistry';
-import { NullnessSourceSemantics, NULL, UNDEFINED, SourceAccess,
-    appendSourceProperty, sourcePropertyName } from './NullnessSourceSemantics';
+import {
+    NullnessSourceSemantics,
+    appendSourceProperty,
+    sourcePropertyName,
+} from './NullnessSourceSemantics';
 import type { BasicBlock, Cfg } from '../../adapter/arkanalyzer';
-import { haveSameCallableIdentity, tryRenderArkType } from './ArkAnalyzerCompatibility';
+import { getOptionalChainGuards } from '../../adapter/OptionalChainLowering';
+import { haveSameCallableIdentity } from './ArkAnalyzerCompatibility';
+import {
+    NullnessReporter,
+    type NullDereferenceDiagnostic,
+    type NullnessStatementInfo,
+} from './NullnessReporter';
+
+export type { NullDereferenceDiagnostic, NullnessSourceLocation } from './NullnessReporter';
 
 export interface NullnessAnalysisConfig {
     maxAccessPathLength?: number;
     /** Maximum number of fact-transforming propagation steps; mirrors taint analysis bounds. */
     maxPropagationDepth?: number;
     /** Include low-confidence diagnostics based only on unresolved return types. */
-    reportUnresolvedReturns?: boolean;
     /** Join fact kinds and access paths inside recursive call-graph SCCs. */
     recursiveSccWidening?: boolean;
     /** Access-path depth retained inside a recursive SCC before a wildcard suffix. */
@@ -94,22 +96,15 @@ export interface NullnessAnalysisConfig {
     largeProjectAccessPathLength?: number;
 }
 
-export interface NullDereferenceDiagnostic {
-    kind: 'null-dereference';
-    nullness: NullnessKind;
-    accessPath: NullnessAccessPath;
-    sourceStmt: Stmt;
-    dereferenceStmt: Stmt;
-    sourceLocation: NullnessSourceLocation;
-    dereferenceLocation: NullnessSourceLocation;
-    description: string;
-    confidence: 'high' | 'low';
-}
+/** Read-only Scene metadata shared only within one run and one source/library contract. */
+export class NullnessMetadataCache {
+    readonly statementInfo = new WeakMap<Stmt, NullnessStatementInfo>();
+    readonly cfgIndices = new WeakMap<Cfg, Map<Stmt, BasicBlock>>();
+    readonly callBindings = new WeakMap<Stmt, WeakMap<ArkMethod, readonly NullnessCallBinding[]>>();
+    readonly reassignedLocals = new WeakMap<ArkMethod, ReadonlySet<Local>>();
 
-export interface NullnessSourceLocation {
-    filePath: string;
-    line: number;
-    col: number;
+    constructor(readonly libraryRegistry: NullnessLibraryRegistry,
+        readonly sourceSemantics: NullnessSourceSemantics) {}
 }
 
 /**
@@ -122,30 +117,45 @@ export interface NullnessSourceLocation {
 export class NullnessProblem extends DataflowProblem<NullnessFact> {
     private readonly zeroFact = NullnessFact.getZeroFact();
     private readonly config: Required<NullnessAnalysisConfig>;
-    private readonly nullDereferences: NullDereferenceDiagnostic[] = [];
-    private readonly statementInfo = new WeakMap<Stmt, NullnessStatementInfo>();
-    private readonly diagnosticsByLocation = new Map<string, NullDereferenceDiagnostic[]>();
-    private readonly cfgIndices = new WeakMap<Cfg, Map<Stmt, BasicBlock>>();
-    private readonly callBindings = new WeakMap<Stmt, WeakMap<ArkMethod, readonly NullnessCallBinding[]>>();
-    private readonly reassignedLocals = new WeakMap<ArkMethod, ReadonlySet<Local>>();
+    private readonly reporter: NullnessReporter;
+    private readonly cfgIndices: NullnessMetadataCache['cfgIndices'];
+    private readonly callBindings: NullnessMetadataCache['callBindings'];
+    private readonly reassignedLocals: NullnessMetadataCache['reassignedLocals'];
 
     constructor(
         private readonly entryPoint: Stmt,
         private readonly entryMethod: ArkMethod,
         config: NullnessAnalysisConfig = {},
         private readonly libraryRegistry: NullnessLibraryRegistry = NullnessLibraryRegistry.createDefault(),
-        private readonly sourceSemantics: NullnessSourceSemantics = new NullnessSourceSemantics()
+        private readonly sourceSemantics: NullnessSourceSemantics = new NullnessSourceSemantics(),
+        metadata = new NullnessMetadataCache(libraryRegistry, sourceSemantics)
     ) {
         super();
+        if (metadata.libraryRegistry !== libraryRegistry || metadata.sourceSemantics !== sourceSemantics) {
+            throw new Error('Nullness metadata must use the same library registry and source semantics');
+        }
+        this.cfgIndices = metadata.cfgIndices;
+        this.callBindings = metadata.callBindings;
+        this.reassignedLocals = metadata.reassignedLocals;
         this.config = {
             maxAccessPathLength: config.maxAccessPathLength ?? 5,
             maxPropagationDepth: config.maxPropagationDepth ?? 100,
-            reportUnresolvedReturns: config.reportUnresolvedReturns ?? false,
             recursiveSccWidening: config.recursiveSccWidening ?? true,
             recursiveSccAccessPathLength: config.recursiveSccAccessPathLength ?? 2,
             largeProjectWideningThreshold: config.largeProjectWideningThreshold ?? 5000,
             largeProjectAccessPathLength: config.largeProjectAccessPathLength ?? 2,
         };
+        this.reporter = new NullnessReporter({
+            sourceSemantics,
+            libraryRegistry,
+            statementInfo: metadata.statementInfo,
+            accessPathsAlias: (left, right, atStmt) => this.accessPathsAlias(left, right, atStmt),
+            renderSourceAccessPath: (path, followAliases) =>
+                this.renderSourceAccessPath(path, followAliases),
+            canonicalizeAccessPath: path => this.canonicalAccessPath(path, new Set()),
+            isDereferenceProtectedByShortCircuit: (value, fact, branchStmt) =>
+                this.isDereferenceProtectedByShortCircuit(value, fact, branchStmt),
+        });
     }
 
     getNormalFlowFunction(srcStmt: Stmt, tgtStmt: Stmt): FlowFunction<NullnessFact> {
@@ -154,8 +164,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             getDataFacts(fact: NullnessFact): Set<NullnessFact> {
                 const result = new Set<NullnessFact>();
                 if (fact.isZeroFact()) {
-                    problem.checkTypedNonNullArguments(srcStmt);
-                    problem.checkLateNullGuard(srcStmt);
+                    problem.reporter.checkTypedNonNullArguments(srcStmt);
+                    problem.reporter.checkLateNullGuard(srcStmt);
                     result.add(fact);
                     const generated = problem.createNullishLiteralFact(srcStmt);
                     if (generated) {
@@ -176,7 +186,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 fact = narrowedFact;
 
 
-                problem.checkDirectDereference(srcStmt, fact);
+                problem.reporter.checkDirectDereference(srcStmt, fact);
 
                 if (srcStmt instanceof ArkAssignStmt) {
                     const propagated = problem.propagateAssignment(srcStmt, fact);
@@ -244,17 +254,13 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 for (const binding of problem.getCallBindings(srcStmt, method)) {
                     const fields = problem.getRemainingCallFields(binding.caller, fact.accessPath);
                     if (!fields) continue;
-                    if (binding.argumentIndex !== undefined && fields.length === 0) {
-                        const origin = fact.origin?.stmt;
-                        if (origin instanceof ArkAssignStmt && origin.getRightOp() instanceof UndefinedConstant &&
-                            origin.getLeftOp() instanceof Local && fact.kind === NullnessKind.Undefined &&
-                            problem.renderSourceAccessPath(binding.caller, false) === (origin.getLeftOp() as Local).getName() &&
-                            problem.sourceSemantics.excludesUninitializedLocal(srcStmt,
-                                (origin.getLeftOp() as Local).getName(), origin)) continue;
-                        const accesses = problem.getSourceAccessMatches(srcStmt, binding.caller, null, binding.argumentIndex);
-                        const nullish = (mayBeNull(fact.kind) ? NULL : 0) | (mayBeUndefined(fact.kind) ? UNDEFINED : 0);
-                        if (accesses.length && accesses.every(access => (nullish & ~access.excluded) === 0)) continue;
-                    }
+                    if (binding.argumentIndex !== undefined && fields.length === 0 &&
+                        problem.reporter.excludesCallerArgument(
+                            srcStmt,
+                            binding.caller,
+                            binding.argumentIndex,
+                            fact
+                        )) continue;
                     // A normal receiver edge already proves the receiver is
                     // non-null; only its fields belong in the callee.
                     if (!binding.parameter && fields.length === 0) continue;
@@ -356,12 +362,12 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return {
             getDataFacts(fact: NullnessFact): Set<NullnessFact> {
                 if (fact.isZeroFact()) {
-                    problem.checkTypedNonNullArguments(srcStmt);
-                    problem.checkLateNullGuard(srcStmt);
+                    problem.reporter.checkTypedNonNullArguments(srcStmt);
+                    problem.reporter.checkLateNullGuard(srcStmt);
                 }
                 const result = problem.libraryRegistry.getCallToReturnFacts(srcStmt, fact);
                 if (!fact.isZeroFact()) {
-                    problem.checkDirectDereference(srcStmt, fact);
+                    problem.reporter.checkDirectDereference(srcStmt, fact);
                     if (srcStmt instanceof ArkAssignStmt &&
                         problem.definesAccessPath(srcStmt, fact.accessPath)) {
                         return result;
@@ -397,10 +403,10 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return {
             getDataFacts(fact: NullnessFact): Set<NullnessFact> {
                 if (fact.isZeroFact()) {
-                    problem.checkTypedNonNullArguments(srcStmt);
-                    problem.checkLateNullGuard(srcStmt);
+                    problem.reporter.checkTypedNonNullArguments(srcStmt);
+                    problem.reporter.checkLateNullGuard(srcStmt);
                 } else {
-                    problem.checkDirectDereference(srcStmt, fact);
+                    problem.reporter.checkDirectDereference(srcStmt, fact);
                     if (fromCallee && problem.shouldRouteHeapFactThroughCallees(srcStmt, fact, callees)) {
                         return new Set();
                     }
@@ -461,10 +467,10 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 const result = new Set<NullnessFact>([fact]);
                 if (!(srcStmt instanceof ArkThrowStmt)) {
                     if (fact.isZeroFact()) {
-                        problem.checkTypedNonNullArguments(srcStmt);
-                        problem.checkLateNullGuard(srcStmt);
+                        problem.reporter.checkTypedNonNullArguments(srcStmt);
+                        problem.reporter.checkLateNullGuard(srcStmt);
                     } else {
-                        problem.checkDirectDereference(srcStmt, fact);
+                        problem.reporter.checkDirectDereference(srcStmt, fact);
                     }
                     return result;
                 }
@@ -515,7 +521,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
     }
 
     getNullDereferences(): readonly NullDereferenceDiagnostic[] {
-        return this.nullDereferences;
+        return this.reporter.getNullDereferences();
     }
 
     private createNullishLiteralFact(stmt: Stmt): NullnessFact | null {
@@ -914,6 +920,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                 ? op2 : undefined;
         if (literal && (equalityOperator ? expectedTruth : !expectedTruth) && fact.accessPath.isLocal()) {
             const operand = literal === op1 ? op2 : op1;
+            if (this.isGuardedByDefinedOptionalResult(operand, fact, branchStmt)) return null;
             const operandPath = NullnessAccessPath.fromValue(operand);
             const canonical = this.canonicalAccessPath(operandPath, new Set());
             if (!canonical.equals(fact.accessPath) && fact.accessPath.isPrefixOf(canonical) &&
@@ -1074,7 +1081,7 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             return result;
         }
 
-        if (rightOp instanceof ArkInstanceFieldRef && this.isOptionalChainStmt(stmt)) {
+        if (rightOp instanceof ArkInstanceFieldRef && this.reporter.isOptionalChainStatement(stmt)) {
             const receiverPath = NullnessAccessPath.fromValue(rightOp.getBase());
             if (receiverPath.equals(fact.accessPath)) {
                 result.add(fact
@@ -1114,245 +1121,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return result;
     }
 
-    private checkDirectDereference(stmt: Stmt, fact: NullnessFact): void {
-        if ((!mayBeNull(fact.kind) && !mayBeUndefined(fact.kind)) ||
-            !fact.origin || typeof stmt.getUses !== 'function') {
-            return;
-        }
-        if (this.isFrameworkInitializationDependent(fact)) return;
-        if (fact.isUnresolvedEvidence() && !this.config.reportUnresolvedReturns) {
-            return;
-        }
-        const info = this.getStatementInfo(stmt);
-        const isReceiverDereference = info.receivers.some(receiver =>
-            this.accessPathsAlias(receiver.path, fact.accessPath) &&
-            this.isReportableSourceUse(stmt, receiver.path, receiver.member, undefined, fact)
-        );
-        const isNonNullArgumentUse = info.arguments.some(argument =>
-            this.accessPathsAlias(argument.path, fact.accessPath) &&
-            this.isReportableSourceUse(stmt, argument.path, null, argument.index, fact)
-        );
-        if (!isReceiverDereference && !isNonNullArgumentUse) return;
-        if (stmt instanceof ArkIfStmt &&
-            this.isDereferenceProtectedByShortCircuit(stmt.getConditionExpr(), fact, stmt)) {
-            return;
-        }
-
-        const sourceStmt = fact.origin.stmt as Stmt;
-        const sourceLocation = this.getLocation(sourceStmt);
-        const dereferenceLocation = this.getLocation(stmt);
-        this.recordDiagnostic({
-            kind: 'null-dereference',
-            nullness: fact.kind,
-            accessPath: fact.accessPath,
-            sourceStmt,
-            dereferenceStmt: stmt,
-            sourceLocation,
-            dereferenceLocation,
-            description: isNonNullArgumentUse && !isReceiverDereference
-                ? `${fact.kind === NullnessKind.MaybeNull ||
-                    fact.kind === NullnessKind.MaybeUndefined ||
-                    fact.kind === NullnessKind.MaybeNullish ? 'Potential' : 'Definite'} ` +
-                    `nullish value passed to a non-null parameter: ${fact.accessPath.toString()}`
-                : fact.kind === NullnessKind.MaybeNull ||
-                    fact.kind === NullnessKind.MaybeUndefined ||
-                    fact.kind === NullnessKind.MaybeNullish
-                    ? `Potential nullish dereference of ${fact.accessPath.toString()}`
-                    : `Definite ${fact.kind} dereference of ${fact.accessPath.toString()}`,
-            confidence: fact.isUnresolvedEvidence() || fact.isApproximateEvidence()
-                ? 'low'
-                : 'high',
-        });
-    }
-
-    /** Component injection/reuse/event order is outside this check's current scope, not proven safe. */
-    private isFrameworkInitializationDependent(fact: NullnessFact): boolean {
-        const origin = fact.origin?.stmt;
-        if (!(origin instanceof ArkAssignStmt) ||
-            !(origin.getRightOp() instanceof NullConstant || origin.getRightOp() instanceof UndefinedConstant)) return false;
-        const field = origin.getLeftOp();
-        const method = origin.getCfg()?.getDeclaringMethod();
-        if (!(field instanceof ArkInstanceFieldRef) || method?.getName() !== '%instInit') return false;
-        const owner = method.getDeclaringArkClass();
-        if (!owner.hasDecorator('Component') && !owner.hasDecorator('Entry')) return false;
-        const declaration = owner.getFieldWithName(field.getFieldSignature().getFieldName());
-        return ['Require', 'State', 'Prop', 'Link', 'Consume', 'StorageLink', 'StorageProp',
-            'LocalStorageLink', 'LocalStorageProp', 'ObjectLink'].some(name => declaration?.hasDecorator(name));
-    }
-
-    /**
-     * Detect `value!.field || value === undefined` before fact propagation.
-     * The right operand cannot protect a dereference already evaluated by the
-     * left operand, even when no explicit nullish assignment is reachable.
-     */
-    private checkLateNullGuard(stmt: Stmt): void {
-        const info = this.getStatementInfo(stmt);
-        for (const access of info.accesses) {
-            if (!access.asserted || !access.checkedLater || access.optional ||
-                (access.excluded & access.checkedLater) === access.checkedLater) continue;
-            const receiver = info.receivers.find(receiver =>
-                receiver.member === access.member &&
-                this.renderSourceAccessPath(receiver.path) === access.receiver);
-            if (!receiver) continue;
-            const accessPath = this.canonicalAccessPath(receiver.path, new Set());
-            const kind = access.checkedLater === NULL ? NullnessKind.MaybeNull
-                : access.checkedLater === UNDEFINED ? NullnessKind.MaybeUndefined : NullnessKind.MaybeNullish;
-            this.recordDiagnostic({
-                kind: 'null-dereference',
-                nullness: kind,
-                accessPath,
-                sourceStmt: stmt,
-                dereferenceStmt: stmt,
-                sourceLocation: info.location,
-                dereferenceLocation: info.location,
-                description: `Potential nullish dereference of ${accessPath.toString()} before its null check`,
-                confidence: 'high',
-            });
-        }
-    }
-
-    /** Report a registered non-null API argument when its declared type is nullable. */
-    private checkTypedNonNullArguments(stmt: Stmt): void {
-        const invoke = stmt.getInvokeExpr();
-        if (!invoke) return;
-        for (const index of this.libraryRegistry.getNonNullArgumentIndices(stmt)) {
-            const argument = invoke.getArgs()[index];
-            if (!argument) continue;
-            const accessPath = NullnessAccessPath.fromValue(argument);
-            const kind = this.getTypeNullness(argument.getType());
-            if (accessPath.isEmpty() || !kind) continue;
-            this.checkDirectDereference(stmt, NullnessFact.create(accessPath, kind, {
-                kind: NullnessOriginKind.Uninitialized,
-                stmt,
-                description: 'nullable value used where the API requires a non-null argument',
-            }));
-        }
-    }
-
-    private getTypeNullness(type: Type): NullnessKind | null {
-        const alternatives = { null: false, undefined: false, nonNull: false };
-        const visit = (candidate: Type, visited: Set<Type>): void => {
-            if (visited.has(candidate)) return;
-            visited.add(candidate);
-            if (candidate instanceof AliasType) {
-                visit(candidate.getOriginalType(), visited);
-            } else if (candidate instanceof UnionType) {
-                for (const member of candidate.getTypes()) visit(member, visited);
-            } else if (candidate instanceof NullType) {
-                alternatives.null = true;
-            } else if (candidate instanceof UndefinedType) {
-                alternatives.undefined = true;
-            } else {
-                alternatives.nonNull = true;
-            }
-        };
-        visit(type, new Set());
-        if (!alternatives.null && !alternatives.undefined) {
-            // Some unresolved ArkIR types retain a useful union only in their
-            // rendered form. Accept explicit null/undefined members, not any.
-            const rendered = tryRenderArkType(type);
-            if (rendered === null) return null;
-            alternatives.null = /(?:^|\|)null(?:\||$)/.test(rendered);
-            alternatives.undefined = /(?:^|\|)undefined(?:\||$)/.test(rendered);
-            if (!alternatives.null && !alternatives.undefined) return null;
-            alternatives.nonNull = true;
-        }
-        const kind = nullnessFromAlternatives(alternatives);
-        return kind === 'non-null' ? null : kind;
-    }
-
-    private recordDiagnostic(diagnostic: NullDereferenceDiagnostic): void {
-        const location = diagnostic.dereferenceLocation;
-        const key = JSON.stringify([location.filePath, location.line, location.col]);
-        const bucket = this.diagnosticsByLocation.get(key) ?? [];
-        if (bucket.some(existing => this.accessPathsAlias(existing.accessPath, diagnostic.accessPath))) return;
-        bucket.push(diagnostic);
-        this.diagnosticsByLocation.set(key, bucket);
-        this.nullDereferences.push(diagnostic);
-    }
-
-    private getStatementInfo(stmt: Stmt): NullnessStatementInfo {
-        const cached = this.statementInfo.get(stmt);
-        if (cached) return cached;
-        const receivers: NullnessStatementInfo['receivers'] = [];
-        for (const value of stmt.getUses?.() ?? []) {
-            if (value instanceof ArkInstanceFieldRef || value instanceof ArkArrayRef ||
-                value instanceof ArkInstanceInvokeExpr) {
-                const member = value instanceof ArkInstanceFieldRef ? value.getFieldSignature().getFieldName()
-                    : value instanceof ArkInstanceInvokeExpr
-                        ? value.getMethodSignature().getMethodSubSignature().getMethodName() : null;
-                receivers.push({ path: NullnessAccessPath.fromValue(value.getBase()), member, operand: value });
-            }
-        }
-        const invoke = stmt.getInvokeExpr();
-        const args = this.libraryRegistry.getNonNullArgumentIndices(stmt).flatMap(index => {
-            const value = invoke?.getArgs()[index];
-            return value ? [{ path: NullnessAccessPath.fromValue(value), index }] : [];
-        });
-        const result = { receivers, arguments: args, accesses: this.sourceSemantics.getAccesses(stmt),
-            location: this.getLocation(stmt) };
-        this.statementInfo.set(stmt, result);
-        return result;
-    }
-
-    private isReportableSourceUse(stmt: Stmt, path: NullnessAccessPath, member: string | null,
-        argumentIndex: number | undefined, fact: NullnessFact): boolean {
-        const origin = fact.origin?.stmt;
-        if (origin instanceof ArkAssignStmt && origin.getRightOp() instanceof UndefinedConstant &&
-            origin.getLeftOp() instanceof Local && fact.kind === NullnessKind.Undefined &&
-            this.renderSourceAccessPath(path, false) === (origin.getLeftOp() as Local).getName() &&
-            this.sourceSemantics.excludesUninitializedLocal(stmt, (origin.getLeftOp() as Local).getName(), origin)) return false;
-        const info = this.getStatementInfo(stmt);
-        const matches = this.getSourceAccessMatches(stmt, path, member, argumentIndex);
-        if (!matches.length) return true; // No precise source mapping: keep the IR evidence.
-        const nullish = (mayBeNull(fact.kind) ? NULL : 0) | (mayBeUndefined(fact.kind) ? UNDEFINED : 0);
-        // Compilable ArkTS requires narrowing, assertion or optional access for nullable types.
-        // Keep that source contract; JS/TS, explicit API obligations and concrete nullable-return
-        // evidence retain their existing diagnostic policy. Missing source mapping stays conservative.
-        return matches.some(access => !access.optional && !access.coercion &&
-            (nullish & ~access.excluded) !== 0 &&
-            (argumentIndex !== undefined || access.asserted ||
-                fact.origin?.kind === NullnessOriginKind.NullableReturn ||
-                !info.location.filePath.endsWith('.ets')));
-    }
-
-    private getSourceAccessMatches(stmt: Stmt, path: NullnessAccessPath, member: string | null,
-        argumentIndex?: number): readonly SourceAccess[] {
-        const info = this.getStatementInfo(stmt);
-        const canonical = this.renderSourceAccessPath(path);
-        const original = this.renderSourceAccessPath(path, false);
-        const sourceMember = member === null ? null : sourcePropertyName(member);
-        const precise = argumentIndex === undefined ? info.receivers
-            .filter(receiver => receiver.path.equals(path) && receiver.member === member)
-            .flatMap(receiver => this.sourceSemantics.getOperandAccesses(stmt, receiver.operand) ?? []) : [];
-        const relevant = (access: SourceAccess): boolean => access.argumentIndex === argumentIndex &&
-            (argumentIndex !== undefined || access.member === sourceMember || (member === null && !!access.indexed));
-        const exact = precise.filter(relevant);
-        const candidates = exact.length ? exact : info.accesses.filter(relevant);
-        let matches = candidates.filter(access => access.receiver === original);
-        const definition = (path.base as Local | null)?.getDeclaringStmt();
-        const getter = definition?.getInvokeExpr();
-        if (!matches.length && definition && getter instanceof ArkInstanceInvokeExpr &&
-            this.libraryRegistry.getGetterRead(definition)) {
-            const getterName = getter.getMethodSignature().getMethodSubSignature().getMethodName().slice(4);
-            const receiver = appendSourceProperty(this.renderSourceAccessPath(NullnessAccessPath.fromValue(getter.getBase())), getterName);
-            // Optional access is safe for this evaluation. Do not reuse a source getter guard:
-            // a write to its differently named backing field must still invalidate the result.
-            matches = candidates.filter(access => access.receiver === receiver && access.optional);
-        }
-        if (!matches.length) matches = candidates.filter(access => access.receiver === canonical);
-        if (!matches.length) matches = candidates.filter(access => access.receiver === null);
-        return matches;
-    }
-
-    private isOptionalChainStmt(stmt: Stmt): boolean {
-        const right = stmt instanceof ArkAssignStmt ? stmt.getRightOp() : undefined;
-        if (!(right instanceof ArkInstanceFieldRef)) return false;
-        const canonical = this.renderSourceAccessPath(NullnessAccessPath.fromValue(right.getBase()));
-        return this.getStatementInfo(stmt).accesses.some(access => access.optional &&
-            access.receiver === canonical && access.member === sourcePropertyName(right.getFieldSignature().getFieldName()));
-    }
-
     private renderSourceAccessPath(path: NullnessAccessPath, followAliases = true): string {
         const canonical = followAliases ? this.canonicalAccessPath(path, new Set()) : path;
         const field = canonical.fields[0] as { getBaseName?: () => string } | undefined;
@@ -1388,6 +1156,25 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return this.canonicalAccessPath(left, new Set()).equals(
             this.canonicalAccessPath(right, new Set())
         );
+    }
+
+    /** A concrete non-undefined chain result proves its stable local guards passed. */
+    private isGuardedByDefinedOptionalResult(value: Value, fact: NullnessFact, stmt: Stmt): boolean {
+        const method = stmt.getCfg()?.getDeclaringMethod();
+        if (!method || !fact.accessPath.isLocal()) return false;
+        const reassigned = this.getReassignedLocals(method);
+        const visited = new Set<Local>();
+        while (value instanceof Local && !visited.has(value)) {
+            visited.add(value);
+            const guards = getOptionalChainGuards(value);
+            if (guards) return guards.some(local => !reassigned.has(local) &&
+                this.canonicalAccessPath(fact.accessPath, new Set(), true).base === local);
+            if (reassigned.has(value)) return false;
+            const definition = value.getDeclaringStmt();
+            if (!(definition instanceof ArkAssignStmt)) return false;
+            value = definition.getRightOp();
+        }
+        return false;
     }
 
     private isFreshFieldRead(local: NullnessAccessPath, field: NullnessAccessPath, atStmt: Stmt): boolean {
@@ -1496,23 +1283,6 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         });
     }
 
-    private getLocation(stmt: Stmt): NullnessSourceLocation {
-        const cached = this.statementInfo.get(stmt);
-        if (cached) return cached.location;
-        const position = stmt.getOriginPositionInfo();
-        let filePath = 'unknown';
-        try {
-            filePath = stmt.getCfg()?.getDeclaringMethod().getDeclaringArkFile().getFilePath() ?? 'unknown';
-        } catch {
-            // Synthetic statements may not have a declaring file.
-        }
-        return {
-            filePath,
-            line: position?.getLineNo() ?? -1,
-            col: position?.getColNo() ?? -1,
-        };
-    }
-
     private getThisLocal(method: ArkMethod): Local | null {
         const cfg = method.getCfg();
         if (!cfg) {
@@ -1556,13 +1326,6 @@ function isFalsySentinel(value: Value): value is NumberConstant | StringConstant
 function isNumericFalsySentinel(value: Value): value is NumberConstant | StringConstant {
     return (value instanceof NumberConstant && value.getValue() === '0') ||
         (value instanceof StringConstant && value.getValue() === '');
-}
-
-interface NullnessStatementInfo {
-    receivers: Array<{ path: NullnessAccessPath; member: string | null; operand: Value }>;
-    arguments: Array<{ path: NullnessAccessPath; index: number }>;
-    accesses: readonly SourceAccess[];
-    location: NullnessSourceLocation;
 }
 
 interface NullnessCallBinding {

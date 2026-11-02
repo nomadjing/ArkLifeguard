@@ -131,3 +131,8 @@ export function guardedIteration(flag: boolean): void {
     if (empty) return;
     for (const account of accounts!) account.touch();
 }
+
+export function numericConversions(value: unknown): string {
+    if (typeof value === 'number') return value.toString();
+    return Number(value).toString();
+}

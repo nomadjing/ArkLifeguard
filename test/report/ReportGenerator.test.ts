@@ -31,7 +31,6 @@ const result: ProjectAnalysisResult = {
             maxAccessPathLength: 'enforced',
             maxPropagationDepth: 'enforced',
         },
-        reportUnresolvedReturns: false,
         collectSolverStatistics: false,
     },
     summary: {

@@ -2,6 +2,9 @@ import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Scene, SceneConfig } from '../../src/adapter/arkanalyzer';
 import { NullnessProblem, NullnessSolver, NullnessLibraryRegistry } from '../../src/analysis/nullness';
+import { NullnessMetadataCache } from '../../src/analysis/nullness/NullnessProblem';
+import { NullnessSourceSemantics } from '../../src/analysis/nullness/NullnessSourceSemantics';
+import { NullnessFact } from '../../src/analysis/nullness/NullnessFact';
 import { SdkSignatureSummary } from '../../src/analysis/nullness/library/SdkSignatureSummary';
 
 describe('nullness synchronous core', () => {
@@ -21,6 +24,33 @@ describe('nullness synchronous core', () => {
         solver.solve();
         return { diagnostics: problem.getNullDereferences(), registry, reached: solver.getReachedFacts() };
     }
+    it('reuses metadata across roots while preserving independent facts and diagnostics', () => {
+        const method = scene.getMethods().find(method => method.getName() === 'copiedUndefined')!;
+        const registry = NullnessLibraryRegistry.createDefault(scene);
+        const source = new NullnessSourceSemantics();
+        const metadata = new NullnessMetadataCache(registry, source);
+        const run = (shared: boolean) => {
+            const problem = new NullnessProblem(method.getCfg()!.getStartingStmt(), method, {}, registry,
+                source, shared ? metadata : undefined);
+            expect(problem.getNullDereferences()).toHaveLength(0);
+            const solver = new NullnessSolver(problem, scene);
+            solver.solve();
+            return { diagnostics: problem.getNullDereferences().map(d =>
+                [d.nullness, d.sourceLocation, d.dereferenceLocation, d.accessPath.toString()]),
+                facts: [...solver.getReachedFacts()].map(([stmt, facts]) =>
+                    [stmt, facts.map(fact => fact.toString()).sort()]) };
+        };
+        const first = run(true);
+        expect(first.diagnostics.length).toBeGreaterThan(0);
+        const cached = method.getCfg()!.getStmts().map(stmt => metadata.statementInfo.get(stmt));
+        expect(cached.some(Boolean)).toBe(true);
+        expect(run(true)).toEqual(first);
+        expect(method.getCfg()!.getStmts().map(stmt => metadata.statementInfo.get(stmt))).toEqual(cached);
+        expect(run(false)).toEqual(first);
+        expect(() => new NullnessProblem(method.getCfg()!.getStartingStmt(), method, {}, registry,
+            new NullnessSourceSemantics(), metadata)).toThrow('same library registry and source semantics');
+    });
+
     it.each(['mixedOptionalCalls', 'reversedOptionalCalls'])(
         'separates optional and asserted accesses in %s without equating repeated calls', name => {
             const result = analyze(name);
@@ -62,6 +92,29 @@ describe('nullness synchronous core', () => {
         expect([...call.reached.keys()].some(stmt =>
             stmt.getCfg()?.getDeclaringMethod().getName() === 'asynchronous')).toBe(false);
     });
+    it('models exact built-in numeric conversions without assuming arbitrary toString is non-null', () => {
+        const method = scene.getMethods().find(method => method.getName() === 'numericConversions')!;
+        const calls = method.getCfg()!.getStmts().filter(stmt => stmt.getInvokeExpr());
+        const registry = NullnessLibraryRegistry.createDefault(scene);
+        const model = new SdkSignatureSummary();
+        const find = (text: string) => calls.find(stmt =>
+            stmt.getInvokeExpr()!.getMethodSignature().toString() === text)!;
+        for (const signature of ['@built-in/lib.es5.d.ts: NumberConstructor.create(any)',
+            '@built-in/lib.es5.d.ts: Number.toString(number)']) {
+            const stmt = find(signature);
+            expect(stmt).toBeDefined();
+            expect(model.matches(stmt)).toBe(true);
+            expect(registry.getCallToReturnFacts(stmt, NullnessFact.getZeroFact()).size).toBe(0);
+        }
+        const unknown = find('@%unk/%unk: .toString()');
+        expect(unknown).toBeDefined();
+        expect(model.matches(unknown)).toBe(false);
+        expect(registry.getCallToReturnFacts(unknown, NullnessFact.getZeroFact()).size).toBe(0);
+        const fake = { getInvokeExpr: () => ({ getMethodSignature: () => ({
+            toString: () => '@business/lib.es5.d.ts: NumberConstructor.create(any)' }) }) };
+        expect(model.matches(fake as never)).toBe(false);
+    });
+
     it('never borrows a model from a same-name unresolved or project method', () => {
         const model = new SdkSignatureSummary();
         const signature = { toString: () => '@%unk/%unk: Map.get(K)' };

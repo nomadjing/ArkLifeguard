@@ -42,17 +42,6 @@ class NullnessArrayIndexSegment implements INullnessFieldSignature {
     }
 }
 
-/** Synthetic field-like segment for values carried by a Promise object. */
-class NullnessPromisePayloadSegment implements INullnessFieldSignature {
-    getFieldName(): string {
-        return '[[PromiseValue]]';
-    }
-
-    toString(): string {
-        return 'promise-payload';
-    }
-}
-
 /**
  * Conservative suffix used when an access path exceeds the configured depth.
  *
@@ -84,7 +73,6 @@ class NullnessWildcardSegment implements INullnessFieldSignature {
     }
 }
 
-const PROMISE_PAYLOAD_SEGMENT = new NullnessPromisePayloadSegment();
 const WILDCARD_SEGMENT = new NullnessWildcardSegment(null);
 
 /** A minimal statement contract used only for provenance and source locations. */
@@ -175,7 +163,6 @@ export enum NullnessOriginKind {
     NullableReturn = 'nullable-return',
     LibraryModel = 'library-model',
     /** A call whose declaration/return contract could not be resolved. */
-    UnresolvedReturn = 'unresolved-return',
     Unknown = 'unknown',
 }
 
@@ -320,10 +307,6 @@ export class NullnessAccessPath {
             return this;
         }
         return new NullnessAccessPath(this.base, this.baseType, [...this.fields, field], this.isStatic);
-    }
-
-    appendPromisePayload(): NullnessAccessPath {
-        return this.appendField(PROMISE_PAYLOAD_SEGMENT);
     }
 
     dropLastField(): NullnessAccessPath {
@@ -646,7 +629,6 @@ export class NullnessFact {
             return this.zeroFact && other.zeroFact;
         }
         return this.kind === other.kind &&
-            this.isUnresolvedEvidence() === other.isUnresolvedEvidence() &&
             this.accessPath.equals(other.accessPath);
     }
 
@@ -654,8 +636,7 @@ export class NullnessFact {
         if (this.zeroFact) {
             return 1;
         }
-        const evidenceClass = this.isUnresolvedEvidence() ? 1 : 0;
-        return ((this.accessPath.hashCode() * 31 + this.kind.length) * 31 + evidenceClass) | 0;
+        return (this.accessPath.hashCode() * 31 + this.kind.length) | 0;
     }
 
     getPropagationPath(): INullnessStmt[] {
@@ -676,12 +657,7 @@ export class NullnessFact {
     }
 
     toString(): string {
-        const evidence = this.isUnresolvedEvidence() ? '?' : '';
-        return this.zeroFact ? 'ZERO' : `${evidence}${this.kind}(${this.accessPath.toString()})`;
-    }
-
-    isUnresolvedEvidence(): boolean {
-        return this.origin?.kind === NullnessOriginKind.UnresolvedReturn;
+        return this.zeroFact ? 'ZERO' : `${this.kind}(${this.accessPath.toString()})`;
     }
 
     isApproximateEvidence(): boolean {

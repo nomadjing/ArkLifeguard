@@ -55,6 +55,10 @@ describe('source access semantics', () => {
         ['if (typeof x?.value !== "number") x!.run();', 0],
         ['if (typeof x?.value === "number") { x = null; x!.run(); }', 0],
         ['if (x) { x = null; x!.run(); }', 0],
+        ['function f() { if (this.x) { function nested() { this.x = null; } this.x!.run(); } }', NULL | UNDEFINED],
+        ['function f() { if (this.x) { const nested = () => { this.x = null; }; this.x!.run(); } }', NULL | UNDEFINED],
+        ['function f() { if (this.x) { reset(); this.x!.run(); } }', 0],
+        ['function f() { if (x) { x!.run(); x = null; } }', NULL | UNDEFINED],
         ['this.x && reset() && this.x!.run();', 0],
         ['if (this.x) { reset(); this.x!.run(); }', 0],
         ['function f() { if (!x) return; x = null; x!.run(); }', 0],
@@ -72,6 +76,15 @@ describe('source access semantics', () => {
         const use = accesses.find(access => access.member === 'run')!;
         expect(use, code).toBeDefined();
         expect(use.excluded).toBe(excluded);
+    });
+
+    it('caches missing source text for synthetic statements', () => {
+        const getOriginalText = vi.fn(() => undefined);
+        const stmt = { getOriginalText } as unknown as Stmt;
+        const semantics = new NullnessSourceSemantics();
+        expect(semantics.getAccesses(stmt)).toEqual([]);
+        expect(semantics.getAccesses(stmt)).toEqual([]);
+        expect(getOriginalText).toHaveBeenCalledTimes(1);
     });
 
     it('distinguishes individual accesses, comments, strings and template coercion', () => {

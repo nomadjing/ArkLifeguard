@@ -1,11 +1,11 @@
-import { ArkStaticInvokeExpr, ClassType, FunctionType, type Scene } from '../../../adapter/arkanalyzer';
-import type { SynchronousCallbackModel } from '../../../ifds/CallResolver';
+import { ArkStaticInvokeExpr, ClassType, FunctionType, type Scene } from '../../adapter/arkanalyzer';
+import type { SynchronousCallbackModel } from '../../ifds/CallResolver';
 
 const NONE: ReadonlySet<number> = new Set();
 const COMPONENT_CONTENT: ReadonlySet<number> = new Set([1]);
 
 /** Verified compiler/framework contracts, independent of application class and method names. */
-export function createSynchronousCallbackModel(scene: Scene): SynchronousCallbackModel {
+export function createArkUiSynchronousCallbackModel(scene: Scene): SynchronousCallbackModel {
     return call => {
         const invoke = call.getInvokeExpr();
         if (!(invoke instanceof ArkStaticInvokeExpr) ||
