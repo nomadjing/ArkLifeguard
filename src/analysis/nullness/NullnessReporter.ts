@@ -361,6 +361,7 @@ export class NullnessReporter {
         const definition = (path.base as Local | null)?.getDeclaringStmt();
         const getter = definition?.getInvokeExpr();
         if (!matches.length && definition && getter instanceof ArkInstanceInvokeExpr &&
+            getter.getMethodSignature().getMethodSubSignature().getMethodName().startsWith('Get-') &&
             this.options.libraryRegistry.getGetterRead(definition)) {
             const getterName = getter.getMethodSignature().getMethodSubSignature().getMethodName().slice(4);
             const receiver = appendSourceProperty(

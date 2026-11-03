@@ -40,6 +40,8 @@ import {
     ArkArrayRef,
     ArkCaughtExceptionRef,
     ArkInstanceFieldRef,
+    FieldSignature,
+    ClassSignature,
     ArkParameterRef,
     ArkThisRef,
     ClosureFieldRef,
@@ -755,6 +757,28 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         // closure field into a Local at callback entry, so assigning that Local
         // must also kill the stale `%closuresN.field` representation.
         if (definedPath.equals(accessPath)) return true;
+        // ArkIR may qualify an inherited field with the subclass at a write.
+        // Resolve its actual declaration before deciding whether this write kills it.
+        const scene = stmt.getCfg()?.getDeclaringMethod()?.getDeclaringArkClass().getDeclaringArkFile().getScene();
+        if (scene && !definedPath.isStatic && !accessPath.isStatic) {
+            const resolve = (path: NullnessAccessPath): NullnessAccessPath => new NullnessAccessPath(
+                path.base, path.baseType, path.fields.map(field => {
+                    if (!(field instanceof FieldSignature)) return field;
+                    const signature = field.getDeclaringSignature();
+                    if (!(signature instanceof ClassSignature)) return field;
+                    let owner = scene.getClass(signature);
+                    const visited = new Set<unknown>();
+                    while (owner && !visited.has(owner)) {
+                        visited.add(owner);
+                        const declaration = owner.getFieldWithName(field.getFieldName());
+                        if (declaration) return declaration.getSignature();
+                        owner = owner.getSuperClass();
+                    }
+                    return field;
+                }), path.isStatic
+            );
+            if (resolve(definedPath).isPrefixOf(resolve(accessPath))) return true;
+        }
         if (definedPath.isLocal() && definedPath.base === accessPath.base &&
             definedPath.isPrefixOf(accessPath)) {
             return true;
@@ -834,6 +858,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         // defining assignment reads a field.  Nullness facts only represent the
         // nullish alternatives, so the truthy edge kills the matching fact.
         const truthinessPath = NullnessAccessPath.fromValue(value as Value);
+        if (expectedTruth && truthinessPath.isLocal() && fact.accessPath.fields.length > 0 &&
+            this.isFreshFieldRead(truthinessPath, fact.accessPath, branchStmt, true)) return null;
         if (!truthinessPath.isEmpty() &&
             (this.accessPathsAlias(truthinessPath, fact.accessPath, branchStmt) ||
                 truthinessPath.isLocal() === fact.accessPath.isLocal() &&
@@ -1177,12 +1203,12 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         return false;
     }
 
-    private isFreshFieldRead(local: NullnessAccessPath, field: NullnessAccessPath, atStmt: Stmt): boolean {
+    private isFreshFieldRead(local: NullnessAccessPath, field: NullnessAccessPath, atStmt: Stmt, includeParents = false): boolean {
         const definition = (local.base as Local | null)?.getDeclaringStmt();
         if (!(definition instanceof ArkAssignStmt)) return false;
         const read = this.libraryRegistry.getGetterRead(definition) ??
             NullnessAccessPath.fromValue(definition.getRightOp());
-        if (!read.equals(field)) return false;
+        if (!read.equals(field) && !(includeParents && field.isPrefixOf(read))) return false;
         const cfg = atStmt.getCfg();
         if (!cfg || definition.getCfg() !== cfg) return false;
         const block = this.getCfgIndex(cfg).get(atStmt);

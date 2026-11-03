@@ -67,12 +67,12 @@ describe('nullness synchronous core', () => {
     it.each(['jsonNull', 'jsonUndefined', 'jsonCallableReviver', 'jsonNullStillUnsafe', 'jsonRoundtripToNull'])('retains explicit nullable API evidence in %s', name => {
         expect(analyze(name).diagnostics.length).toBeGreaterThan(0);
     });
-    it.each(['guardedGetter', 'optionalGetter', 'flagGuard', 'guardedIteration'])('proves the safe core case %s', name => {
+    it.each(['guardedGetter', 'optionalGetter', 'flagGuard', 'guardedIteration', 'nestedGuarded', 'nestedReadMethod'])('proves the safe core case %s', name => {
         expect(analyze(name).diagnostics).toHaveLength(0);
     });
     it.each(['returnedParameter', 'nullableGetter', 'changedGetter', 'effectfulGetter',
         'flagGuardMissingAssignment', 'flagGuardThenNull', 'flagGuardWithAssignmentInCondition',
-        'shadowedFlag', 'copiedUndefined'])(
+        'shadowedFlag', 'copiedUndefined', 'nestedUnsafe', 'nestedChanged', 'nestedChangedByCall', 'nestedSavedThenChanged', 'unrelatedGetterGuard'])(
         'retains the unsafe core case %s', name => {
             expect(analyze(name).diagnostics.length).toBeGreaterThan(0);
         });

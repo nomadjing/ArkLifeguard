@@ -24,7 +24,8 @@
     {
       "signature": "@built-in/lib.es2015.collection.d.ts: Map.get(K)",
       "returnNullness": "maybe-nullish",
-      "evidence": "Map.get may miss or return a stored null/undefined; key presence does not prove a non-null value."
+      "semantics": "map-get",
+      "evidence": "Map.get returns V or undefined when the key is absent. Exclude null only when the receiver's resolved value type V excludes null; uncertain types retain the conservative nullish result. Key presence and prior writes are not tracked."
     },
     {
       "signature": "@built-in/lib.es2015.core.d.ts: Array.find(@built-in/lib.es2015.core.d.ts: Array.%AM0(void, T, number, T[]), any)",

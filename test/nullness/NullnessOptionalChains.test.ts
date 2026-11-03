@@ -25,9 +25,9 @@ describe('optional chains lowered to CFG guards', () => {
             return problem.getNullDereferences();
         } finally { accesses.mockRestore(); operands.mockRestore(); }
     }
-    it.each(['continuous', 'multiple', 'indexed', 'invoked', 'optionalFunction', 'optionalMethod', 'aigis', 'evaluatedOnce', 'optionalDelete', 'optionalMatch'])(
+    it.each(['continuous', 'multiple', 'indexed', 'invoked', 'optionalFunction', 'optionalMethod', 'aigis', 'evaluatedOnce', 'optionalDelete', 'optionalMatch', 'templateOptional', 'templateNullish'])(
         'protects %s without source filtering', name => expect(analyze(name)).toHaveLength(0));
-    it.each(['brokenByParentheses', 'nullableChild', 'optionalResult', 'laterDirect', 'assertedReturn', 'guardThenMutation', 'assertedMatch', 'deletedStillUndefined'])(
+    it.each(['brokenByParentheses', 'nullableChild', 'optionalResult', 'laterDirect', 'assertedReturn', 'guardThenMutation', 'assertedMatch', 'deletedStillUndefined', 'templateExplicitCall'])(
         'retains unsafe dereferences in %s', name => expect(analyze(name).length).toBeGreaterThan(0));
     it.each(['indexed', 'invoked', 'optionalFunction'])('skips effects on the short-circuit branch in %s', name => {
         const method = scene.getMethods().find(m => m.getName() === name)!;

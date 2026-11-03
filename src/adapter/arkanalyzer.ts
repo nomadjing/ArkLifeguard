@@ -1,4 +1,5 @@
 import "./OptionalChainLowering";
+import "./TemplateStringLowering";
 
 export {
   Scene,
@@ -49,6 +50,7 @@ export {
   BasicBlock,
   Cfg,
   ClassSignature,
+  FieldSignature,
   FileSignature,
   MethodSignature,
   MethodSubSignature,

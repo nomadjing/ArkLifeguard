@@ -46,7 +46,9 @@ export class NullnessLibraryRegistry {
 
     getCallToReturnFacts(callStmt: Stmt, inputFact: NullnessFact): Set<NullnessFact> {
         // Unsupported returns have no nullness contract and produce no fact.
-        return this.find(callStmt)?.getCallToReturnFacts(callStmt, inputFact) ?? new Set();
+        const result = this.find(callStmt)?.getCallToReturnFacts(callStmt, inputFact) ?? new Set();
+        for (const fact of this.getters?.getReturnFacts(callStmt, inputFact) ?? []) result.add(fact);
+        return result;
     }
 
     getNonNullArgumentIndices(callStmt: Stmt): readonly number[] {
@@ -66,6 +68,7 @@ export class NullnessLibraryRegistry {
     }
 
     shouldSuppressLiteralReturn(callStmt: Stmt, zeroFact: NullnessFact): boolean {
+        if (this.getGetterRead(callStmt)) return true;
         const summary = this.find(callStmt);
         if (!summary) return false;
         if ([...summary.getCallToReturnFacts(callStmt, zeroFact)]

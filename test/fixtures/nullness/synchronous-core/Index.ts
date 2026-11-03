@@ -136,3 +136,46 @@ export function numericConversions(value: unknown): string {
     if (typeof value === 'number') return value.toString();
     return Number(value).toString();
 }
+
+class NestedState { value: Account | null = null; }
+class NestedHolder {
+    state: NestedState | undefined = undefined;
+    get selected(): Account | null | undefined {
+        if (this.state) return this.state.value;
+        return undefined;
+    }
+    read(): Account | null | undefined {
+        if (this.state) return this.state.value;
+        return undefined;
+    }
+    clear(): void { this.state = undefined; }
+    guarded(): void { if (this.selected) this.selected!.touch(); }
+    guardedMethod(): void { if (this.read()) this.read()!.touch(); }
+    unsafe(): void { this.selected!.touch(); }
+    changed(): void {
+        this.state = new NestedState(); this.state.value = new Account();
+        if (this.selected) { this.state = undefined; this.selected!.touch(); }
+    }
+    changedByCall(): void {
+        this.state = new NestedState(); this.state.value = new Account();
+        if (this.selected) { this.clear(); this.selected!.touch(); }
+    }
+}
+export function nestedGuarded(): void { new NestedHolder().guarded(); }
+export function nestedReadMethod(): void { new NestedHolder().guardedMethod(); }
+export function nestedUnsafe(): void { new NestedHolder().unsafe(); }
+export function nestedChanged(): void { new NestedHolder().changed(); }
+export function nestedChangedByCall(): void { new NestedHolder().changedByCall(); }
+class ConditionalHolder {
+    enabled: boolean = false;
+    value: Account = new Account();
+    get selected(): Account | null { if (this.enabled) return this.value; return null; }
+}
+export function unrelatedGetterGuard(): void { new ConditionalHolder().selected!.touch(); }
+export function nestedSavedThenChanged(): void {
+    const holder = new NestedHolder();
+    holder.state = new NestedState(); holder.state.value = new Account();
+    const saved = holder.selected;
+    holder.state = undefined;
+    if (saved) holder.selected!.touch();
+}

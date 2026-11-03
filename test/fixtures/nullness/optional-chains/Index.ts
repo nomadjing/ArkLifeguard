@@ -56,3 +56,15 @@ export function capturedMethodReceiver(): number | undefined {
     let child: Child | undefined = new Child();
     return child.touch?.((child = undefined, 1));
 }
+export function templateOptional(): string {
+    const error = absentChild();
+    return `code ${error?.value}, again ${error?.value}`;
+}
+export function templateNullish(): string {
+    const value = absentChild();
+    return `value ${value}`;
+}
+export function templateExplicitCall(): string {
+    const value = absentChild();
+    return `value ${value!.toString()}`;
+}

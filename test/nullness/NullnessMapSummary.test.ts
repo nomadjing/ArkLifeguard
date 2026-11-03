@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Sdk } from '../../src/adapter/arkanalyzer';
 import { Scene, SceneConfig } from '../../src/adapter/arkanalyzer';
 import { NullnessAnalysisRunner } from '../../src/analysis/nullness';
+import { NullnessProblem, NullnessSolver, NullnessLibraryRegistry } from '../../src/analysis/nullness';
 
 const sdk: Sdk = {
     name: '',
@@ -33,6 +34,23 @@ describe('Nullness Map summary', () => {
         expect(dereferences.some(text => text?.includes("guardedAccounts.get('known')"))).toBe(true);
         expect(dereferences.some(text => text?.includes("repository.get('known')"))).toBe(false);
         expect(result.diagnostics).toHaveLength(3);
-        expect(result.diagnostics[0].nullness).toBe('maybe-nullish');
+        expect(result.diagnostics[0].nullness).toBe('maybe-undefined');
     });
+
+    it.each(['guardedNonNull', 'guardedAlias', 'guardedNullable'])('keeps protected reads safe: %s', name => {
+        expect(analyze(name)).toHaveLength(0);
+    });
+    it.each(['storedNull', 'unknownValues', 'anyValues', 'genericValues', 'castReceiver', 'rawMap'])(
+        'retains nullable or uncertain values: %s', name => {
+            expect(analyze(name).some(d => d.nullness === 'maybe-nullish' || d.nullness === 'maybe-null')).toBe(true);
+        });
 });
+
+function analyze(name: string) {
+    const scene = buildScene();
+    const method = scene.getMethods().find(m => m.getName() === name)!;
+    const problem = new NullnessProblem(method.getCfg()!.getStartingStmt(), method, {},
+        NullnessLibraryRegistry.createDefault(scene));
+    new NullnessSolver(problem, scene).solve();
+    return problem.getNullDereferences();
+}
