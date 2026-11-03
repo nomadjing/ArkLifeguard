@@ -14,7 +14,17 @@
  */
 
 import { Scene } from '../../adapter/arkanalyzer';
-import { AliasType, FunctionType, ModifierType, NullConstant, UndefinedConstant, UnionType, type Type } from '../../adapter/arkanalyzer';
+import {
+    AliasType,
+    FunctionType,
+    ModifierType,
+    NullConstant,
+    NullType,
+    UndefinedConstant,
+    UndefinedType,
+    UnionType,
+    type Type,
+} from '../../adapter/arkanalyzer';
 import { ArkAssignStmt, Stmt } from '../../adapter/arkanalyzer';
 import { ArkMethod } from '../../adapter/arkanalyzer';
 import {
@@ -95,6 +105,11 @@ export const NULLNESS_LIFECYCLE_ORDER: AbilityLifecycleMethodStage[] =
 
 /** Runs nullness analysis from the lifecycle-aware DummyMain entry point. */
 export class NullnessAnalysisRunner {
+    private readonly mergedFactIndexes = new WeakMap<
+        Map<Stmt, NullnessFact[]>,
+        Map<Stmt, Map<number, NullnessFact[]>>
+    >();
+
     constructor(
         private readonly scene: Scene,
         private readonly config: NullnessRunnerConfig = {}
@@ -177,7 +192,8 @@ export class NullnessAnalysisRunner {
             if (this.config.analyzeModuleInitializers !== false) {
                 const moduleInitializers = this.getNullishModuleInitializers(
                     dummyMain,
-                    libraryRegistry
+                    libraryRegistry,
+                    sourceSemantics
                 );
                 for (const method of moduleInitializers) {
                     supplementalRoots.add(method);
@@ -211,12 +227,33 @@ export class NullnessAnalysisRunner {
                 0
             );
             // Inspect callback-local code without inventing registration -> synchronous execution,
-            // captured state, event order, or Promise payload effects. These roots start with ZERO.
-            const reachedMethods = new Set([...reachedFacts.keys()].map(stmt => stmt.getCfg()?.getDeclaringMethod()));
-            for (const callback of this.getCallbackBodyRoots()) {
-                if (!reachedMethods.has(callback)) supplementalRoots.add(callback);
+            // captured state, event order, or Promise payload effects. A function argument is
+            // only a candidate after its call site is reached; a standalone local root also
+            // requires concrete nullness evidence in the callback body.
+            const reachedMethods = new Set<ArkMethod>();
+            const reachedStatements = new Set<Stmt>();
+            this.recordReached(
+                reachedFacts,
+                reachedMethods,
+                reachedStatements
+            );
+            const pendingRoots = [...supplementalRoots];
+            const queuedRoots = new Set(pendingRoots);
+            const enqueueRoot = (method: ArkMethod): void => {
+                if (reachedMethods.has(method) || queuedRoots.has(method)) return;
+                queuedRoots.add(method);
+                pendingRoots.push(method);
+            };
+            for (const callback of this.getCallbackBodyRoots(
+                reachedStatements,
+                libraryRegistry,
+                sourceSemantics
+            )) {
+                enqueueRoot(callback);
             }
-            for (const method of supplementalRoots) {
+            for (let index = 0; index < pendingRoots.length; index++) {
+                const method = pendingRoots[index];
+                if (reachedMethods.has(method)) continue;
                 const supplementalCfg = method.getCfg();
                 const supplementalEntry = supplementalCfg?.getStartingStmt() ??
                     supplementalCfg?.getStartingBlock()?.getHead();
@@ -247,9 +284,23 @@ export class NullnessAnalysisRunner {
                     diagnostics,
                     supplementalProblem.getNullDereferences()
                 );
+                const rootReachedFacts = supplementalSolver.getReachedFacts();
+                const newlyReachedStatements = new Set<Stmt>();
+                this.recordReached(
+                    rootReachedFacts,
+                    reachedMethods,
+                    newlyReachedStatements
+                );
+                for (const callback of this.getCallbackBodyRoots(
+                    newlyReachedStatements,
+                    libraryRegistry,
+                    sourceSemantics
+                )) {
+                    enqueueRoot(callback);
+                }
                 this.mergeReachedFacts(
                     reachedFacts,
-                    supplementalSolver.getReachedFacts()
+                    rootReachedFacts
                 );
             }
             return {
@@ -342,7 +393,8 @@ export class NullnessAnalysisRunner {
      */
     private getNullishModuleInitializers(
         dummyMain: ArkMethod,
-        libraryRegistry: NullnessLibraryRegistry
+        libraryRegistry: NullnessLibraryRegistry,
+        sourceSemantics: NullnessSourceSemantics
     ): ArkMethod[] {
         const zeroFact = NullnessFact.getZeroFact();
         const methods: ArkMethod[] = [];
@@ -350,24 +402,25 @@ export class NullnessAnalysisRunner {
             const method = file.getDefaultClass()?.getDefaultArkMethod();
             const cfg = method?.getCfg();
             if (!method || method === dummyMain || !cfg) continue;
-            const hasNullishSource = [...cfg.getBlocks()].some(block =>
-                block.getStmts().some(stmt => {
-                    if (stmt instanceof ArkAssignStmt &&
-                        (stmt.getRightOp() instanceof NullConstant ||
-                            stmt.getRightOp() instanceof UndefinedConstant)) {
-                        return true;
-                    }
-                    return [...libraryRegistry.getCallToReturnFacts(stmt, zeroFact)]
-                        .some(fact => !fact.isZeroFact());
-                })
-            );
-            if (hasNullishSource) methods.push(method);
+            if (this.hasLocalNullishEvidence(
+                method,
+                libraryRegistry,
+                sourceSemantics,
+                zeroFact
+            )) {
+                methods.push(method);
+            }
         }
         return methods;
     }
 
-    private getCallbackBodyRoots(): Set<ArkMethod> {
+    private getCallbackBodyRoots(
+        statements: Iterable<Stmt>,
+        libraryRegistry: NullnessLibraryRegistry,
+        sourceSemantics: NullnessSourceSemantics
+    ): Set<ArkMethod> {
         const roots = new Set<ArkMethod>();
+        const zeroFact = NullnessFact.getZeroFact();
         const visit = (type: Type, seen: Set<Type>): void => {
             if (seen.has(type)) return;
             seen.add(type);
@@ -378,15 +431,89 @@ export class NullnessAnalysisRunner {
                 const file = signature.getDeclaringClassSignature().getDeclaringFileSignature();
                 if (!this.scene.getFile(file) || this.scene.hasSdkFile(file)) return;
                 const method = this.scene.getMethod(signature);
-                if (method?.getCfg() && !method.containsModifier(ModifierType.ASYNC)) roots.add(method);
+                if (method?.getCfg() &&
+                    this.hasLocalNullishEvidence(
+                        method,
+                        libraryRegistry,
+                        sourceSemantics,
+                        zeroFact
+                    ) &&
+                    !method.containsModifier(ModifierType.ASYNC)) {
+                    roots.add(method);
+                }
             }
         };
-        for (const file of this.scene.getFiles()) for (const owner of file.getClasses()) {
-            for (const method of owner.getMethods()) for (const stmt of method.getCfg()?.getStmts() ?? []) {
-                for (const argument of stmt.getInvokeExpr()?.getArgs() ?? []) visit(argument.getType(), new Set());
+        for (const stmt of statements) {
+            for (const argument of stmt.getInvokeExpr()?.getArgs() ?? []) {
+                visit(argument.getType(), new Set());
             }
         }
         return roots;
+    }
+
+    private hasLocalNullishEvidence(
+        method: ArkMethod,
+        libraryRegistry: NullnessLibraryRegistry,
+        sourceSemantics: NullnessSourceSemantics,
+        zeroFact: NullnessFact
+    ): boolean {
+        for (const stmt of method.getCfg()?.getStmts() ?? []) {
+            if (stmt instanceof ArkAssignStmt &&
+                (stmt.getRightOp() instanceof NullConstant ||
+                    stmt.getRightOp() instanceof UndefinedConstant)) {
+                return true;
+            }
+            if ([...libraryRegistry.getFieldReadFacts(stmt)].some(fact =>
+                !fact.isZeroFact()
+            )) {
+                return true;
+            }
+            if ([...libraryRegistry.getCallToReturnFacts(stmt, zeroFact)]
+                .some(fact => !fact.isZeroFact())) {
+                return true;
+            }
+            if (sourceSemantics.getAccesses(stmt).some(access =>
+                access.asserted && access.checkedLater &&
+                !access.optional &&
+                (access.excluded & access.checkedLater) !== access.checkedLater
+            )) {
+                return true;
+            }
+            const invoke = stmt.getInvokeExpr();
+            if (invoke && [...libraryRegistry.getNonNullArgumentIndices(stmt)]
+                .some(index => this.isPotentiallyNullableType(
+                    invoke.getArgs()[index]?.getType()
+                ))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private isPotentiallyNullableType(type: Type | undefined): boolean {
+        if (!type) return false;
+        if (type instanceof NullType || type instanceof UndefinedType) return true;
+        if (type instanceof AliasType) {
+            return this.isPotentiallyNullableType(type.getOriginalType());
+        }
+        return type instanceof UnionType &&
+            type.getTypes().some(member =>
+                this.isPotentiallyNullableType(member)
+            );
+    }
+
+    private recordReached(
+        factsByStatement: ReadonlyMap<Stmt, readonly NullnessFact[]>,
+        reachedMethods: Set<ArkMethod>,
+        reachedStatements: Set<Stmt>
+    ): void {
+        for (const [stmt, facts] of factsByStatement) {
+            const method = stmt.getCfg()?.getDeclaringMethod();
+            if (method) reachedMethods.add(method);
+            if (facts.some(fact => fact.isZeroFact())) {
+                reachedStatements.add(stmt);
+            }
+        }
     }
 
     private mergeDiagnostics(
@@ -409,15 +536,23 @@ export class NullnessAnalysisRunner {
         target: Map<Stmt, NullnessFact[]>,
         incoming: Map<Stmt, NullnessFact[]>
     ): void {
+        let index = this.mergedFactIndexes.get(target);
+        if (!index) {
+            index = new Map();
+            for (const [stmt, facts] of target) {
+                const buckets = new Map<number, NullnessFact[]>();
+                for (const fact of facts) {
+                    const bucket = buckets.get(fact.hashCode());
+                    if (bucket) bucket.push(fact);
+                    else buckets.set(fact.hashCode(), [fact]);
+                }
+                index.set(stmt, buckets);
+            }
+            this.mergedFactIndexes.set(target, index);
+        }
         for (const [stmt, facts] of incoming) {
             const merged = target.get(stmt) ?? [];
-            const buckets = new Map<number, NullnessFact[]>();
-            for (const fact of merged) {
-                const hash = fact.hashCode();
-                const bucket = buckets.get(hash);
-                if (bucket) bucket.push(fact);
-                else buckets.set(hash, [fact]);
-            }
+            const buckets = index.get(stmt) ?? new Map<number, NullnessFact[]>();
             for (const fact of facts) {
                 const hash = fact.hashCode();
                 const bucket = buckets.get(hash);
@@ -427,6 +562,7 @@ export class NullnessAnalysisRunner {
                 else buckets.set(hash, [fact]);
             }
             target.set(stmt, merged);
+            index.set(stmt, buckets);
         }
     }
 }
