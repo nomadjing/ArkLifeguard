@@ -5,6 +5,19 @@ class Account {
   }
 }
 
+class DeviceWindow {
+  getWindowProperties(): void {
+  }
+}
+
+function loadWindow(): Promise<DeviceWindow> {
+  return Promise.resolve(new DeviceWindow());
+}
+
+function getDeviceWindow(): Promise<DeviceWindow | null> {
+  return loadWindow().catch(() => null);
+}
+
 async function loadNullableAccount(): Promise<Account | null> {
   return null;
 }
@@ -26,6 +39,9 @@ export default class EntryAbility extends UIAbility {
     const accounts: Array<Account | null> = [null, new Account()];
     accounts[0]!.refresh(); // NPD_EXPECTED: null element
     accounts[1]!.refresh(); // NPD_NOT_EXPECTED: distinct non-null element
+    getDeviceWindow().then((data: DeviceWindow | null) => {
+      data!.getWindowProperties(); // NPD_EXPECTED: rejected window operation
+    });
     this.run();
   }
 }

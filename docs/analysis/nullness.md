@@ -2,7 +2,7 @@
 
 ## 设计前提与范围
 
-当前实现收缩为同步空值传播核心。实验评价限定为已成功构建的 ArkTS 应用（successfully-built ArkTS apps），成功构建需要对应应用及 SDK、工具链版本的实际构建证据；分析器成功完成不等于应用构建成功。输入 ArkTS（`.ets`）应已通过编译检查：显式可空类型的解引用需要先消除空值，或使用非空断言 `!`、可选链 `?.`。分析保留这个语言前提，重点检查非空断言、明确的可空返回证据和已建模的非空参数义务；不把所有类型上合法的普通 ArkTS 属性访问一律视为运行时缺陷。JavaScript/TypeScript 访问不套用这一 ArkTS 前提。当前源码无法准确匹配时保留 IR 证据，但若 IR 未完整表达可选链控制流，这一回退可能产生误报，不能直接据此认定运行时缺陷。
+当前实现以同步空值传播核心为主，并额外支持有直接源码证据的 Promise completion value。实验评价限定为已成功构建的 ArkTS 应用（successfully-built ArkTS apps），成功构建需要对应应用及 SDK、工具链版本的实际构建证据；分析器成功完成不等于应用构建成功。输入 ArkTS（`.ets`）应已通过编译检查：显式可空类型的解引用需要先消除空值，或使用非空断言 `!`、可选链 `?.`。分析保留这个语言前提，重点检查非空断言、明确的可空返回证据和已建模的非空参数义务；不把所有类型上合法的普通 ArkTS 属性访问一律视为运行时缺陷。JavaScript/TypeScript 访问不套用这一 ArkTS 前提。当前源码无法准确匹配时保留 IR 证据，但若 IR 未完整表达可选链控制流，这一回退可能产生误报，不能直接据此认定运行时缺陷。
 
 报告仍输出候选来源、访问路径、使用位置和置信度。本次收缩不在用户报告中增加“暂不支持”字段或提示；能力边界仅在本文和代码注释中维护。运行成功表示本轮求解完成，零候选不能证明整个应用没有缺陷。
 
@@ -148,15 +148,37 @@ const obj = JSON.parse(text) as Record<string, Object>;
 
 不按应用名、页面类名或源码行号过滤。当前暂时排除的是组件装饰字段在 %instInit 中的默认 null/undefined 所产生的诊断：这些候选依赖参数注入、组件复用或事件顺序，过滤表示暂不处理，不代表已证明安全。组件方法内的局部空值、显式空值写入，以及普通同步方法问题仍检查；当前不宣称已穷尽识别所有跨事件时序依赖。
 
-[SynchronousCallbackModels](../../src/analysis/nullness/library/SynchronousCallbackModels.ts) 向通用调用解析器提供同步函数参数位置契约。ArkIR 的 View.create 构建内容槽位同时核对完整降低签名、实际 @Component 类型和函数参数类型；没有具体应用类名匹配。后续框架契约通过该边界扩展，通用 IFDS 调用解析器不内置应用或框架专用判断。
+[ArkUiSynchronousCallbacks](../../src/analysis/callgraph/ArkUiSynchronousCallbacks.ts) 向通用调用解析器提供 ArkUI 同步函数参数位置契约。ArkIR 的 View.create 构建内容槽位同时核对完整降低签名、实际 @Component 类型和函数参数类型；没有具体应用类名匹配。[NullnessCallGraph](../../src/analysis/nullness/NullnessCallGraph.ts) 另外以精确内建 `Array.forEach` 签名保留标准同步数组回调。后续框架契约通过该边界扩展，通用 IFDS 调用解析器不内置应用或框架专用判断。
 
 可解析的非 async 函数参数体还作为独立的局部检查入口（跳过主入口已到达的方法）。每个入口从 ZERO 开始，不从注册现场注入捕获状态，不将执行结果回写注册调用，不建立 Promise payload 或事件顺序。这样能检查函数体内的 JSON.parse、显式空值等普通问题；候选不证明该回调一定触发。模块初始化和这些局部入口仍各自独立求解。
+
+## Promise completion value 的受限传播
+
+当前只对以下有直接源码证据的 Promise 完成值建模：
+
+- 项目 `async` 方法的所有直接返回语句中出现 `return null` 或 `return undefined` 时，对直接调用结果建立 fulfillment payload fact。调用结果本身仍是 Promise 句柄，不会因为这个 payload 被标记为空。
+- 精确内建 `Promise.catch` 的 fulfillment callback 直接返回 `null`/`undefined` 时，为 `.catch` 产生的新 Promise 建立 fulfillment payload fact。只认可文件名以 `@internal/Promise.d.ts` 结尾或 `projectName=built-in` 的 `Promise` 实例签名，不按 `catch` 名称匹配任意方法。
+- `await` 遇到上述 synthetic payload fact 时解包到左侧变量；如果被 await 的操作数本身已有 `null`/`undefined` fact，也保留该事实，因为 `await null` 和 `await undefined` 的结果仍是对应空值。
+- 精确内建 `Promise.then` 注册的 callback 可以从 Promise payload 得到参数 fact。callback 仍作为独立 activation root 求解，只注入 payload 参数，不注入注册现场的捕获状态，不把 callback 当成立即执行，也不把 callback 对字段等状态的写入回写调用者。
+- 项目内每个 async 方法体作为独立 activation root 求解，起始事实为 ZERO，不通过普通同步调用边进入。async 方法中的局部赋值和 `await` 之后的 continuation 可按该方法自身 CFG 分析。动态路由或框架可能导致方法没有从 DummyMain 暴露的到达路径，因此这种 root 是方法内缺陷候选分析，不证明方法实际可达。
+
+这套机制把 Promise 对象与 fulfillment value 分开表示：`const p = load(); p` 的非空性和 `const value = await p; value` 的空值性不是同一个事实。它也不根据 `Promise<T>` 类型参数猜测运行时 payload；例如声明为 `Promise<T>` 的 SDK 方法仍可能缺少精确的 fulfillment 契约。
+
+当前机制直接覆盖 OxHornCampus `P052` 对应的结构：
+
+```typescript
+getWindow().catch(() => null).then((data) => {
+  data!.getWindowProperties();
+});
+```
+
+`.catch(() => null)` 产生 completion payload `null`，`.then` 的参数在独立回调 root 中得到该 fact，因此可检出回调体内部的非空断言风险。这个结论针对 completion-value 传播；它不证明 `.then` 与页面生命周期、其他 Promise 或其他事件的执行先后。
 
 ## 暂不支持的功能
 
 | 部分                                 | 当前边界及后续要求                                                                                                                                                                                                                                                        |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Promise、await、异步函数             | 不再建立按名称识别的 Promise payload 传播，不把异步函数体作为普通同步被调函数执行；await 不按普通赋值解包。后续需要先建立调度、完成状态与值映射的一致模型。                                                                                                               |
+| Promise、await、异步函数             | 已支持上述直接字面量 completion value、nullable await operand、精确内建 `Promise.then/.catch` 的受限 payload 传播，以及项目 async 方法体的独立 candidate root。独立 root 不证明动态页面/框架调用路径可达。尚不支持 returned local/field、嵌套 Promise/async adoption、隐式 `return undefined`、`.then` 返回链、rejection reason、`.catch` 的 rejection 参数、`.finally`、`Promise.all/race` 和自定义 thenable。SDK Promise payload 必须另有精确契约。 |
 | 注册回调、事件监听、计时器、SDK 回调 | 不将未知注册 API 的函数参数作为同步被调函数，也不建立跨事件或跨线程状态传播；保留上述局部函数体检查。后续应在 ICFG 明确注册与触发关系。生命周期已有入口不证明真实异步顺序。                                                                                               |
 | ArkUI 容器、builder、组件注入        | 删除按 ForEach/LazyForEach 名称匹配的参数规则和自动补充框架 sink 入口；默认装饰字段相关候选按上述范围暂时过滤，不将 @Require 当作值非空的证明。analyzeFrameworkSinkMethods 暂保留为弃用的兼容配置，不再选取这些额外入口。未来以经过验证的框架签名和参数注入时序模型扩展。 |
 | 容器内容不变量                       | 删除“先 set/has 即非空”、类源码正则推断 Map 已填满，以及通用容器方法名匹配。未来需区分键存在、值非空和别名修改。                                                                                                                                                          |
@@ -164,6 +186,8 @@ const obj = JSON.parse(text) as Record<string, Object>;
 | 项目返回摘要                         | 删除跨分支拼接定义、宽泛返回类型和非空重载所产生的返回摘要，保留同步函数体传播。当前不进行完整的调用实参常量特化，可能保留不可行分支。                                                                                                                                    |
 | 模块状态及初始化顺序                 | 仍以独立补充 root 分析含具体空值来源的模块初始化器，不重建跨 root 的全局状态与实际模块加载顺序。独立 root 合并不能证明全程序初始化安全。                                                                                                                                  |
 | 类／组件初始化协议                   | 删除“所有具体子类构造器均写过字段”式免报规则。保留实际被调用构造器的赋值传播；框架注入和全局类不变量需要独立模型。                                                                                                                                                        |
+| Promise 调度与跨 await 状态           | 不证明 async 调用和 continuation 的实际执行时刻，不注入调用者参数或捕获状态到独立 async/callback root，也不把回调写入同步回写调用者。跨 `await` 的字段、静态状态、闭包捕获和并发写入保持未建模；相关候选需要平台事件顺序或额外同步证据。 |
+| Promise 完成值的非字面来源             | 不把 nullable local、字段、普通方法返回值或泛型参数自动当作 fulfillment payload。只有直接字面量返回、精确内建 `.catch` 字面量返回和已验证的 payload fact 可以继续传播；缺证据时保留为未覆盖，不声称非空。 |
 
 ## 求解限制与验证
 

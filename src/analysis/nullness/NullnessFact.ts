@@ -42,6 +42,17 @@ class NullnessArrayIndexSegment implements INullnessFieldSignature {
     }
 }
 
+/** Synthetic field-like segment for a value fulfilled by a Promise. */
+class NullnessPromisePayloadSegment implements INullnessFieldSignature {
+    getFieldName(): string {
+        return '[[PromiseValue]]';
+    }
+
+    toString(): string {
+        return 'promise-payload';
+    }
+}
+
 /**
  * Conservative suffix used when an access path exceeds the configured depth.
  *
@@ -73,6 +84,7 @@ class NullnessWildcardSegment implements INullnessFieldSignature {
     }
 }
 
+const PROMISE_PAYLOAD_SEGMENT = new NullnessPromisePayloadSegment();
 const WILDCARD_SEGMENT = new NullnessWildcardSegment(null);
 
 /** A minimal statement contract used only for provenance and source locations. */
@@ -307,6 +319,10 @@ export class NullnessAccessPath {
             return this;
         }
         return new NullnessAccessPath(this.base, this.baseType, [...this.fields, field], this.isStatic);
+    }
+
+    appendPromisePayload(): NullnessAccessPath {
+        return this.appendField(PROMISE_PAYLOAD_SEGMENT);
     }
 
     dropLastField(): NullnessAccessPath {

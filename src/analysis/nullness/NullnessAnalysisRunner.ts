@@ -17,6 +17,7 @@ import { Scene } from '../../adapter/arkanalyzer';
 import {
     AliasType,
     FunctionType,
+    Local,
     ModifierType,
     NullConstant,
     NullType,
@@ -25,7 +26,12 @@ import {
     UnionType,
     type Type,
 } from '../../adapter/arkanalyzer';
-import { ArkAssignStmt, Stmt } from '../../adapter/arkanalyzer';
+import {
+    ArkAssignStmt,
+    ArkInstanceInvokeExpr,
+    ArkParameterRef,
+    Stmt,
+} from '../../adapter/arkanalyzer';
 import { ArkMethod } from '../../adapter/arkanalyzer';
 import {
     createLifecycleModelCreator,
@@ -37,7 +43,7 @@ import {
     DEFAULT_LIFECYCLE_CONFIG,
     LifecycleModelConfig,
 } from '../../lifecycle';
-import { NullnessFact } from './NullnessFact';
+import { NullnessAccessPath, NullnessFact } from './NullnessFact';
 import {
     NullDereferenceDiagnostic,
     NullnessAnalysisConfig,
@@ -189,6 +195,9 @@ export class NullnessAnalysisRunner {
                 metadata
             );
             const supplementalRoots = new Set<ArkMethod>();
+            for (const method of this.getProjectAsyncBodyRoots(dummyMain)) {
+                supplementalRoots.add(method);
+            }
             if (this.config.analyzeModuleInitializers !== false) {
                 const moduleInitializers = this.getNullishModuleInitializers(
                     dummyMain,
@@ -226,10 +235,9 @@ export class NullnessAnalysisRunner {
                 (sum, facts) => sum + facts.length,
                 0
             );
-            // Inspect callback-local code without inventing registration -> synchronous execution,
-            // captured state, event order, or Promise payload effects. A function argument is
-            // only a candidate after its call site is reached; a standalone local root also
-            // requires concrete nullness evidence in the callback body.
+            // Inspect callback-local code without inventing registration -> synchronous
+            // execution, captured state, or event order. Promise fulfillment payloads are
+            // seeded only through getPromiseFulfillmentRoots.
             const reachedMethods = new Set<ArkMethod>();
             const reachedStatements = new Set<Stmt>();
             this.recordReached(
@@ -239,11 +247,33 @@ export class NullnessAnalysisRunner {
             );
             const pendingRoots = [...supplementalRoots];
             const queuedRoots = new Set(pendingRoots);
-            const enqueueRoot = (method: ArkMethod): void => {
-                if (reachedMethods.has(method) || queuedRoots.has(method)) return;
+            const initialFactsByRoot = new Map<ArkMethod, NullnessFact[]>();
+            const enqueueRoot = (
+                method: ArkMethod,
+                initialFacts: readonly NullnessFact[] = []
+            ): void => {
+                if (reachedMethods.has(method)) return;
+                if (initialFacts.length > 0) {
+                    const merged = initialFactsByRoot.get(method) ?? [];
+                    for (const fact of initialFacts) {
+                        if (!merged.some(existing => existing.equals(fact))) merged.push(fact);
+                    }
+                    initialFactsByRoot.set(method, merged);
+                }
+                if (queuedRoots.has(method)) return;
                 queuedRoots.add(method);
                 pendingRoots.push(method);
             };
+            const enqueuePromiseContinuations = (
+                factsByStatement: ReadonlyMap<Stmt, readonly NullnessFact[]>
+            ): void => {
+                for (const [method, facts] of this.getPromiseFulfillmentRoots(
+                    factsByStatement
+                )) {
+                    enqueueRoot(method, facts);
+                }
+            };
+            enqueuePromiseContinuations(reachedFacts);
             for (const callback of this.getCallbackBodyRoots(
                 reachedStatements,
                 libraryRegistry,
@@ -265,7 +295,8 @@ export class NullnessAnalysisRunner {
                     this.config.problem,
                     libraryRegistry,
                     sourceSemantics,
-                    metadata
+                    metadata,
+                    initialFactsByRoot.get(method) ?? []
                 );
                 const supplementalSolver = new NullnessSolver(
                     supplementalProblem,
@@ -291,6 +322,7 @@ export class NullnessAnalysisRunner {
                     reachedMethods,
                     newlyReachedStatements
                 );
+                enqueuePromiseContinuations(rootReachedFacts);
                 for (const callback of this.getCallbackBodyRoots(
                     newlyReachedStatements,
                     libraryRegistry,
@@ -449,6 +481,96 @@ export class NullnessAnalysisRunner {
             }
         }
         return roots;
+    }
+
+    /**
+     * Dynamic UI routing and framework callbacks may make an async method
+     * relevant without exposing a path from DummyMain. Analyze every project
+     * async method as a local candidate root; this does not prove reachability.
+     */
+    private getProjectAsyncBodyRoots(dummyMain: ArkMethod): ArkMethod[] {
+        return this.scene.getMethods().filter(method => {
+            if (method === dummyMain || !method.getCfg() ||
+                !method.containsModifier(ModifierType.ASYNC)) {
+                return false;
+            }
+            const file = method.getSignature().getDeclaringClassSignature()
+                .getDeclaringFileSignature();
+            return !!this.scene.getFile(file) && !this.scene.hasSdkFile(file);
+        });
+    }
+
+    /**
+     * Seed built-in Promise fulfillment callbacks from payload facts at their
+     * registration site. The callback is still solved as a separate root; this
+     * does not establish immediate execution or propagate callback effects back.
+     */
+    private getPromiseFulfillmentRoots(
+        factsByStatement: ReadonlyMap<Stmt, readonly NullnessFact[]>
+    ): Map<ArkMethod, NullnessFact[]> {
+        const roots = new Map<ArkMethod, NullnessFact[]>();
+        for (const [stmt, facts] of factsByStatement) {
+            const invoke = stmt.getInvokeExpr();
+            if (!(invoke instanceof ArkInstanceInvokeExpr) ||
+                !this.isBuiltinPromiseThen(invoke)) {
+                continue;
+            }
+            const callback = this.getFunctionArgumentMethod(invoke, 0);
+            if (!callback) continue;
+            const parameter = this.getParameterLocal(callback, 0);
+            if (!parameter) continue;
+            const payloadPath = NullnessAccessPath.fromValue(invoke.getBase())
+                .appendPromisePayload();
+            const seeded = roots.get(callback) ?? [];
+            for (const fact of facts) {
+                if (!payloadPath.isPrefixOf(fact.accessPath)) continue;
+                const remainingFields = fact.accessPath.remainingFieldsAfter(payloadPath);
+                const mapped = fact.deriveWithNewAccessPath(new NullnessAccessPath(
+                    parameter,
+                    parameter.getType(),
+                    remainingFields
+                ), stmt);
+                if (!seeded.some(existing => existing.equals(mapped))) seeded.push(mapped);
+            }
+            if (seeded.length > 0) roots.set(callback, seeded);
+        }
+        return roots;
+    }
+
+    private isBuiltinPromiseThen(invoke: ArkInstanceInvokeExpr): boolean {
+        const signature = invoke.getMethodSignature();
+        const owner = signature.getDeclaringClassSignature();
+        const file = owner.getDeclaringFileSignature();
+        return owner.getClassName() === 'Promise' &&
+            signature.getMethodSubSignature().getMethodName() === 'then' &&
+            (file.getProjectName() === 'built-in' ||
+                file.getFileName().endsWith('@internal/Promise.d.ts'));
+    }
+
+    private getFunctionArgumentMethod(
+        invoke: ArkInstanceInvokeExpr,
+        index: number
+    ): ArkMethod | null {
+        const type = invoke.getArgs()[index]?.getType();
+        if (!(type instanceof FunctionType)) return null;
+        const signature = type.getMethodSignature();
+        const file = signature.getDeclaringClassSignature().getDeclaringFileSignature();
+        if (!this.scene.getFile(file) || this.scene.hasSdkFile(file)) return null;
+        const method = this.scene.getMethod(signature);
+        return method?.getCfg() ? method : null;
+    }
+
+    private getParameterLocal(method: ArkMethod, index: number): Local | null {
+        for (const stmt of method.getCfg()?.getStartingBlock()?.getStmts() ?? []) {
+            if (!(stmt instanceof ArkAssignStmt)) continue;
+            const parameter = stmt.getRightOp();
+            const local = stmt.getLeftOp();
+            if (parameter instanceof ArkParameterRef &&
+                parameter.getIndex() === index && local instanceof Local) {
+                return local;
+            }
+        }
+        return null;
     }
 
     private hasLocalNullishEvidence(

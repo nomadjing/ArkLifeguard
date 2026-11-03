@@ -48,11 +48,14 @@ import {
 } from '../../adapter/arkanalyzer';
 import { ArkAssignStmt, ArkIfStmt, ArkReturnStmt, ArkThrowStmt, Stmt } from '../../adapter/arkanalyzer';
 import { DataflowProblem, FlowFunction } from '../../ifds';
+import { resolveProjectMethods } from '../../ifds/CallResolver';
 import { isModeledArrayPredicate } from './library/SdkSignatureSummary';
 import { ArkMethod } from '../../adapter/arkanalyzer';
 import {
     FunctionType,
     LexicalEnvType,
+    ModifierType,
+    type Scene,
 } from '../../adapter/arkanalyzer';
 import { Value } from '../../adapter/arkanalyzer';
 import {
@@ -130,7 +133,8 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         config: NullnessAnalysisConfig = {},
         private readonly libraryRegistry: NullnessLibraryRegistry = NullnessLibraryRegistry.createDefault(),
         private readonly sourceSemantics: NullnessSourceSemantics = new NullnessSourceSemantics(),
-        metadata = new NullnessMetadataCache(libraryRegistry, sourceSemantics)
+        metadata = new NullnessMetadataCache(libraryRegistry, sourceSemantics),
+        private readonly initialFacts: readonly NullnessFact[] = []
     ) {
         super();
         if (metadata.libraryRegistry !== libraryRegistry || metadata.sourceSemantics !== sourceSemantics) {
@@ -169,9 +173,15 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
                     problem.reporter.checkTypedNonNullArguments(srcStmt);
                     problem.reporter.checkLateNullGuard(srcStmt);
                     result.add(fact);
+                    if (srcStmt === problem.entryPoint) {
+                        for (const initialFact of problem.initialFacts) result.add(initialFact);
+                    }
                     const generated = problem.createNullishLiteralFact(srcStmt);
                     if (generated) {
                         result.add(generated);
+                    }
+                    for (const promiseFact of problem.createPromiseCompletionFacts(srcStmt)) {
+                        result.add(promiseFact);
                     }
                     for (const fieldFact of problem.libraryRegistry.getFieldReadFacts(srcStmt)) result.add(fieldFact);
                     for (const summaryFact of problem.libraryRegistry
@@ -532,7 +542,9 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
         }
 
         const rightOp = stmt.getRightOp();
-        const kind = this.getLiteralNullnessKind(rightOp);
+        const kind = this.getLiteralNullnessKind(
+            rightOp instanceof ArkCastExpr ? rightOp.getOp() : rightOp
+        );
         if (!kind) {
             return null;
         }
@@ -1116,11 +1128,25 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             }
         }
 
-        // Type assertions preserve value identity; await requires unsupported async semantics.
         if (rightOp instanceof ArkAwaitExpr) {
-            return result;
+            const promisePath = NullnessAccessPath.fromValue(rightOp.getPromise());
+            const payloadPath = promisePath.appendPromisePayload();
+            if (payloadPath.isPrefixOf(fact.accessPath)) {
+                const remainingFields = fact.accessPath.remainingFieldsAfter(payloadPath);
+                result.add(fact.deriveWithNewAccessPath(new NullnessAccessPath(
+                    leftPath.base,
+                    leftPath.baseType,
+                    [...leftPath.fields, ...remainingFields],
+                    leftPath.isStatic
+                ), stmt));
+                return result;
+            }
         }
-        const propagatedValue = rightOp instanceof ArkCastExpr ? rightOp.getOp() : rightOp;
+        // Await preserves an already-known nullish operand. Promise completion
+        // values travel through the separate synthetic payload access path.
+        const propagatedValue = rightOp instanceof ArkAwaitExpr
+            ? rightOp.getPromise()
+            : rightOp instanceof ArkCastExpr ? rightOp.getOp() : rightOp;
         const rightPath = NullnessAccessPath.fromValue(propagatedValue);
         if (rightPath.isEmpty() || !rightPath.isPrefixOf(fact.accessPath)) {
             return result;
@@ -1145,6 +1171,81 @@ export class NullnessProblem extends DataflowProblem<NullnessFact> {
             result.add(fact.deriveWithNewAccessPath(mappedPath, stmt));
         }
         return result;
+    }
+
+    /**
+     * Store only completion values whose source has direct literal evidence:
+     * project async return literals and built-in Promise.catch callback return
+     * literals. Promise objects themselves remain non-payload values.
+     */
+    private createPromiseCompletionFacts(stmt: Stmt): Set<NullnessFact> {
+        const result = new Set<NullnessFact>();
+        if (!(stmt instanceof ArkAssignStmt)) return result;
+        const invoke = stmt.getInvokeExpr();
+        if (!invoke) return result;
+        const targetPath = NullnessAccessPath.fromValue(stmt.getLeftOp());
+        if (!this.isTrackableAccessPath(targetPath)) return result;
+        const payloadPath = targetPath.appendPromisePayload();
+
+        const scene = stmt.getCfg()?.getDeclaringMethod()
+            ?.getDeclaringArkClass().getDeclaringArkFile().getScene();
+        if (!scene) return result;
+
+        let completionMethods: ArkMethod[] = [];
+        const owner = invoke.getMethodSignature().getDeclaringClassSignature();
+        if (invoke instanceof ArkInstanceInvokeExpr &&
+            owner.getClassName() === 'Promise' &&
+            this.isBuiltinPromiseFile(owner.getDeclaringFileSignature()) &&
+            invoke.getMethodSignature().getMethodSubSignature().getMethodName() === 'catch') {
+            const callback = this.getFunctionArgumentMethod(scene, invoke, 0);
+            if (callback) completionMethods = [callback];
+        } else {
+            completionMethods = [...resolveProjectMethods(scene, stmt)]
+                .filter(method => {
+                    const file = method.getSignature().getDeclaringClassSignature()
+                        .getDeclaringFileSignature();
+                    return method.containsModifier(ModifierType.ASYNC) &&
+                        !!scene.getFile(file) && !scene.hasSdkFile(file);
+                });
+        }
+
+        for (const method of completionMethods) {
+            for (const returnStmt of method.getCfg()?.getStmts() ?? []) {
+                if (!(returnStmt instanceof ArkReturnStmt)) continue;
+                const kind = this.getLiteralNullnessKind(returnStmt.getOp());
+                if (!kind) continue;
+                result.add(NullnessFact.create(payloadPath, kind, {
+                    kind: kind === NullnessKind.Null
+                        ? NullnessOriginKind.NullLiteral
+                        : NullnessOriginKind.UndefinedLiteral,
+                    stmt: returnStmt,
+                    description: `Promise fulfilled with the ${kind} literal`,
+                }));
+            }
+        }
+        return result;
+    }
+
+    private isBuiltinPromiseFile(file: {
+        getProjectName(): string;
+        getFileName(): string;
+    }): boolean {
+        return file.getProjectName() === 'built-in' ||
+            file.getFileName().endsWith('@internal/Promise.d.ts');
+    }
+
+    private getFunctionArgumentMethod(
+        scene: Scene,
+        invoke: ArkInstanceInvokeExpr,
+        index: number
+    ): ArkMethod | null {
+        const type = invoke.getArgs()[index]?.getType();
+        if (!(type instanceof FunctionType)) return null;
+        const signature = type.getMethodSignature();
+        const file = signature.getDeclaringClassSignature().getDeclaringFileSignature();
+        if (!scene.getFile(file) || scene.hasSdkFile(file)) return null;
+        const method = scene.getMethod(signature);
+        return method?.getCfg() ? method : null;
     }
 
     private renderSourceAccessPath(path: NullnessAccessPath, followAliases = true): string {

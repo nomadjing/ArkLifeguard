@@ -24,7 +24,7 @@ function buildScene(): Scene {
 }
 
 describe('Nullness array and await precision', () => {
-    it('reports synchronous array elements without entering async callees', () => {
+    it('reports array elements and verified async completion values independently', () => {
         const result = new NullnessAnalysisRunner(buildScene()).runFromDummyMain();
 
         expect(result.success, result.error).toBe(true);
@@ -32,9 +32,10 @@ describe('Nullness array and await precision', () => {
             diagnostic.dereferenceStmt.getOriginalText()
         );
         expect(dereferences.some(text => text?.includes('accounts[0]!.refresh()'))).toBe(true);
-        expect(dereferences.some(text => text?.includes('nullableAccount!.refresh()'))).toBe(false);
+        expect(dereferences.some(text => text?.includes('nullableAccount!.refresh()'))).toBe(true);
+        expect(dereferences.some(text => text?.includes('data!.getWindowProperties()'))).toBe(true);
         expect(dereferences.some(text => text?.includes('accounts[1]!.refresh()'))).toBe(false);
         expect(dereferences.some(text => text?.includes('safeAccount.refresh()'))).toBe(false);
-        expect(result.diagnostics).toHaveLength(1);
+        expect(result.diagnostics).toHaveLength(3);
     });
 });

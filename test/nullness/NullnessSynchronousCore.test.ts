@@ -84,11 +84,13 @@ describe('nullness synchronous core', () => {
     });
     it('keeps project-proven synchronous callbacks but does not inline timer wrappers', () => {
         expect(analyze('synchronousCallback').diagnostics.length).toBeGreaterThan(0);
+        expect(analyze('synchronousForEachBody').diagnostics.length).toBeGreaterThan(0);
         expect(analyze('timerWrapper').diagnostics).toHaveLength(0);
     });
-    it('does not enter async callees or propagate awaited payloads', () => {
+    it('propagates verified await completion values without entering async callees synchronously', () => {
         const call = analyze('callsAsync');
-        expect(analyze('awaitedValue').diagnostics).toHaveLength(0);
+        expect(analyze('awaitedValue').diagnostics).toHaveLength(1);
+        expect(analyze('awaitedNullableOperand').diagnostics).toHaveLength(1);
         expect([...call.reached.keys()].some(stmt =>
             stmt.getCfg()?.getDeclaringMethod().getName() === 'asynchronous')).toBe(false);
     });

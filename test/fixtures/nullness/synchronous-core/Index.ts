@@ -78,6 +78,15 @@ export function deferredCallback(): void {
 }
 async function asynchronous(): Promise<Account | null> { return null; }
 export async function awaitedValue(): Promise<void> { const account = await asynchronous(); account!.touch(); }
+export async function awaitedNullableOperand(): Promise<void> {
+    const promise = null as Promise<Account> | null;
+    const account = await promise;
+    account!.touch();
+}
+function returnsNullAccount(): Account | null { return null; }
+export function synchronousForEachBody(): void {
+    [1].forEach(() => returnsNullAccount()!.touch());
+}
 export function callsAsync(): void { asynchronous(); }
 
 export function flagGuard(flag: boolean): void {

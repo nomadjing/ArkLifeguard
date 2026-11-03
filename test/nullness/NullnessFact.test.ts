@@ -406,7 +406,7 @@ describe('Nullness flow and approximation', () => {
         )).toBe(true);
     });
 
-    it('does not propagate a promise value through an unsupported await assignment', () => {
+    it('preserves a known nullish await operand without inferring Promise payloads', () => {
         const entry = stmt(1);
         const promiseResult = new ArkLocal('%promiseResult');
         const account = new ArkLocal('account');
@@ -426,6 +426,6 @@ describe('Nullness flow and approximation', () => {
         ];
         expect(propagated.some(fact =>
             fact.accessPath.equals(NullnessAccessPath.fromValue(account))
-        )).toBe(false);
+        )).toBe(true);
     });
 });
