@@ -3,7 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createApplicationSceneConfig } from '../../src/application/ApplicationScene';
-import { isApplicationSource } from '../../src/application/SourceScanRules';
+import {
+    findHarmonyApplicationSourceRoots,
+    isApplicationSource,
+} from '../../src/application/SourceScanRules';
 
 describe('application source scan boundaries', () => {
     it.each(['entry/src/test/Case.ets', 'entry/src/ohosTest/Case.ets', 'tests/input.ts',
@@ -54,6 +57,36 @@ describe('application source scan boundaries', () => {
                 'entry/src/main/ets/Index.ets',
                 'entry/src/main/ets/Keep.js',
             ]);
+        } finally {
+            fs.rmSync(project, { recursive: true, force: true });
+        }
+    });
+    it('limits inputs to HarmonyOS build-profile module roots', () => {
+        const project = fs.mkdtempSync(path.join(os.tmpdir(), 'arklifeguard-module-filter-'));
+        try {
+            const write = (file: string, content = ''): void => {
+                const filename = path.join(project, file);
+                fs.mkdirSync(path.dirname(filename), { recursive: true });
+                fs.writeFileSync(filename, content);
+            };
+            write('build-profile.json5', JSON.stringify({
+                app: { products: [{ runtimeOS: 'HarmonyOS' }] },
+                modules: [{ name: 'entry', srcPath: './HarmonyApp' }],
+            }));
+            write('HarmonyApp/entry/src/main/module.json5', '{"module":{"name":"entry"}}');
+            write('HarmonyApp/entry/src/main/ets/Index.ets');
+            write('tools/true-chain-harness/generated/Duplicate.ets');
+            write('extensions/aira-sync/src/Extension.ets');
+
+            const roots = findHarmonyApplicationSourceRoots(project)
+                .map(root => path.relative(project, root).replace(/\\/g, '/'));
+            expect(roots).toEqual(['HarmonyApp']);
+
+            const config = createApplicationSceneConfig('fixture', project, []);
+            const files = config.getProjectFiles()
+                .map(file => path.relative(project, file).replace(/\\/g, '/'))
+                .sort();
+            expect(files).toEqual(['HarmonyApp/entry/src/main/ets/Index.ets']);
         } finally {
             fs.rmSync(project, { recursive: true, force: true });
         }

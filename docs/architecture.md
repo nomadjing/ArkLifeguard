@@ -4,6 +4,8 @@
 
 ProjectAnalyzer 构建 Scene、推断类型并生成一个共同 DummyMain，再依次执行资源、listener、空指针检查。每个领域单独求解、返回状态；模块失败汇总到 errors，Scene 或生命周期构建失败属于顶层错误。
 
+应用输入首先由 HarmonyOS `build-profile.json5` 的 `modules[].srcPath` 限定为实际构建模块；仓库中的 generated harness、`tools/`、`scripts/` 和独立子工程不会仅因包含 `.ets`/`.ts` 就进入 Scene。没有可用 build profile 时才回退到 `module.json5` 的 `src/main` 边界和既有 source-set 规则。该限制决定“哪些是应用代码”，不证明 DummyMain 能到达模块内的每个方法。
+
 ```mermaid
 flowchart TD
     CLI --> ProjectAnalyzer
