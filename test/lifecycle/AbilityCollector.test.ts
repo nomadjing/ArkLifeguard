@@ -3,12 +3,32 @@ import 'arkanalyzer';
 import { AbilityCollector } from '../../src/lifecycle/AbilityCollector';
 import {
     AbilityLifecycleStage,
+    BackupExtensionLifecycleStage,
     ComponentLifecycleStage,
     NavigationType,
 } from '../../src/lifecycle/LifecycleTypes';
 import { buildLifecycleScene } from '../helpers/buildScene';
 
 describe('AbilityCollector', () => {
+    it('collects all configured lifecycle method families', () => {
+        const collector = new AbilityCollector(buildLifecycleScene('lifecycle-coverage'));
+        const abilities = collector.collectAllAbilities();
+        const components = collector.collectAllComponents();
+        const uiAbility = abilities.find(ability => ability.name === 'FullUIAbility');
+        const backupAbility = abilities.find(ability => ability.name === 'FullBackupAbility');
+        const component = components.find(item => item.name === 'FullComponent');
+
+        expect([...uiAbility!.lifecycleMethods.keys()]).toEqual(
+            expect.arrayContaining(Object.values(AbilityLifecycleStage))
+        );
+        expect([...backupAbility!.lifecycleMethods.keys()]).toEqual(
+            expect.arrayContaining(Object.values(BackupExtensionLifecycleStage))
+        );
+        expect([...component!.lifecycleMethods.keys()]).toEqual(
+            expect.arrayContaining(Object.values(ComponentLifecycleStage))
+        );
+    });
+
     describe('simple project', () => {
         let collector: AbilityCollector;
 
