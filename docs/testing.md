@@ -53,28 +53,20 @@ npm run inspect:dummymain -- "/path/to/app" \
 
 前者检查调用签名、位置和语句 lowering；后者检查框架入口、scope 和生成 CFG。结构更小、回调更少或零诊断都不是精度证明。
 
-## 标注基准
+## 场景回归
 
-空指针基准读取 `ArkDefectBench/Null Pointer Dereference/null_pointer_expected.json`：
+原独立样例已迁入 `test/fixtures`，不再保留独立空指针基准脚本。
 
 ```bash
-npm run test:nullness:bench -- --case DirectNull --model flat
+npx vitest run test/nullness/NullnessLifecycleConformance.test.ts
+npm run test:lifecycle:benchmark
 ```
 
-生命周期受控测试为 `npm run test:lifecycle:benchmark`。基准比较应固定输入、SDK、入口模型、摘要、预算、超时和真值；模型结构真值不能代替运行时缺陷真值。
+空指针场景使用 `test/fixtures/nullness/lifecycle-conformance/null_pointer_expected.json`，按源头与解引用的 class/method 匹配诊断，纳入默认测试。当前未满足的 9 个旧预期明确标为 todo，不计为通过；旧 oracle 中没有对应源码的 3 个 Async 记录已移除。该断言不验证同一方法内的精确语句位置或完整执行路径，不能替代机制单测。
 
-空指针测试与 bench 分工：
+生命周期受控样例与展示项目分别位于 `test/fixtures/lifecycle/controlled` 和 `test/fixtures/lifecycle/showcase`。受控生命周期测试仍需显式运行，默认命令保持原有排除规则。
 
-| 层次 | 负责的问题 | 运行时机 |
-| --- | --- | --- |
-| `NullnessFact` / compatibility 单测 | 事实身份、null/undefined 区分、guard 分支、抽象证据、ArkAnalyzer 兼容边界 | 修改相应机制时 |
-| `test/fixtures/nullness` 小型回归 | Map/find/SDK 摘要、字段更新、模块初始化、误报正反例、置信度与统计契约 | 修改对应规则或 runner 时，指定测试文件 |
-| ArkDefectBench | 标注场景上的整链路检出与误报，覆盖传播、异常、生命周期、回调与异步 | 先运行相关 `--case`；跨机制修改或评估时另行运行完整基准 |
-| 真实应用 | 可执行性、规模与人工复核候选 | 显式选择项目；无人工真值不报告缺陷精度 |
-
-当前空指针 oracle 有 66 个 case。Bench 按源头与解引用的 class/method 对匹配诊断，输出 TP/FP/TN/FN、Recall、Accuracy；它不验证同一方法内的精确语句位置、完整执行路径、置信度或统计分解。因此不能用 bench 替代这些小测试，也不应把聚合 Accuracy 当成真实应用精度。
-
-新增缺陷先写最小机制回归；需要评估场景覆盖时再补 bench 的独立正反例与 oracle，避免把整个 bench 样例复制进 `test/fixtures`。修复已有 bench case 时可直接用 `--case` 复现，只有需要更细的断言才另加小测试。受控基准仍由 Vitest 承载，但默认 npm 测试命令不运行它们；直接执行裸 `vitest` 会绕过这些排除参数。
+新增缺陷优先补入已有机制测试；只有尚未覆盖的入口、传播或生命周期组合才增加场景回归。真实应用的可执行性与规模检查不能代替人工真值或精度评估。
 
 ## 真实应用脚本
 

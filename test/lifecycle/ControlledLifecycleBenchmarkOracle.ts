@@ -31,7 +31,7 @@ interface ControlledLifecycleOracle {
 
 export const CONTROLLED_LIFECYCLE_ROOT = path.join(
     __dirname,
-    '../../ArkDefectBench/Lifecycle Modeling'
+    '../fixtures/lifecycle/controlled'
 );
 
 const ORACLE_PATH = path.join(CONTROLLED_LIFECYCLE_ROOT, 'lifecycle_model_expected.json');

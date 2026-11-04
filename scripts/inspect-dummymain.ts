@@ -51,7 +51,7 @@ function help(): void {
         'or provide its location with --sdk-root/--sdk.',
         '',
         'Example:',
-        '  npm run inspect:dummymain -- /abs/path/to/ArkDefectBench/Null\\ Pointer\\ Dereference/Lifecycle/PageLifecycle/HideShow --format both',
+        '  npm run inspect:dummymain -- /abs/path/to/test/fixtures/nullness/lifecycle-conformance/Lifecycle/PageLifecycle/HideShow --format both',
     ].join('\n'));
 }
 

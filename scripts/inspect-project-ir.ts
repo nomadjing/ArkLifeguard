@@ -43,7 +43,7 @@ function printHelp(): void {
         'or provide its location with --sdk-root/--sdk.',
         '',
         'Examples:',
-        '  npm run inspect:project-ir -- "../../../ArkLifeguard/ArkDefectBench/Null Pointer Dereference/BasicNull/DirectNull"',
+        '  npm run inspect:project-ir -- "test/fixtures/nullness/lifecycle-conformance/BasicNull/DirectNull"',
         '  npm run inspect:project-ir -- Demo4tests/OxHornCampus --sdk-root sdk/default',
         '  npm run inspect:project-ir -- ../../../ArkLifeguard/Demo4tests/OxHornCampus --method EntryAbility --verbose-ir',
     ].join('\n'));
