@@ -1,6 +1,7 @@
 import emitter from '@ohos.events.emitter';
 import EventHub from '@ohos.app.ability.EventHub';
-class Roots { static owner: Object | null = null; static buffer: ArrayBuffer | null = null; static items: Object[] = []; static map: Map<number, Object> = new Map(); static weak: WeakRef<Object> | null = null; static first: EventHub; static second: EventHub; static interval: number = 0; static other: number = 0; }
+const SHARED_EVENT = 42;
+class Roots { static owner: Object | null = null; static buffer: ArrayBuffer | null = null; static items: Object[] = []; static map: Map<number, Object> = new Map(); static weak: WeakRef<Object> | null = null; static first: EventHub; static second: EventHub; static interval: number = 0; static other: number = 0; static PLAYER_EVENT = { eventId: 77 }; }
 class EventLeak { value = 1; onCreate() { emitter.on({eventId: 1}, () => { this.value++; }); } onDestroy() {} }
 class EventRelease { value = 1; listener = () => { this.value++; }; onCreate() { emitter.on({eventId: 1}, this.listener); } onDestroy() { emitter.off(1, this.listener); } }
 class WrongEvent { value = 1; listener = () => { this.value++; }; onCreate() { emitter.on({eventId: 1}, this.listener); } onDestroy() { emitter.off(2, this.listener); } }
@@ -38,6 +39,185 @@ class TwoListeners { value = 1; onCreate() { emitter.on({eventId: 1}, () => { th
 class MethodIdentity { value = 1; callback() { this.value++; } onCreate() { emitter.on({eventId: 1}, this.callback); } onDestroy() { emitter.off(1, this.callback); } }
 class UnknownCallback { onCreate() { emitter.on({eventId: 1}, undefined as (() => void)); Roots.owner = this; } onDestroy() {} }
 class ThrowingCleanup { value = 1; listener = () => { this.value++; }; onCreate() { emitter.on({eventId: 1}, this.listener); } clean(stop: boolean) { if (stop) throw new Error('stop'); emitter.off(1, this.listener); } onDestroy() { try { this.clean(true); } catch (error) {} } }
+class StableFieldListener {
+  value = 1;
+  listener: () => void = () => { this.value++; };
+  callback = () => { this.value++; };
+  onCreate() {
+    this.listener = this.callback;
+    emitter.on({eventId: 1}, this.listener);
+  }
+  onDestroy() {
+    this.listener = this.callback;
+    emitter.off(1, this.listener);
+  }
+}
+class ReplacedFieldListener {
+  value = 1;
+  first = () => { this.value++; };
+  second = () => { this.value += 2; };
+  listener: () => void = this.first;
+  onCreate() {
+    this.listener = this.first;
+    emitter.on({eventId: 1}, this.listener);
+  }
+  onDestroy() {
+    this.listener = this.second;
+    emitter.off(1, this.listener);
+  }
+}
+class StaticEventIdentity {
+  listener = () => {};
+  onCreate() { emitter.on(Roots.PLAYER_EVENT, this.listener); }
+  onDestroy() { emitter.off(Roots.PLAYER_EVENT.eventId, this.listener); }
+}
+class CrossTimerClear {
+  timer = 0;
+  onCreate() { this.timer = setInterval(() => {}, 10); }
+  onDestroy() { clearTimeout(this.timer); }
+}
+class NullClearedListener {
+  listener: (() => void) | null = null;
+  onCreate() {
+    this.listener = () => {};
+    emitter.on({eventId: 1}, this.listener);
+  }
+  onDestroy() {
+    if (this.listener) {
+      emitter.off(1, this.listener);
+    }
+    this.listener = null;
+  }
+}
+class TopLevelEventIdentity {
+  listener = () => {};
+  onCreate() { emitter.on({eventId: SHARED_EVENT}, this.listener); }
+  onDestroy() { emitter.off(SHARED_EVENT, this.listener); }
+}
+class GuardedTimerMethodSummary {
+  timer: number = -1;
+  onCreate() { this.timer = setInterval(() => {}, 10); }
+  clearTimer() {
+    if (this.timer === -1) {
+      return;
+    }
+    clearInterval(this.timer);
+    this.timer = -1;
+  }
+  cleanup() { this.clearTimer(); }
+  onDestroy() { this.cleanup(); }
+}
+class ConditionalTimerMethodSummary {
+  timer: number = -1;
+  onCreate() { this.timer = setInterval(() => {}, 10); }
+  clearTimer() { clearInterval(this.timer); this.timer = -1; }
+  onDestroy(shouldClear: boolean) {
+    if (shouldClear) {
+      this.clearTimer();
+    }
+  }
+}
+class PreclearedRepeatedTimer {
+  timer: number = -1;
+  start() {
+    this.stop();
+    this.timer = setInterval(() => {}, 10);
+  }
+  stop() {
+    if (this.timer >= 0) {
+      clearInterval(this.timer);
+      this.timer = -1;
+    }
+  }
+}
+class OverwrittenRepeatedTimer {
+  timer: number = -1;
+  start() { this.timer = setInterval(() => {}, 10); }
+  stop() {
+    if (this.timer >= 0) {
+      clearInterval(this.timer);
+      this.timer = -1;
+    }
+  }
+}
+class GuardedRepeatedTimer {
+  started: boolean = false;
+  timer: number = -1;
+  start() {
+    if (this.started) {
+      return;
+    }
+    this.started = true;
+    this.timer = setInterval(() => {}, 10);
+  }
+  stop() {
+    if (this.timer >= 0) {
+      clearInterval(this.timer);
+      this.timer = -1;
+    }
+    this.started = false;
+  }
+}
+class ResetGuardTimer {
+  started: boolean = false;
+  timer: number = -1;
+  start() {
+    if (this.started) {
+      return;
+    }
+    this.started = true;
+    this.started = false;
+    this.timer = setInterval(() => {}, 10);
+  }
+  stop() {
+    if (this.timer >= 0) {
+      clearInterval(this.timer);
+      this.timer = -1;
+    }
+  }
+}
+class ForwardingEmitter {
+  static on(callback: (data?: number) => void) {
+    emitter.on({eventId: 88}, callback);
+  }
+  static off(callback: (data?: number) => void) {
+    emitter.off(88, callback);
+  }
+}
+class WrappingEmitter {
+  static on(callback: (data?: number) => void) {
+    emitter.on({eventId: 88}, (event) => callback(event.data as number));
+  }
+  static off(callback: (data?: number) => void) {
+    emitter.off(88, callback);
+  }
+}
+class RetainingEmitter {
+  static callback: ((data?: number) => void) | undefined;
+  static on(callback: (data?: number) => void) {
+    RetainingEmitter.callback = callback;
+    emitter.on({eventId: 88}, callback);
+  }
+  static off(callback: (data?: number) => void) {
+    emitter.off(88, callback);
+  }
+}
+class HelperEventRelease {
+  listener = () => {};
+  onCreate() { emitter.on({eventId: 89}, this.listener); }
+  cleanup() { emitter.off(89, this.listener); }
+  onDestroy() { this.cleanup(); }
+}
+class ConditionalEventRelease {
+  listener = () => {};
+  onCreate() { emitter.on({eventId: 90}, this.listener); }
+  cleanup() { emitter.off(90, this.listener); }
+  onDestroy(clear: boolean) {
+    if (clear) {
+      this.cleanup();
+    }
+  }
+}
 export class Cases {
  static EventLeakCase() {  const owner = new EventLeak(); owner.onCreate(); owner.onDestroy(); }
  static EventReleaseCase() {  const owner = new EventRelease(); owner.onCreate(); owner.onDestroy(); }
@@ -175,5 +355,26 @@ export class Cases {
  }
  static NestedCallbackRegistrationCase() {
      emitter.on({eventId: 1}, () => { emitter.on({eventId: 2}, () => {}); });
+ }
+ static StableFieldListenerCase() { const owner = new StableFieldListener(); owner.onCreate(); owner.onDestroy(); }
+ static ReplacedFieldListenerCase() { const owner = new ReplacedFieldListener(); owner.onCreate(); owner.onDestroy(); }
+ static StaticEventIdentityCase() { const owner = new StaticEventIdentity(); owner.onCreate(); owner.onDestroy(); }
+ static CrossTimerClearCase() { const owner = new CrossTimerClear(); owner.onCreate(); owner.onDestroy(); }
+ static NullClearedListenerCase() { const owner = new NullClearedListener(); owner.onCreate(); owner.onDestroy(); }
+ static TopLevelEventIdentityCase() { const owner = new TopLevelEventIdentity(); owner.onCreate(); owner.onDestroy(); }
+ static GuardedTimerMethodSummaryCase() {
+     const owner = new GuardedTimerMethodSummary(); owner.onCreate(); owner.onDestroy();
+ }
+ static PreclearedRepeatedTimerCase() {
+     const owner = new PreclearedRepeatedTimer(); owner.start(); owner.start(); owner.stop();
+ }
+ static OverwrittenRepeatedTimerCase() {
+     const owner = new OverwrittenRepeatedTimer(); owner.start(); owner.start(); owner.stop();
+ }
+ static GuardedRepeatedTimerCase() {
+     const owner = new GuardedRepeatedTimer(); owner.start(); owner.start(); owner.stop();
+ }
+ static ResetGuardTimerCase() {
+     const owner = new ResetGuardTimer(); owner.start(); owner.start(); owner.stop();
  }
 }

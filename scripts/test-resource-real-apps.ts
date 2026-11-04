@@ -34,6 +34,7 @@ interface MetadataFile {
 interface Options {
     realAppsRoot: string;
     sdkRoot: string;
+    analysis: 'resource' | 'listener';
     projects: string[];
     outputPath?: string;
     timeoutMs: number;
@@ -52,6 +53,7 @@ interface ProjectResult {
     classes: number;
     methods: number;
     resourceLeakCount: number;
+    listenerLeakCount?: number;
     reachedStatements: number;
     reachedFacts: number;
     totalTimeMs: number;
@@ -69,12 +71,14 @@ interface ProjectResult {
     unknownOwnershipCount: number;
     matchedAllocatorCalls: number;
     reachedAllocatorCalls: number;
+    matchedReleaserCalls?: number;
+    reachedReleaserCalls?: number;
     input?: { metadataCommit?: string; sourceSha256: string; files: number };
 }
 
 interface RealAppsReport {
     schemaVersion: 2;
-    analysisKind: 'resource-leak';
+    analysisKind: 'resource-leak' | 'listener-leak';
     updatedAt: string;
     completed: boolean;
     settings: {
@@ -91,14 +95,19 @@ interface RealAppsReport {
         timedOutProjects: number;
         projectsWithCandidates: number;
         resourceLeakCount: number;
+        listenerLeakCount?: number;
         highConfidenceCount: number;
         unknownOwnershipCount: number;
+        unknownRegistrationCount?: number;
         matchedAllocatorCalls: number;
         reachedAllocatorCalls: number;
+        matchedReleaserCalls?: number;
+        reachedReleaserCalls?: number;
         averageTotalTimeMs: number;
         averageSceneBuildingTimeMs: number;
         averageLifecycleModelingTimeMs: number;
         averageResourceAnalysisTimeMs: number;
+        averageListenerAnalysisTimeMs?: number;
         averagePeakRssMB: number;
         maxPeakRssMB: number;
         solverStatistics?: {
@@ -178,6 +187,7 @@ function help(): void {
         '',
         'Options:',
         '  --project <name>            Analyze one metadata project; repeatable',
+        '  --analysis <kind>           resource (default) or listener',
         '  --limit <n>                 Analyze only the first n selected projects',
         '  --output <file>             Persist the JSON report; omitted means console only',
         '  --real-apps-root <path>     HarmonyRealApps directory containing meta.json',
@@ -210,6 +220,7 @@ function positiveInteger(value: string, option: string): number {
 function parseArgs(args: string[]): Options {
     let realAppsRoot = defaultRealAppsRoot;
     let sdkRoot: string | undefined;
+    let analysis: 'resource' | 'listener' = 'resource';
     const projects: string[] = [];
     let outputPath: string | undefined;
     let timeoutMs = 600_000;
@@ -233,6 +244,18 @@ function parseArgs(args: string[]): Options {
             projects.push(consume(arg));
         } else if (arg.startsWith('--project=')) {
             projects.push(arg.slice('--project='.length));
+        } else if (arg === '--analysis') {
+            const value = consume(arg);
+            if (value !== 'resource' && value !== 'listener') {
+                throw new Error(`--analysis must be resource or listener: ${value}`);
+            }
+            analysis = value;
+        } else if (arg.startsWith('--analysis=')) {
+            const value = arg.slice('--analysis='.length);
+            if (value !== 'resource' && value !== 'listener') {
+                throw new Error(`--analysis must be resource or listener: ${value}`);
+            }
+            analysis = value;
         } else if (arg === '--limit') {
             limit = positiveInteger(consume(arg), arg);
         } else if (arg.startsWith('--limit=')) {
@@ -270,6 +293,7 @@ function parseArgs(args: string[]): Options {
     return {
         realAppsRoot,
         sdkRoot: sdkRoot ?? path.resolve(realAppsRoot, '../sdk/default'),
+        analysis,
         projects,
         outputPath,
         timeoutMs,
@@ -337,8 +361,8 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         const result = await new ProjectAnalyzer({
             sdkRoot: options.sdkRoot,
             runNullness: false,
-            runResourceAnalysis: true,
-            runListenerAnalysis: false,
+            runResourceAnalysis: options.analysis === 'resource',
+            runListenerAnalysis: options.analysis === 'listener',
             analyzeNavigation: false,
             collectSolverStatistics: options.collectSolverStatistics,
         }).analyze(projectPath);
@@ -348,24 +372,36 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         record.resourceAnalysis = result.resourceAnalysis;
         record.listenerAnalysis = result.listenerAnalysis;
         record.listenerAnalysisTimeMs = result.duration.listenerAnalysis;
-        const diagnostics = result.resourceAnalysis.diagnostics;
+        const selectedAnalysis = options.analysis === 'listener'
+            ? result.listenerAnalysis
+            : result.resourceAnalysis;
+        if (!selectedAnalysis) {
+            throw new Error(`${options.analysis} analysis result is missing`);
+        }
+        const diagnostics = selectedAnalysis.diagnostics;
         record.resourceLeakCount = diagnostics.length;
+        if (options.analysis === 'listener') record.listenerLeakCount = diagnostics.length;
         record.highConfidenceCount = diagnostics.filter(item => item.confidence === 'high').length;
-        record.unknownOwnershipCount = diagnostics.filter(item => item.reason === 'unknown-ownership').length;
-        const coverage = result.resourceAnalysis.coverage ?? [];
+        record.unknownOwnershipCount = diagnostics.filter(item =>
+            item.reason === (options.analysis === 'listener' ? 'unknown-registration' : 'unknown-ownership')).length;
+        const coverage = selectedAnalysis.coverage ?? [];
         record.matchedAllocatorCalls = coverage.reduce((sum, item) => sum + item.allocatorCalls, 0);
         record.reachedAllocatorCalls = coverage.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0);
-        record.reachedStatements = result.resourceAnalysis.reachedStatements ?? 0;
-        record.reachedFacts = result.resourceAnalysis.reachedFacts ?? 0;
+        if (options.analysis === 'listener') {
+            record.matchedReleaserCalls = coverage.reduce((sum, item) => sum + item.releaserCalls, 0);
+            record.reachedReleaserCalls = coverage.reduce((sum, item) => sum + item.reachedReleaserCalls, 0);
+        }
+        record.reachedStatements = selectedAnalysis.reachedStatements ?? 0;
+        record.reachedFacts = selectedAnalysis.reachedFacts ?? 0;
         record.resourceAnalysisTimeMs = result.duration.resourceAnalysis;
         record.sceneBuildingTimeMs = result.duration.sceneBuilding;
         record.lifecycleModelingTimeMs = result.duration.lifecycleModeling;
-        record.solverStatistics = result.resourceAnalysis.solverStatistics;
+        record.solverStatistics = selectedAnalysis.solverStatistics;
         record.lifecycleStatistics = result.lifecycleStatistics;
         record.dummyMain = result.dummyMain;
-        if (result.status !== 'success' || !result.resourceAnalysis.success) {
-            record.error = result.resourceAnalysis.error ??
-                (result.errors.join('; ') || 'Resource analysis failed without an error message');
+        if (result.status !== 'success' || !selectedAnalysis.success) {
+            record.error = selectedAnalysis.error ??
+                (result.errors.join('; ') || `${options.analysis} analysis failed without an error message`);
         } else {
             record.status = 'success';
         }
@@ -414,20 +450,29 @@ function updateSummary(report: RealAppsReport): void {
         ? 0
         : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
     report.updatedAt = new Date().toISOString();
+    const analysis = report.analysisKind === 'listener-leak' ? 'listener' : 'resource';
+    const candidateCounts = successful.map(item =>
+        analysis === 'listener' ? (item.listenerLeakCount ?? 0) : item.resourceLeakCount);
     report.summary = {
         selectedProjects: report.summary.selectedProjects,
         completedProjects: report.projects.length,
         successfulProjects: successful.length,
         failedProjects: report.projects.filter(item => item.status === 'failed').length,
         timedOutProjects: report.projects.filter(item => item.status === 'timeout').length,
-        projectsWithCandidates: successful.filter(item =>
-            item.resourceLeakCount > 0
-        ).length,
-        resourceLeakCount: successful.reduce((sum, item) => sum + item.resourceLeakCount, 0),
+        projectsWithCandidates: candidateCounts.filter(count => count > 0).length,
+        resourceLeakCount: analysis === 'resource' ? candidateCounts.reduce((sum, count) => sum + count, 0) : 0,
+        ...(analysis === 'listener' ? {
+            listenerLeakCount: candidateCounts.reduce((sum, count) => sum + count, 0),
+            unknownRegistrationCount: successful.reduce((sum, item) => sum + item.unknownOwnershipCount, 0),
+        } : {}),
         highConfidenceCount: successful.reduce((sum, item) => sum + item.highConfidenceCount, 0),
         unknownOwnershipCount: successful.reduce((sum, item) => sum + item.unknownOwnershipCount, 0),
         matchedAllocatorCalls: successful.reduce((sum, item) => sum + item.matchedAllocatorCalls, 0),
         reachedAllocatorCalls: successful.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0),
+        ...(analysis === 'listener' ? {
+            matchedReleaserCalls: successful.reduce((sum, item) => sum + (item.matchedReleaserCalls ?? 0), 0),
+            reachedReleaserCalls: successful.reduce((sum, item) => sum + (item.reachedReleaserCalls ?? 0), 0),
+        } : {}),
         averageTotalTimeMs: average(successful.map(item => item.totalTimeMs)),
         averageSceneBuildingTimeMs: average(
             successful.map(item => item.sceneBuildingTimeMs)
@@ -436,8 +481,15 @@ function updateSummary(report: RealAppsReport): void {
             successful.map(item => item.lifecycleModelingTimeMs)
         ),
         averageResourceAnalysisTimeMs: average(
-            successful.map(item => item.resourceAnalysisTimeMs)
+            successful.map(item => analysis === 'listener'
+                ? (item.listenerAnalysisTimeMs ?? 0)
+                : item.resourceAnalysisTimeMs)
         ),
+        ...(analysis === 'listener' ? {
+            averageListenerAnalysisTimeMs: average(
+                successful.map(item => item.listenerAnalysisTimeMs ?? 0)
+            ),
+        } : {}),
         averagePeakRssMB: average(rss),
         maxPeakRssMB: rss.length === 0 ? 0 : Math.max(...rss),
         ...(report.settings.collectSolverStatistics ? {
@@ -502,7 +554,7 @@ async function main(): Promise<void> {
     if (selected.length === 0) throw new Error('No HarmonyRealApps projects selected');
     const report: RealAppsReport = {
         schemaVersion: 2,
-        analysisKind: 'resource-leak',
+        analysisKind: options.analysis === 'listener' ? 'listener-leak' : 'resource-leak',
         updatedAt: new Date().toISOString(),
         completed: false,
         settings: {
@@ -516,7 +568,7 @@ async function main(): Promise<void> {
         projects: [],
     };
     console.log(
-        `Resource real-project evaluation: projects=${selected.length}, ` +
+        `${options.analysis === 'listener' ? 'Listener' : 'Resource'} real-project evaluation: projects=${selected.length}, ` +
         `model=flat, sdk=${options.sdkRoot}, timeout=${options.timeoutMs}ms`
     );
 
@@ -532,6 +584,7 @@ async function main(): Promise<void> {
             '--worker-result', resultPath,
             '--real-apps-root', options.realAppsRoot,
             '--sdk-root', options.sdkRoot,
+            '--analysis', options.analysis,
         ];
         if (options.collectSolverStatistics) childArgs.push('--ifds-stats');
         const child = spawnSync(process.execPath, childArgs, {
@@ -565,10 +618,13 @@ async function main(): Promise<void> {
         updateSummary(report);
         if (options.outputPath) writeJsonAtomic(options.outputPath, report);
         console.log(
-            `  ${record.status.toUpperCase()} candidates=${record.resourceLeakCount} ` +
+            `  ${record.status.toUpperCase()} candidates=${options.analysis === 'listener'
+                ? (record.listenerLeakCount ?? 0) : record.resourceLeakCount} ` +
             `high=${record.highConfidenceCount} unknown=${record.unknownOwnershipCount} ` +
             `allocators=${record.reachedAllocatorCalls}/${record.matchedAllocatorCalls} time=${record.totalTimeMs}ms ` +
-            `lifecycle=${record.lifecycleModelingTimeMs}ms resource=${record.resourceAnalysisTimeMs}ms ` +
+            `lifecycle=${record.lifecycleModelingTimeMs}ms ` +
+            `${options.analysis === 'listener' ? 'listener' : 'resource'}=` +
+            `${options.analysis === 'listener' ? (record.listenerAnalysisTimeMs ?? 0) : record.resourceAnalysisTimeMs}ms ` +
             `ifds=${record.solverStatistics?.solveTimeMs ?? 'n/a'}ms`
         );
         if (record.error) console.log(`  error: ${record.error.split(/\r?\n/)[0]}`);
@@ -580,7 +636,7 @@ async function main(): Promise<void> {
         writeJsonAtomic(options.outputPath, report);
         console.log(`Report written to: ${options.outputPath}`);
     }
-    console.log('Resource real-project summary:');
+    console.log(`${options.analysis === 'listener' ? 'Listener' : 'Resource'} real-project summary:`);
     console.log(JSON.stringify(report.summary, null, 2));
     if (report.summary.failedProjects > 0 || report.summary.timedOutProjects > 0) {
         process.exitCode = 1;

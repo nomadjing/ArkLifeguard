@@ -4,6 +4,10 @@ import { ListenerRunner, resolveListenerRules, ResourceRunner } from '../../src/
 import { buildResourceScene, fixturePath } from '../helpers/buildScene';
 import { ResourceFact } from '../../src/analysis/resourceleak/ResourceFact';
 import { ResourceProblem } from '../../src/analysis/resourceleak/ResourceProblem';
+import { ListenerCleanupSummary } from '../../src/analysis/resourceleak/ListenerCleanupSummary';
+import { listenerContracts } from '../../src/analysis/resourceleak/ListenerProblem';
+import { ListenerIdentity } from '../../src/analysis/resourceleak/ListenerIdentity';
+import { ArkInterproceduralCFG } from '../../src/ifds/icfg/ArkInterproceduralCFG';
 
 describe('listener registration cleanup obligations without capture analysis', () => {
     let scene: Scene;
@@ -133,13 +137,123 @@ describe('listener registration cleanup obligations without capture analysis', (
     it('does not cancel another registration for the same event', () => {
         expect(run('OneRemaining').diagnostics).toHaveLength(1);
     });
-    it.each(['UnknownEvent', 'UnknownCallback', 'ReplacedRegistrar'])(
+    it('uses a stable callback identity for a multiply assigned listener field', () => {
+        expect(run('StableFieldListener').diagnostics).toEqual([]);
+    });
+    it('does not release through a listener field reassigned to another callback', () => {
+        const result = run('ReplacedFieldListener');
+        expect(result.diagnostics).toHaveLength(1);
+    });
+    it('matches an InnerEvent descriptor with its eventId cancellation', () => {
+        expect(run('StaticEventIdentity').diagnostics).toEqual([]);
+    });
+    it('accepts clearTimeout for an interval token', () => {
+        expect(run('CrossTimerClear').diagnostics).toEqual([]);
+    });
+    it('ignores null clears when resolving a stable callback field', () => {
+        expect(run('NullClearedListener').diagnostics).toEqual([]);
+    });
+    it('resolves top-level event constants across registration and cleanup', () => {
+        expect(run('TopLevelEventIdentity').diagnostics).toEqual([]);
+    });
+    it('summarizes a guarded timer cleanup helper for active tokens', () => {
+        expect(run('GuardedTimerMethodSummary').diagnostics).toEqual([]);
+    });
+    it('requires cleanup on every path that retains a live timer token', () => {
+        const icfg = new ArkInterproceduralCFG(scene);
+        icfg.initialize(entry('GuardedTimerMethodSummary'));
+        const rule = resolveListenerRules(scene).rules.find(item => item.id === 'IntervalRegistration')!;
+        const contract = listenerContracts([rule])[0];
+        const classFor = (name: string) => scene.getMethods()
+            .find(method => method.getDeclaringArkClass().getName() === name)!
+            .getDeclaringArkClass();
+        const methodFor = (className: string, methodName: string) => classFor(className).getMethods()
+            .find(method => method.getName() === methodName)!;
+        const summarize = (className: string) => {
+            const cls = classFor(className);
+            const endMethod = methodFor(className, 'onDestroy');
+            const allocation = methodFor(className, 'onCreate').getCfg()!.getStmts()
+                .find(stmt => stmt.getInvokeExpr()?.getMethodSignature().getMethodSubSignature()
+                    .getMethodName() === 'setInterval')!;
+            const summary = new ListenerCleanupSummary(scene, [contract], [{
+                classSignature: cls.getSignature().toString(),
+                endMethods: [endMethod.getSignature().toString()],
+            }], stmt => icfg.getNormalSuccessors(stmt));
+            return summary.clearsAtOwnerEnd(allocation, []);
+        };
+        expect(summarize('GuardedTimerMethodSummary')).toBe(true);
+        expect(summarize('ConditionalTimerMethodSummary')).toBe(false);
+    });
+    it('matches exact direct and helper event cleanup methods', () => {
+        const icfg = new ArkInterproceduralCFG(scene);
+        icfg.initialize(entry('EventRelease'));
+        const rule = resolveListenerRules(scene).rules.find(item => item.id === 'EmitterRegistration')!;
+        const contract = listenerContracts([rule])[0];
+        const identities = new ListenerIdentity(scene, stmt => icfg.getNormalSuccessors(stmt));
+        const check = (className: string) => {
+            const cls = scene.getMethods()
+                .find(method => method.getDeclaringArkClass().getName() === className)!
+                .getDeclaringArkClass();
+            const onCreate = cls.getMethods().find(method => method.getName() === 'onCreate')!;
+            const allocation = onCreate.getCfg()!.getStmts()
+                .find(stmt => stmt.getInvokeExpr()?.getMethodSignature().getMethodSubSignature()
+                    .getMethodName() === 'on')!;
+            const invoke = allocation.getInvokeExpr()!;
+            const summary = new ListenerCleanupSummary(scene, [contract], [{
+                classSignature: cls.getSignature().toString(),
+                endMethods: cls.getMethods().filter(method => method.getName() === 'onDestroy')
+                    .map(method => method.getSignature().toString()),
+            }], stmt => icfg.getNormalSuccessors(stmt));
+            return summary.clearsEventAtOwnerEnd(allocation, {
+                registrar: 'system',
+                event: identities.event(invoke.getArgs()[0], allocation),
+                callback: identities.resolve(invoke.getArgs()[1], allocation),
+            });
+        };
+        expect(check('EventRelease')).toBe(true);
+        expect(check('WrongEvent')).toBe(false);
+        expect(check('PartialOff')).toBe(false);
+        expect(check('HelperEventRelease')).toBe(true);
+        expect(check('ConditionalEventRelease')).toBe(false);
+    });
+    it('recognizes only forwarding wrappers that pass the callback unchanged', () => {
+        const icfg = new ArkInterproceduralCFG(scene);
+        icfg.initialize(entry('EventRelease'));
+        const rule = resolveListenerRules(scene).rules.find(item => item.id === 'EmitterRegistration')!;
+        const contract = listenerContracts([rule])[0];
+        const summary = new ListenerCleanupSummary(scene, [contract], [],
+            stmt => icfg.getNormalSuccessors(stmt));
+        const onMethod = (className: string) => scene.getMethods().find(method =>
+            method.getDeclaringArkClass().getName() === className && method.getName() === 'on')!;
+        const allocation = (className: string) => onMethod(className).getCfg()!.getStmts()
+            .find(stmt => stmt.getInvokeExpr()?.getMethodSignature().getMethodSubSignature()
+                .getMethodName() === 'on')!;
+        expect(summary.isPureForwardingRegistration(allocation('ForwardingEmitter'))).toBe(true);
+        expect(summary.isPureForwardingRegistration(allocation('WrappingEmitter'))).toBe(false);
+        expect(summary.isPureForwardingRegistration(allocation('RetainingEmitter'))).toBe(false);
+    });
+    it('suppresses an overwrite only when cleanup precedes every re-registration', () => {
+        expect(run('PreclearedRepeatedTimer').diagnostics).toEqual([]);
+        const overwritten = run('OverwrittenRepeatedTimer');
+        expect(overwritten.success, overwritten.error).toBe(true);
+        expect(overwritten.diagnostics).toMatchObject([{ reason: 'overwritten' }]);
+    });
+    it('uses a boolean reentry guard only when it remains set through registration', () => {
+        expect(run('GuardedRepeatedTimer').diagnostics).toEqual([]);
+        expect(run('ResetGuardTimer').diagnostics).toMatchObject([{ reason: 'overwritten' }]);
+    });
+    it.each(['UnknownEvent', 'UnknownCallback'])(
         'preserves uncertain identities as low-confidence candidates: %s', name => {
             const result = run(name);
             expect(result.success, result.error).toBe(true);
             expect(result.diagnostics).toHaveLength(1);
             expect(result.diagnostics[0]).toMatchObject({ reason: 'unknown-registration', confidence: 'low' });
         });
+    it('reports a definitely replaced registrar as a high-confidence unregistered listener', () => {
+        const result = run('ReplacedRegistrar');
+        expect(result.success, result.error).toBe(true);
+        expect(result.diagnostics).toMatchObject([{ reason: 'unregistered', confidence: 'high' }]);
+    });
     it('does not seed nested registrations from an unexecuted callback body', () => {
         const result = run('NestedCallbackRegistration');
         expect(result.success, result.error).toBe(true);

@@ -1,11 +1,21 @@
-import { ArkInstanceInvokeExpr, ArkInstanceFieldRef, ArkStaticFieldRef, type ArkMethod, type Scene, type Stmt } from '../../adapter/arkanalyzer';
+import {
+    ArkInstanceInvokeExpr, ArkInstanceFieldRef, ArkStaticFieldRef,
+    type ArkMethod, type Scene, type Stmt, type Value,
+} from '../../adapter/arkanalyzer';
 import type { FlowFunction } from '../../ifds/DataflowProblem';
 import { ResourceProblem } from './ResourceProblem';
-import { ResourceFact, hasResourceHandle } from './ResourceFact';
+import { ResourceFact, hasResourceHandle, resourceValueKey } from './ResourceFact';
 import { ListenerIdentity } from './ListenerIdentity';
 import { ListenerEffects } from './ListenerEffects';
 import type { ListenerRule } from './rules/ListenerRules';
 import type { ResourceRule } from './rules/ResourceRule';
+
+function listenerHandleKey(value: Value): string {
+    if (value instanceof ArkInstanceFieldRef && value.getBase().getName() === 'this') {
+        return `this-field:${value.getFieldSignature().toString()}`;
+    }
+    return resourceValueKey(value);
+}
 
 export function listenerContracts(rules: readonly ListenerRule[]): ResourceRule[] {
     return rules.map(rule => ({ id: rule.id, scope: 'listener',
@@ -114,7 +124,9 @@ export class ListenerProblem extends ResourceProblem {
                 if (!invoke || !rule.allocators.includes(signature!) || rule.selfExpiring) continue;
                 const callback = invoke.getArgs()[rule.callbackIndex];
                 const registrar = rule.registrar === 'system' ? 'system'
-                    : invoke instanceof ArkInstanceInvokeExpr ? this.identities.resolve(invoke.getBase(), stmt) : undefined;
+                    : invoke instanceof ArkInstanceInvokeExpr
+                        ? this.identities.receiver(invoke.getBase(), stmt, rule.id)
+                        : undefined;
                 const event = rule.kind === 'timer' ? 'timer' : this.identities.event(invoke.getArgs()[rule.eventIndex ?? 0], stmt);
                 const callbackId = this.identities.resolve(callback, stmt);
                 const knownCallback = callbackId && !callbackId.startsWith('constant:');
@@ -137,17 +149,28 @@ export class ListenerProblem extends ResourceProblem {
         if (!invoke || !rule.releasers.includes(invoke.getMethodSignature().toString())) return undefined;
         if (rule.kind === 'timer') {
             const token = invoke.getArgs()[0];
-            return token && hasResourceHandle(fact.handles, token) ? fact.derive({ state: 'released', eventSite: stmt }) : undefined;
+            const tokenKey = token ? listenerHandleKey(token) : undefined;
+            return tokenKey && fact.handles.some(handle => listenerHandleKey(handle) === tokenKey)
+                ? fact.derive({ state: 'released', eventSite: stmt })
+                : undefined;
         }
         const identity = fact.registration!;
         const registrar = rule.registrar === 'system' ? 'system'
-            : invoke instanceof ArkInstanceInvokeExpr ? this.identities.resolve(invoke.getBase(), stmt) : undefined;
+            : invoke instanceof ArkInstanceInvokeExpr
+                ? this.identities.receiver(invoke.getBase(), stmt, rule.id)
+                : undefined;
         const event = this.identities.event(invoke.getArgs()[rule.releaseEventIndex ?? 0], stmt);
         if (!registrar || !identity.registrar || !event || !identity.event) return undefined;
         if (registrar !== identity.registrar || event !== identity.event) return undefined;
         const callback = rule.releaseCallbackIndex === undefined ? undefined : invoke.getArgs()[rule.releaseCallbackIndex];
-        const matched = callback ? hasResourceHandle(fact.handles, callback) ||
-            (!!identity.callback && this.identities.resolve(callback, stmt) === identity.callback) : rule.allowRemoveAll;
-        return matched ? fact.derive({ state: 'released', eventSite: stmt }) : undefined;
+        const callbackIdentity = callback ? this.identities.resolve(callback, stmt) : undefined;
+        const matched = callback
+            ? !!identity.callback && callbackIdentity !== undefined && callbackIdentity === identity.callback
+            : rule.allowRemoveAll;
+        return matched ? fact.derive({
+            state: 'released',
+            eventSite: stmt,
+            registration: !callback && rule.allowRemoveAll ? { ...identity, removeAll: true } : identity,
+        }) : undefined;
     }
 }

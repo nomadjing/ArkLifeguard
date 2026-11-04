@@ -20,9 +20,11 @@ interface Definition extends Omit<ListenerRule, 'allocators' | 'releasers'> {
     readonly off: readonly string[];
 }
 const definitions: readonly Definition[] = [
-    { id: 'IntervalRegistration', file: 'global.d.ts', owner: '%dflt', on: ['setInterval'], off: ['clearInterval'],
+    { id: 'IntervalRegistration', file: 'global.d.ts', owner: '%dflt', on: ['setInterval'],
+        off: ['clearInterval', 'clearTimeout'],
         kind: 'timer', registrar: 'system', callbackIndex: 0 },
-    { id: 'TimeoutRegistration', file: 'global.d.ts', owner: '%dflt', on: ['setTimeout'], off: ['clearTimeout'],
+    { id: 'TimeoutRegistration', file: 'global.d.ts', owner: '%dflt', on: ['setTimeout'],
+        off: ['clearTimeout', 'clearInterval'],
         kind: 'timer', registrar: 'system', callbackIndex: 0, selfExpiring: true },
     { id: 'EmitterRegistration', file: '@ohos.events.emitter.d.ts', owner: '%dflt', on: ['on'], off: ['off'],
         kind: 'event', registrar: 'system', callbackIndex: 1, eventIndex: 0, releaseEventIndex: 0,

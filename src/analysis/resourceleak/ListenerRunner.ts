@@ -6,6 +6,8 @@ import { resolveListenerRules, type ListenerRule } from './rules/ListenerRules';
 import type { ResourceRule } from './rules/ResourceRule';
 import { UNSUPPORTED_LISTENER_API_FAMILIES } from './rules/ListenerCapabilities';
 import type { ReleaseOwner } from './OwnerBoundaryProblem';
+import type { DataflowSolver } from '../../ifds/DataflowSolver';
+import type { ResourceFact } from './ResourceFact';
 
 /** Listener/timer cleanup only; no captured-object retention analysis. */
 export class ListenerRunner extends ReleaseObligationRunner {
@@ -32,8 +34,11 @@ export class ListenerRunner extends ReleaseObligationRunner {
         }, owners, progressPath);
         this.sourceRules = selected;
     }
-    override runWithDummyMain(entry: ArkMethod): ResourceAnalysisResult {
-        const result = super.runWithDummyMain(entry);
+    override runWithDummyMain(
+        entry: ArkMethod,
+        onSolved?: (solver: DataflowSolver<ResourceFact>) => void,
+    ): ResourceAnalysisResult {
+        const result = super.runWithDummyMain(entry, onSolved);
         return {
             ...result,
             diagnostics: result.diagnostics.map(item => ({

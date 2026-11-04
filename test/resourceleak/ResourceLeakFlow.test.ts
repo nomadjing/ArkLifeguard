@@ -179,6 +179,13 @@ describe('new resource-leak IFDS flow', () => {
         },
     );
 
+    it('does not suppress a pre-loop obligation overwritten inside a releasing loop', () => {
+        const result = run('preexistingStoreThenRepeatWithRelease');
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toMatchObject([{ reason: 'overwritten' }]);
+        expect(result.diagnostics).toHaveLength(1);
+    });
+
     it('does not transfer a callee parameter reassignment to the caller local', () => {
         const result = run('parameterAssignmentIsLocal');
         expect(result.status).toBe('success');

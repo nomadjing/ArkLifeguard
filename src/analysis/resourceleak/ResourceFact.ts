@@ -21,6 +21,8 @@ export interface RegistrationIdentity {
     readonly registrar?: string;
     readonly event?: string;
     readonly callback?: string;
+    /** The releaser removed every callback for this registrar/event. */
+    readonly removeAll?: boolean;
 }
 
 /** Finite IFDS domain: identity excludes the evidence path and includes only one event site. */

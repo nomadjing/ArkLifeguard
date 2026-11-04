@@ -17,12 +17,20 @@ import type { InterproceduralCFG } from '../../ifds/icfg/InterproceduralCFG';
 import { ResourceFact, hasResourceHandle, resourceValueKey } from './ResourceFact';
 import { ResourceProblem } from './ResourceProblem';
 import { OwnerBoundaryProblem, type ReleaseOwner } from './OwnerBoundaryProblem';
+import { ListenerCleanupSummary } from './ListenerCleanupSummary';
 import type { ResourceAnalysisResult, ResourceDiagnostic, ResourceLeakReason, ResourceLocation } from './ResourceResult';
 import type { ResourceRule } from './rules/ResourceRule';
 
 interface ExitFact {
     readonly fact: ResourceFact;
     readonly exit: Stmt;
+}
+
+function listenerHandleIdentity(value: ResourceFact['handles'][number]): string {
+    if (value instanceof ArkInstanceFieldRef && value.getBase().getName() === 'this') {
+        return `this-field:${value.getFieldSignature().toString()}`;
+    }
+    return resourceValueKey(value);
 }
 
 /** Shared Source–Sink solver for explicit release obligations; no GC heap exploration. */
@@ -167,15 +175,43 @@ export class ReleaseObligationRunner {
         };
         const keyOf = (fact: ResourceFact) => `${fact.ruleId}|${siteId(fact.allocationSite!)}|${fact.acquisitionContext.map(siteId).join(',')}|${fact.owner ?? ''}`;
         const released = new Set<string>();
+        const releasedStatements = new Map<string, Set<Stmt>>();
         const releasedTimerHandles = new Map<string, Set<string>>();
-        for (const facts of byStatement.values()) for (const fact of facts) {
+        const releasedListenerCallbacks = new Map<string, Map<string, {
+            callbacks: Set<string>; removeAll: boolean;
+        }>>();
+        const releasedTimerTokens = new Map<string, Set<string>>();
+        const cleanupSummary = this.metadata.scope === 'listener'
+            ? new ListenerCleanupSummary(this.scene, this.rules, this.owners,
+                stmt => icfg.getNormalSuccessors(stmt))
+            : undefined;
+        for (const [statement, facts] of byStatement) for (const fact of facts) {
             if (fact.state !== 'released' || !fact.allocationSite) continue;
             const key = keyOf(fact);
             released.add(key);
+            const statements = releasedStatements.get(key) ?? new Set<Stmt>();
+            statements.add(statement);
+            releasedStatements.set(key, statements);
+            const registration = fact.registration;
+            if (!registration?.registrar || !registration.event) continue;
+            const identityKey = `${fact.ruleId}|${siteId(fact.allocationSite)}|${fact.owner ?? ''}`;
+            const registrationKey = `${registration.registrar}|${registration.event}`;
+            const listenerIdentityKey = `${fact.ruleId}|${siteId(fact.allocationSite)}`;
+            const callbackEntries: Map<string, {
+                callbacks: Set<string>; removeAll: boolean;
+            }> = releasedListenerCallbacks.get(listenerIdentityKey) ?? new Map();
+            const callbackIdentity = callbackEntries.get(registrationKey) ?? { callbacks: new Set<string>(), removeAll: false };
+            if (registration.callback) callbackIdentity.callbacks.add(registration.callback);
+            callbackIdentity.removeAll ||= registration.removeAll === true;
+            callbackEntries.set(registrationKey, callbackIdentity);
+            releasedListenerCallbacks.set(listenerIdentityKey, callbackEntries);
             if (fact.registration?.event === 'timer') {
                 const handles = releasedTimerHandles.get(key) ?? new Set<string>();
                 for (const handle of fact.handles) handles.add(resourceValueKey(handle));
                 releasedTimerHandles.set(key, handles);
+                const tokens = releasedTimerTokens.get(identityKey) ?? new Set<string>();
+                for (const handle of fact.handles) tokens.add(listenerHandleIdentity(handle));
+                releasedTimerTokens.set(identityKey, tokens);
             }
         }
         for (const [exit, facts] of byStatement) {
@@ -184,15 +220,49 @@ export class ReleaseObligationRunner {
             if (!method) continue;
             for (const fact of facts) {
                 if (fact.isZero() || !fact.allocationSite || fact.frames.length > 0) continue;
+                const allocationSite = fact.allocationSite;
                 if (!fact.boundary && fact.registration && (method !== entryMethod || !atExit)) continue;
                 if (!fact.boundary && fact.owner && method !== entryMethod) continue;
                 const lost = fact.hasLostHandles();
                 if (!lost && !atExit && !fact.boundary) continue;
                 // Preserve the existing contract until branch/exception classification is implemented.
                 const matchingRelease = fact.registration?.event === 'timer'
-                    ? fact.handles.some(handle => releasedTimerHandles.get(keyOf(fact))?.has(resourceValueKey(handle)))
-                    : released.has(keyOf(fact));
-                if (!fact.boundary && !lost && matchingRelease) continue;
+                    ? (() => {
+                        const releasedTokens = releasedTimerTokens.get(
+                            `${fact.ruleId}|${siteId(allocationSite)}|${fact.owner ?? ''}`
+                        );
+                        return (fact.handles.length === 0 && (releasedTokens?.size ?? 0) > 0) ||
+                            fact.handles.some(handle =>
+                                releasedTimerHandles.get(keyOf(fact))?.has(resourceValueKey(handle)) ||
+                                releasedTokens?.has(listenerHandleIdentity(handle)));
+                    })()
+                    : released.has(keyOf(fact)) || (() => {
+                        const registration = fact.registration;
+                        if (!registration?.registrar || !registration.event) return false;
+                        const releases = releasedListenerCallbacks.get(
+                            `${fact.ruleId}|${siteId(allocationSite)}`
+                        )?.get(`${registration.registrar}|${registration.event}`);
+                        return releases?.removeAll === true ||
+                            (!!registration.callback && releases?.callbacks.has(registration.callback) === true);
+                    })();
+                const ownerCleanup = !lost && fact.registration?.event === 'timer' &&
+                    cleanupSummary?.clearsAtOwnerEnd(allocationSite, fact.handles) === true;
+                const ownerEventCleanup = !lost && fact.registration &&
+                    fact.registration.event !== 'timer' &&
+                    cleanupSummary?.clearsEventAtOwnerEnd(allocationSite, fact.registration) === true;
+                const pureForwardingWrapper = !lost && fact.registration &&
+                    fact.registration.event !== 'timer' &&
+                    cleanupSummary?.isPureForwardingRegistration(allocationSite) === true;
+                const cleanupBeforeRegistration = lost && fact.registration?.event === 'timer' &&
+                    cleanupSummary?.clearsBeforeAllocation(allocationSite, fact.handles) === true;
+                const guardedReentry = lost && fact.registration?.event === 'timer' &&
+                    cleanupSummary?.isGuardedReentry(allocationSite) === true;
+                // A boundary fact is the same outstanding obligation observed at an owner
+                // exit; a matching release already proves the cleanup edge.
+                if (!lost && (matchingRelease || ownerCleanup || ownerEventCleanup ||
+                    pureForwardingWrapper)) continue;
+                if (cleanupBeforeRegistration || guardedReentry) continue;
+                if (lost && this.releasedBeforeReentry(fact, icfg, releasedStatements.get(keyOf(fact)))) continue;
                 if (!fact.boundary && !fact.registration && !lost && this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
                 // Multiple lifecycle exits are evidence for one allocation, not independent leaks.
                 const key = `${fact.ruleId}|${siteId(fact.allocationSite)}|${fact.owner ?? ''}|${fact.boundary ? siteId(fact.boundary) : 0}`;
@@ -240,9 +310,16 @@ export class ReleaseObligationRunner {
                 evidence,
             });
         }
-        return diagnostics.sort((left, right) =>
-            `${left.ruleId}:${left.allocation.filePath}:${left.allocation.line}`.localeCompare(
-                `${right.ruleId}:${right.allocation.filePath}:${right.allocation.line}`
+        const seen = new Set<string>();
+        return diagnostics.filter(item => {
+            const key = JSON.stringify([item.ruleId, item.allocation, item.boundary, item.reason,
+                item.confidence, item.evidence]);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).sort((left, right) =>
+            `${left.ruleId}:${left.allocation.filePath}:${left.allocation.line}:${left.allocation.col}`.localeCompare(
+                `${right.ruleId}:${right.allocation.filePath}:${right.allocation.line}:${right.allocation.col}`
             )
         );
     }
@@ -258,6 +335,39 @@ export class ReleaseObligationRunner {
         // A receiver field stays owned by the containing object. The caller's
         // continuation will decide whether it is eventually released.
         return nonRoot && fact.handles.some(handle => handle instanceof ArkInstanceFieldRef && handle.getBase().toString() === 'this');
+    }
+
+    private releasedBeforeReentry(
+        fact: ResourceFact,
+        icfg: InterproceduralCFG,
+        releasedStatements: ReadonlySet<Stmt> | undefined,
+    ): boolean {
+        const call = fact.acquisitionContext.at(-1);
+        if (!call || !releasedStatements?.size) return false;
+        const caller = call.getCfg()?.getDeclaringMethod();
+        if (!caller) return false;
+        const pending: { stmt: Stmt; released: boolean }[] = [];
+        for (const successor of icfg.getNormalSuccessors(call)) pending.push({ stmt: successor, released: false });
+        const visited = new Map<Stmt, Set<boolean>>();
+        let reentered = false;
+        while (pending.length > 0) {
+            const { stmt, released } = pending.pop()!;
+            if (stmt === call) {
+                if (!released) return false;
+                reentered = true;
+                continue;
+            }
+            if (stmt.getCfg()?.getDeclaringMethod() !== caller) continue;
+            const states = visited.get(stmt) ?? new Set<boolean>();
+            if (states.has(released)) continue;
+            states.add(released);
+            visited.set(stmt, states);
+            const nextReleased = released || releasedStatements.has(stmt);
+            for (const successor of icfg.getNormalSuccessors(stmt)) {
+                pending.push({ stmt: successor, released: nextReleased });
+            }
+        }
+        return reentered;
     }
 
     private location(stmt: Stmt): ResourceLocation {

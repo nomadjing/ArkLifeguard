@@ -223,6 +223,15 @@ export class FlowCases {
         }
     }
 
+    static preexistingStoreThenRepeatWithRelease(): void {
+        const owner = new FlowCases();
+        owner.store();
+        for (let round = 0; round < 2; round++) {
+            owner.store();
+            owner.releaseField();
+        }
+    }
+
     static repeatReplaceAfterRelease(): void {
         const owner = new FlowCases();
         for (let round = 0; round < 2; round++) {
