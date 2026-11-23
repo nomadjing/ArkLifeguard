@@ -1,5 +1,5 @@
 import { ModelUtils, type MethodSignature, type Scene } from '../../../adapter/arkanalyzer';
-import type { ResourceApi, ResourceHandleLocation, ResourceRule } from './ResourceRule';
+import type { ResourceApi, ResourceHandleLocation, ResourceReleasePredicate, ResourceRule } from './ResourceRule';
 
 export interface Selector {
     readonly module: string;
@@ -11,6 +11,10 @@ export interface Definition {
     readonly id: string;
     readonly allocators: readonly Selector[];
     readonly releasers: readonly Selector[];
+    readonly releasedWhen?: readonly (
+        | Extract<ResourceReleasePredicate, { property: string }>
+        | { readonly method: Omit<Selector, 'handle'>; readonly equals: boolean | string }
+    )[];
     readonly handleProperties?: readonly string[];
     readonly handleValidity?: ResourceRule['handleValidity'];
 }
@@ -41,7 +45,7 @@ export const HARMONY_RESOURCE_DEFINITIONS: readonly Definition[] = [
     { id: 'ImagePackerNotReleased',
         allocators: [api('@ohos.multimedia.image', '%dflt', ['createImagePacker'], returns)],
         releasers: [api('@ohos.multimedia.image', 'ImagePacker', ['release'])] },
-    { id: 'AVPlayerNotReleased',
+    { id: 'AVPlayerNotReleased', releasedWhen: [{ property: 'state', equals: 'released' }],
         allocators: [api('@ohos.multimedia.media', '%dflt', ['createAVPlayer'], returns)],
         releasers: [api('@ohos.multimedia.media', 'AVPlayer', ['release'])] },
     { id: 'AudioRendererNotReleased',
@@ -50,7 +54,7 @@ export const HARMONY_RESOURCE_DEFINITIONS: readonly Definition[] = [
     { id: 'AudioCapturerNotReleased',
         allocators: [api('@ohos.multimedia.audio', '%dflt', ['createAudioCapturer'], returns)],
         releasers: [api('@ohos.multimedia.audio', 'AudioCapturer', ['release'])] },
-    { id: 'ResultSetNotClosed',
+    { id: 'ResultSetNotClosed', releasedWhen: [{ property: 'isClosed', equals: true }],
         allocators: [api('@ohos.data.relationalStore', 'RdbStore', ['query', 'querySync', 'querySql', 'querySqlSync'], returns)],
         releasers: [api('@ohos.data.relationalStore', 'ResultSet', ['close'])] },
 ];
@@ -63,7 +67,9 @@ export interface HarmonyResourceRuleResolution {
 /** Bind selectors to exact SDK signatures, including overloads and inferred callsite signatures.
  * A project's own same-named methods can never qualify as platform APIs.
  */
-export function resolveHarmonyResourceRules(scene: Scene): HarmonyResourceRuleResolution {
+export function resolveHarmonyResourceRules(
+    scene: Scene, definitions: readonly Definition[] = HARMONY_RESOURCE_DEFINITIONS,
+): HarmonyResourceRuleResolution {
     const sdkFiles = new Set(scene.getSdkArkFiles().map(file => file.getFileSignature().toString()));
     const signatures = new Map<string, MethodSignature>();
     for (const file of scene.getSdkArkFiles()) {
@@ -103,14 +109,17 @@ export function resolveHarmonyResourceRules(scene: Scene): HarmonyResourceRuleRe
     };
     const rules: ResourceRule[] = [];
     const unresolvedRuleIds: string[] = [];
-    for (const definition of HARMONY_RESOURCE_DEFINITIONS) {
+    for (const definition of definitions) {
         const allocators = resolve(definition.allocators, true);
         const releasers = resolve(definition.releasers, false);
         if (!allocators.length || !releasers.length) {
             unresolvedRuleIds.push(definition.id);
         } else {
+            const releasedWhen = definition.releasedWhen?.flatMap<ResourceReleasePredicate>(predicate =>
+                'property' in predicate ? [predicate] : resolve([{ ...predicate.method, handle: base }], false)
+                    .map(({ methodSignature }) => ({ methodSignature, equals: predicate.equals })));
             rules.push({ id: definition.id, scope: 'resource', allocators, releasers,
-                handleProperties: definition.handleProperties,
+                handleProperties: definition.handleProperties, releasedWhen,
                 handleValidity: definition.handleValidity ?? 'non-null' });
         }
     }

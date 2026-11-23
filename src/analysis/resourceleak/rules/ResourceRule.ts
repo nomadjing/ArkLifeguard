@@ -11,6 +11,11 @@ export interface ResourceApi {
     readonly acquisition?: 'promise' | 'callback';
 }
 
+/** A read-only observation on the resource receiver. */
+export type ResourceReleasePredicate =
+    ({ readonly property: string } | { readonly methodSignature: string }) &
+    { readonly equals: boolean | string };
+
 /** Exact SDK API identities and the ownership contract for one resource family. */
 export interface ResourceRule {
     readonly id: string;
@@ -21,6 +26,8 @@ export interface ResourceRule {
     readonly releasers: readonly ResourceApi[];
     /** Only rules that explicitly permit nullification may use it as release. */
     readonly releaseByNullify?: boolean;
+    /** Observations that establish the terminal state. */
+    readonly releasedWhen?: ResourceReleasePredicate | readonly ResourceReleasePredicate[];
     /** Explicit handle projections, e.g. fs.File.fd. Never applies to arbitrary fields. */
     readonly handleProperties?: readonly string[];
     /** Successful acquisition yields a non-null handle; numeric file handles are also >= 0. */

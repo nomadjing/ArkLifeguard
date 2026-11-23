@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Scene } from '../../src/adapter/arkanalyzer';
 import { ResourceRunner, resolveHarmonyResourceRules } from '../../src/analysis/resourceleak';
+import { HARMONY_RESOURCE_DEFINITIONS } from '../../src/analysis/resourceleak/rules/HarmonyResourceRules';
+import type { ResourceRule } from '../../src/analysis/resourceleak/rules/ResourceRule';
 import { buildResourceScene, fixturePath } from '../helpers/buildScene';
 
 describe('HarmonyOS SDK resource rules', () => {
@@ -8,11 +10,11 @@ describe('HarmonyOS SDK resource rules', () => {
     beforeAll(() => {
         scene = buildResourceScene('platform', fixturePath('resource', 'platform-sdk'));
     });
-    const run = (name: string) => {
+    const run = (name: string, rules?: readonly ResourceRule[]) => {
         const method = scene.getMethods().find(method =>
             method.getDeclaringArkClass().getName() === 'PlatformCases' && method.getName() === name);
         if (!method) throw new Error(`Missing fixture ${name}`);
-        return new ResourceRunner(scene, undefined, true).runWithDummyMain(method);
+        return new ResourceRunner(scene, rules, true).runWithDummyMain(method);
     };
 
     it('resolves all ten resource families against SDK declarations', () => {
@@ -69,12 +71,63 @@ describe('HarmonyOS SDK resource rules', () => {
         expect(result.diagnostics[0].confidence).toBe('high');
     });
 
-    it.each(['fileReleaseFailureSkipsOther', 'fileWorkFailsBeforeClose', 'fileCalleeAllocationFailsBeforeClose',
-        'fileFactoryWorkCaller', 'fileDescriptorZeroLeak', 'fileDescriptorTruthyLeak', 'fileConditionalRelease', 'fileioZeroLeak'])
-    ('accepts reachable release without requiring cleanup on every path: %s', name => {
+    it.each(['fileDescriptorZeroLeak', 'fileDescriptorTruthyLeak', 'fileConditionalRelease', 'fileioZeroLeak'])
+    ('reports conditional cleanup as a low-confidence candidate: %s', name => {
+        const result = run(name);
+        expect(result.status).toBe('success');
+        expect(result.diagnostics).toMatchObject([{ reason: 'partially-released', confidence: 'low' }]);
+    });
+
+    it.each(['fileCalleeAllocationFailsBeforeClose', 'fileFactoryWorkCaller', 'fileWorkFailsBeforeClose', 'fileEarlyReturn'])
+    ('reports a local exit that bypasses cleanup: %s', name => {
+        expect(run(name).diagnostics).toMatchObject([{ ruleId: 'FileNotClosed', reason: 'unreleased' }]);
+    });
+
+    it('keeps each outstanding file when a later open or a sibling close fails', () => {
+        const diagnostics = run('fileReleaseFailureSkipsOther').diagnostics;
+        expect(diagnostics).toHaveLength(2);
+        expect(new Set(diagnostics.map(item => item.allocation.line)).size).toBe(2);
+    });
+
+    it.each(['fileWorkCleanedInFinally', 'fileReturnAwaitCleanedInFinally', 'fileLoopEntryCleanedInFinally'])
+    ('honors finally cleanup when an SDK call can fail: %s', name => {
         const result = run(name);
         expect(result.status).toBe('success');
         expect(result.diagnostics).toEqual([]);
+    });
+
+    it('recognizes terminal state only on the resource being checked', () => {
+        expect(run('playerReleasedGuard').diagnostics).toEqual([]);
+        expect(run('resultClosedGuard').diagnostics).toEqual([]);
+        expect(run('resultOtherGuard').diagnostics).toMatchObject([{ ruleId: 'ResultSetNotClosed' }]);
+    });
+
+    it('adds an SDK method predicate through the rule definition alone', () => {
+        const definitions = HARMONY_RESOURCE_DEFINITIONS.map(definition => definition.id !== 'ResultSetNotClosed'
+            ? definition
+            : {
+                ...definition,
+                releasedWhen: [...(definition.releasedWhen ?? []), {
+                    method: { module: '@ohos.data.relationalStore', owner: 'ResultSet', methods: ['isOpen'] },
+                    equals: false,
+                }],
+            });
+        const { rules } = resolveHarmonyResourceRules(scene, definitions);
+        expect(run('resultMethodGuard').diagnostics).toMatchObject([{ ruleId: 'ResultSetNotClosed' }]);
+        expect(run('resultMethodGuard', rules).diagnostics).toEqual([]);
+        expect(run('resultClosedGuard', rules).diagnostics).toEqual([]);
+        expect(run('resultOtherMethodGuard', rules).diagnostics).toMatchObject([{ ruleId: 'ResultSetNotClosed' }]);
+    });
+
+    it('passes a fulfilled await argument to its consumer', () => {
+        expect(run('resultAwaitArgRelease').diagnostics).toEqual([]);
+        expect(run('resultAwaitArgLeak').diagnostics).toMatchObject([{ ruleId: 'ResultSetNotClosed' }]);
+    });
+
+    it('passes a resource returned by an async factory to its fulfillment callback', () => {
+        expect(run('resultFactoryThenClose').diagnostics).toEqual([]);
+        expect(run('resultFactoryThenLeak').diagnostics).toMatchObject([{ ruleId: 'ResultSetNotClosed' }]);
+        expect(run('resultFactoryCatchGuard').diagnostics).toEqual([]);
     });
 
     it('maps Promise fulfillment and captured handles without releasing other resources', () => {
@@ -103,12 +156,14 @@ describe('HarmonyOS SDK resource rules', () => {
         expect(result.diagnostics).toHaveLength(1);
     });
 
-    it('accepts reachable cleanup even without a handle-validity contract', () => {
+    it('reports uncertain conditional cleanup without a handle-validity contract', () => {
         const method = scene.getMethods().find(method =>
             method.getDeclaringArkClass().getName() === 'PlatformCases' &&
             method.getName() === 'fileGuardedDescriptor');
         const rules = resolveHarmonyResourceRules(scene).rules.map(rule => ({ ...rule, handleValidity: undefined }));
-        expect(new ResourceRunner(scene, rules).runWithDummyMain(method!).diagnostics).toEqual([]);
+        expect(new ResourceRunner(scene, rules).runWithDummyMain(method!).diagnostics).toMatchObject([
+            { reason: 'partially-released', confidence: 'low' },
+        ]);
     });
 
     it('propagates fulfilled handles without calling the Promise itself a resource', () => {

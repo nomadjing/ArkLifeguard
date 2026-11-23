@@ -49,6 +49,73 @@ export class PlatformCases {
     static async rendererRelease(): Promise<void> { const h = await audio.createAudioRenderer(); h.release(); }
     static async capturerLeak(): Promise<void> { const h = await audio.createAudioCapturer();  }
     static async capturerRelease(): Promise<void> { const h = await audio.createAudioCapturer(); h.release(); }
+    static async playerReleasedGuard(): Promise<number> {
+        const player = await media.createAVPlayer();
+        if (player.state === 'released') return 0;
+        await player.release();
+        return 1;
+    }
+    static resultClosedGuard(store: relationalStore.RdbStore): number {
+        const rs = store.querySync();
+        if (rs.isClosed) return 0;
+        rs.close();
+        return 1;
+    }
+    static resultOtherGuard(store: relationalStore.RdbStore, other: relationalStore.ResultSet): number {
+        const rs = store.querySync();
+        if (other.isClosed) return 0;
+        rs.close();
+        return 1;
+    }
+    static resultMethodGuard(store: relationalStore.RdbStore): number {
+        const rs = store.querySync();
+        if (!rs.isOpen()) return 0;
+        rs.close();
+        return 1;
+    }
+    static resultOtherMethodGuard(store: relationalStore.RdbStore, other: relationalStore.ResultSet): number {
+        const rs = store.querySync();
+        if (!other.isOpen()) return 0;
+        rs.close();
+        return 1;
+    }
+    static async resultAwaitArgRelease(store: relationalStore.RdbStore): Promise<void> {
+        try { PlatformCases.consumeResult(await store.query()); } catch (error) {}
+    }
+    static async resultAwaitArgLeak(store: relationalStore.RdbStore): Promise<void> {
+        try { PlatformCases.consumeResultWithoutClose(await store.query()); } catch (error) {}
+    }
+    static consumeResult(result: relationalStore.ResultSet): void {
+        try { PlatformCases.consumeResultWithoutClose(result); } finally { result.close(); }
+    }
+    static consumeResultWithoutClose(_result: relationalStore.ResultSet): void {}
+    static async resultFactory(store: relationalStore.RdbStore): Promise<relationalStore.ResultSet> {
+        const result = await store.query();
+        return result;
+    }
+    static resultFactoryThenClose(store: relationalStore.RdbStore): void {
+        PlatformCases.resultFactory(store).then(result => result.close());
+    }
+    static resultFactoryThenLeak(store: relationalStore.RdbStore): void {
+        PlatformCases.resultFactory(store).then(result => PlatformCases.consumeResultWithoutClose(result));
+    }
+    static async resultFactoryWithIndependentCatch(
+        store: relationalStore.RdbStore, work: Promise<void>
+    ): Promise<relationalStore.ResultSet> {
+        try {
+            return await store.query();
+        } finally {
+            await work.catch(() => {});
+        }
+    }
+    static async resultFactoryCatchGuard(
+        store: relationalStore.RdbStore, work: Promise<void>
+    ): Promise<void> {
+        const result = await PlatformCases.resultFactoryWithIndependentCatch(store, work);
+        if (result !== undefined) {
+            result.close();
+        }
+    }
     static resultLeak(store: relationalStore.RdbStore): void { const h = store.querySync();  }
     static resultRelease(store: relationalStore.RdbStore): void { const h = store.querySync(); h.close(); }
     static fileDescriptorAlias(): void { const file = fs.openSync('x'); const fd = file.fd; fs.closeSync(fd); }
@@ -98,6 +165,33 @@ export class PlatformCases {
         const second = fs.openSync('y');
         try { fs.closeSync(first); fs.closeSync(second); } catch (error) {}
     }
+    static fileWorkCleanedInFinally(): void {
+        const file = fs.openSync('x');
+        try { fs.writeSync(file.fd, 'data'); } finally { fs.closeSync(file); }
+    }
+    static async fileReturnAwaitCleanedInFinally(): Promise<number> {
+        const file = fs.openSync('x');
+        try {
+            return await fs.write(file.fd, 'data');
+        } finally {
+            fs.closeSync(file);
+        }
+    }
+
+    static fileLoopEntryCleanedInFinally(): void {
+        const file = fs.openSync('x');
+        let i = 0;
+        try {
+            const count = fs.writeSync(file.fd, 'data');
+            while (i < count) {
+                i++;
+                if (i === 2) break;
+            }
+        } finally {
+            fs.closeSync(file);
+        }
+    }
+
     static fileWorkFailsBeforeClose(): void {
         const file = fs.openSync('x');
         try { fs.writeSync(file.fd, 'data'); fs.closeSync(file); } catch (error) {}
@@ -162,6 +256,12 @@ export class PlatformCases {
         const first = fs.openSync('x');
         const second = fs.openSync('y');
         if (second) fs.closeSync(second.fd);
+    }
+    static fileEarlyReturn(flag: boolean): number {
+        const file = fs.openSync('x');
+        if (flag) return 0;
+        fs.closeSync(file);
+        return 1;
     }
     static fileConditionalRelease(flag: boolean): void {
         const file = fs.openSync('x');

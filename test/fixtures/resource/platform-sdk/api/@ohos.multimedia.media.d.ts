@@ -1,1 +1,1 @@
-declare namespace media { interface AVPlayer { release(): Promise<void>; } function createAVPlayer(): Promise<AVPlayer>; function createAVPlayer(callback: (err: Error, player: AVPlayer) => void): void; } export default media;
+declare namespace media { interface AVPlayer { readonly state: string; release(): Promise<void>; } function createAVPlayer(): Promise<AVPlayer>; function createAVPlayer(callback: (err: Error, player: AVPlayer) => void): void; } export default media;

@@ -14,6 +14,9 @@ import {
     ArkThisRef,
     ArkUnopExpr,
     Local,
+    ModifierType,
+    BooleanConstant,
+    StringConstant,
     ClassType,
     ClosureFieldRef,
     FunctionType,
@@ -34,12 +37,13 @@ import {
     resourceValueKey,
     uniqueResourceHandles,
 } from './ResourceFact';
-import type { ResourceApi, ResourceHandleLocation, ResourceRule } from './rules/ResourceRule';
+import type { ResourceApi, ResourceHandleLocation, ResourceReleasePredicate, ResourceRule } from './rules/ResourceRule';
 
 /** Rule-driven IFDS transfer functions. No global mutable allocation/release map is used. */
 export class ResourceProblem extends DataflowProblem<ResourceFact> {
     private readonly zero = ResourceFact.zeroFact();
     private readonly rulesById = new Map<string, ResourceRule>();
+    private readonly releasePredicates = new Map<string, readonly ResourceReleasePredicate[]>();
     private readonly allocators = new Map<string, { rule: ResourceRule; api: ResourceApi }[]>();
     private readonly releasers = new Map<string, { rule: ResourceRule; api: ResourceApi }[]>();
     private readonly objectIds = new WeakMap<object, number>();
@@ -71,6 +75,8 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
             }
             ids.add(rule.id);
             this.rulesById.set(rule.id, rule);
+            const predicates = rule.releasedWhen;
+            if (predicates) this.releasePredicates.set(rule.id, 'equals' in predicates ? [predicates] : predicates);
             for (const [apis, index] of [[rule.allocators, this.allocators],
                 [rule.releasers, this.releasers]] as const) {
                 for (const api of apis) {
@@ -97,6 +103,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
 
     private validHandleCondition(stmt: ArkIfStmt, fact: ResourceFact): boolean | undefined {
         const rule = this.rulesById.get(fact.ruleId)!;
+        const predicates = this.releasePredicates.get(fact.ruleId);
+        if (predicates) {
+            const observed = this.releasedStateCondition(stmt, fact, predicates);
+            if (observed !== undefined) return observed;
+        }
         if (!rule.handleValidity) return undefined;
         const condition = stmt.getConditionExpr();
         let value = condition.getOp1();
@@ -140,6 +151,60 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return undefined;
     }
 
+    private releasedStateCondition(stmt: ArkIfStmt, fact: ResourceFact,
+        predicates: readonly ResourceReleasePredicate[]): boolean | undefined {
+        const condition = stmt.getConditionExpr();
+        const operator = condition.getOperator();
+        const equal = operator === RelationalBinaryOperator.Equality || operator === RelationalBinaryOperator.StrictEquality;
+        const unequal = operator === RelationalBinaryOperator.InEquality || operator === RelationalBinaryOperator.StrictInequality;
+        if (!equal && !unequal) return undefined;
+        let value = condition.getOp1();
+        let literal = condition.getOp2();
+        if (value instanceof BooleanConstant || value instanceof NumberConstant || value instanceof StringConstant) {
+            [value, literal] = [literal, value];
+        }
+        const blocks = stmt.getCfg()?.getStmtToBlock();
+        let use: Stmt = stmt;
+        let negated = false;
+        while (value instanceof Local) {
+            const definition = value.getDeclaringStmt();
+            if (!(definition instanceof ArkAssignStmt) || !blocks?.get(use) ||
+                blocks.get(definition) !== blocks.get(use) ||
+                !this.normalSuccessors(definition).includes(use)) break;
+            value = definition.getRightOp();
+            if (!(value instanceof ArkUnopExpr) || value.getOperator() !== UnaryOperator.LogicalNot) break;
+            negated = !negated;
+            value = value.getOp();
+            use = definition;
+        }
+        if (!(value instanceof ArkInstanceFieldRef || value instanceof ArkInstanceInvokeExpr) ||
+            !hasResourceHandle(fact.handles, value.getBase())) return undefined;
+        for (const predicate of predicates) {
+            const matches = 'property' in predicate
+                ? value instanceof ArkInstanceFieldRef && value.getFieldSignature().getFieldName() === predicate.property
+                : value instanceof ArkInstanceInvokeExpr && value.getArgs().length === 0 &&
+                    value.getMethodSignature().toString() === predicate.methodSignature;
+            if (!matches) continue;
+            // Only the terminal value is impossible while the obligation is outstanding.
+            if (typeof predicate.equals === 'string') {
+                if (!negated && literal instanceof StringConstant && literal.getValue() === predicate.equals) return unequal;
+                continue;
+            }
+            if (!(literal instanceof BooleanConstant || literal instanceof NumberConstant)) continue;
+            return this.booleanReleaseCondition(literal, operator, predicate.equals !== negated, equal, unequal);
+        }
+        return undefined;
+    }
+
+    private booleanReleaseCondition(literal: BooleanConstant | NumberConstant, operator: RelationalBinaryOperator,
+        terminal: boolean, equal: boolean, unequal: boolean): boolean | undefined {
+        if (literal instanceof NumberConstant &&
+            (operator === RelationalBinaryOperator.StrictEquality || operator === RelationalBinaryOperator.StrictInequality)) return unequal;
+        if (literal.getValue() === 'true' || literal.getValue() === '1') return terminal ? unequal : equal;
+        if (literal.getValue() === 'false' || literal.getValue() === '0') return terminal ? equal : unequal;
+        return undefined;
+    }
+
     getCallFlowFunction(srcStmt: Stmt, method: ArkMethod): FlowFunction<ResourceFact> {
         return {
             getDataFacts: fact => {
@@ -155,9 +220,12 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                     ? this.mapCallerHandlesToCallee(srcStmt, method, fact.handles)
                     : this.mapCallbackHandles(srcStmt, method, fact);
                 if (mapped.length === 0 && !fact.registration) return new Set();
+                const fulfilled = direct
+                    ? this.awaitedArgument(srcStmt, fact)
+                    : this.promiseResultParameter(srcStmt, method, fact) !== null;
                 return new Set([fact.derive({
                     handles: mapped,
-                    state: !direct && this.promiseResultParameter(srcStmt, method, fact) ? 'allocated' : fact.state,
+                    state: fulfilled ? 'allocated' : fact.state,
                     frames: [...fact.frames, { callSite: srcStmt, callerHandles: fact.handles }],
                 })]);
             },
@@ -174,7 +242,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
             const right = srcStmt instanceof ArkAssignStmt ? srcStmt.getRightOp() : undefined;
             if (fact.state === 'pending' && right instanceof ArkAwaitExpr &&
                 hasResourceHandle(fact.handles, right.getPromise())) return new Set();
-            return new Set([this.releaseAt(srcStmt, fact) ?? fact]);
+            return new Set([this.onFailure(srcStmt, fact)]);
         } };
     }
 
@@ -189,8 +257,26 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 // The actual callee summary owns these handles; an identity bypass would undo cleanup.
                 return new Set();
             }
-            return new Set([this.releaseAt(srcStmt, fact) ?? fact]);
+            // A rejection during argument evaluation does not call the callee.
+            // Its own failures propagate separately through the callee summary.
+            const awaits = srcStmt.getInvokeExpr()?.getArgs().filter(arg => arg instanceof ArkAwaitExpr);
+            if (!fromCallee && awaits?.length === 1 && this.awaitedArgument(srcStmt, fact) && [...(callees ?? [])].some(method =>
+                method.getCfg() && this.isDirectCallee(srcStmt, method))) return new Set();
+            return new Set([this.onFailure(srcStmt, fact)]);
         } };
+    }
+
+    private onFailure(stmt: Stmt, fact: ResourceFact): ResourceFact {
+        const released = this.releaseAt(stmt, fact);
+        if (released) return released;
+        if (fact.state !== 'allocated' || fact.failureSite || fact.registration ||
+            this.rulesById.get(fact.ruleId)?.scope !== 'resource' ||
+            stmt.getCfg() !== fact.allocationSite?.getCfg()) return fact;
+        // A Promise rejection belongs to the await, after any cleanup handlers are attached.
+        const invoke = stmt.getInvokeExpr();
+        if (invoke?.getType().toString().includes('Promise') &&
+            !(stmt instanceof ArkAssignStmt && stmt.getRightOp() instanceof ArkAwaitExpr)) return fact;
+        return fact.derive({ failureSite: stmt });
     }
 
     getExceptionalExitToReturnFlowFunction(_exitStmt: Stmt, _handlerStmt: Stmt, callStmt: Stmt, _callerFact?: ResourceFact): FlowFunction<ResourceFact> {
@@ -243,9 +329,13 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 // An allocation in this callee can reach its caller only through
                 // the returned value or a receiver/static field.
                 const handles = this.mapCalleeHandlesToCaller(exitStmt, callStmt, fact.handles);
-                return handles.length > 0 || fact.registration
-                    ? new Set([fact.derive({ handles }).atAcquisitionReturn(callStmt)])
-                    : new Set();
+                if (handles.length === 0 && !fact.registration) return new Set();
+                const result = callStmt instanceof ArkAssignStmt ? callStmt.getLeftOp() : undefined;
+                const wrapped = fact.state === 'allocated' && handles.length === 1 && result &&
+                    hasResourceHandle(handles, result) && exitStmt instanceof ArkReturnStmt &&
+                    exitStmt.getCfg()?.getDeclaringMethod().containsModifier(ModifierType.ASYNC);
+                return new Set([fact.derive({ handles, state: wrapped ? 'pending' : fact.state })
+                    .atAcquisitionReturn(callStmt)]);
             },
         };
     }
@@ -264,8 +354,16 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                 // An unrelated callback cannot acquire ownership of an already
                 // lost resource or erase its overwrite evidence.
                 if (fact.hasLostHandles()) return transferred;
-                if ([...(callees ?? [])].some(method =>
-                    !this.isDirectCallee(srcStmt, method))) {
+                const callbacks = [...(callees ?? [])].filter(method => !this.isDirectCallee(srcStmt, method));
+                const invoke = srcStmt.getInvokeExpr();
+                const owner = invoke?.getMethodSignature().getDeclaringClassSignature();
+                const independentRejectionHandler = fact.state === 'allocated' && fact.frames.length === 0 &&
+                    fact.handles.every(handle => handle instanceof Local) && invoke instanceof ArkInstanceInvokeExpr &&
+                    owner?.getClassName() === 'Promise' && owner.getDeclaringFileSignature().getProjectName() === 'built-in' &&
+                    invoke.getMethodSignature().getMethodSubSignature().getMethodName() === 'catch' &&
+                    !hasResourceHandle(fact.handles, invoke.getBase()) &&
+                    callbacks.every(method => method.getCfg() && this.mapCallbackHandles(srcStmt, method, fact).length === 0);
+                if (callbacks.length > 0 && !independentRejectionHandler) {
                     // CallResolver includes callback targets on a registration
                     // call. Their execution is optional at this boundary; the
                     // caller continuation cannot claim definite non-release.
@@ -286,6 +384,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
                     // The callee summary owns this path. Keeping an unchanged bypass
                     // would reintroduce a leak after a definite release in the callee.
                     return new Set();
+                }
+                if (this.awaitedArgument(srcStmt, fact)) {
+                    return new Set([...transferred].map(item => item.derive({
+                        state: 'unknown', event: 'unknown-ownership', eventSite: srcStmt,
+                    })));
                 }
                 return transferred;
             },
@@ -336,6 +439,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         const key = [fact.ruleId, this.id(fact.allocationSite!),
             fact.acquisitionContext.map(site => this.id(site)).join(','), fact.state,
             fact.handles.map(resourceValueKey).sort().join(','), fact.event ?? '',
+            fact.failureSite ? this.id(fact.failureSite) : 0,
             // Unknown ownership sites are evidence, not distinct registration
             // states. Retain one real witness on the representative fact.
             fact.eventSite && !(fact.registration && fact.event === 'unknown-ownership') ? this.id(fact.eventSite) : 0,
@@ -535,6 +639,11 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
         return null;
     }
 
+    private awaitedArgument(stmt: Stmt, fact: ResourceFact): boolean {
+        return fact.state === 'pending' && (stmt.getInvokeExpr()?.getArgs().some(arg =>
+            arg instanceof ArkAwaitExpr && hasResourceHandle(fact.handles, arg.getPromise())) ?? false);
+    }
+
     protected mapCallerHandlesToCallee(stmt: Stmt, method: ArkMethod, handles: readonly Value[]): Value[] {
         const invoke = stmt.getInvokeExpr();
         if (!invoke) return [];
@@ -544,7 +653,7 @@ export class ResourceProblem extends DataflowProblem<ResourceFact> {
             const parameter = this.getParameterLocal(method, index);
             if (!parameter) continue;
             for (const handle of handles) {
-                const rebased = this.rebase(handle, argument, parameter);
+                const rebased = this.rebase(handle, argument instanceof ArkAwaitExpr ? argument.getPromise() : argument, parameter);
                 if (rebased) mapped.push(rebased);
             }
         }

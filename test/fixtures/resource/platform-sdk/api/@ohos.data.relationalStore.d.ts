@@ -1,1 +1,1 @@
-declare namespace relationalStore { interface ResultSet { close(): void; } interface RdbStore { querySync(): ResultSet; query(): Promise<ResultSet>; } } export default relationalStore;
+declare namespace relationalStore { interface ResultSet { readonly isClosed: boolean; isOpen(): boolean; close(): void; } interface RdbStore { querySync(): ResultSet; query(): Promise<ResultSet>; } } export default relationalStore;

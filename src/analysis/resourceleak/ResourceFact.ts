@@ -42,6 +42,7 @@ export class ResourceFact {
         readonly registration?: RegistrationIdentity,
         readonly owner?: string,
         readonly boundary?: Stmt,
+        readonly failureSite?: Stmt,
     ) {}
 
     static zeroFact(): ResourceFact {
@@ -80,6 +81,7 @@ export class ResourceFact {
         registration?: RegistrationIdentity;
         owner?: string;
         boundary?: Stmt;
+        failureSite?: Stmt;
     }): ResourceFact {
         if (Object.entries(change).every(([key, value]) => value === undefined || value === this[key as keyof ResourceFact])) return this;
         return new ResourceFact(
@@ -94,6 +96,7 @@ export class ResourceFact {
             change.registration ?? this.registration,
             change.owner ?? this.owner,
             change.boundary ?? this.boundary,
+            change.failureSite ?? this.failureSite,
         );
     }
 }

@@ -30,7 +30,7 @@ describe('image memory in unified resource obligations', () => {
             expect(new ResourceRunner(platform).runWithDummyMain(method('Release')).diagnostics).toEqual([]);
         });
     it.each(['aliasRelease', 'lifecycleRelease', 'promiseRelease', 'promiseThenRelease',
-        'conditionalRelease', 'releaseThrows', 'userApi'])(
+        'releaseThrows', 'userApi'])(
         'honors aliases, lifecycle calls and the reachable-release contract: %s', name => {
             const result = run(name);
             expect(result.success, result.error).toBe(true);
@@ -38,6 +38,11 @@ describe('image memory in unified resource obligations', () => {
             expect(result.solverStatistics?.processedEdges).toBeGreaterThan(0);
             expect(result).not.toHaveProperty('memoryRetentionCandidates');
         });
+    it('reports conditional image release with low confidence', () => {
+        expect(run('conditionalRelease').diagnostics).toMatchObject([
+            { ruleId: 'PixelMapNotReleased', reason: 'partially-released', confidence: 'low' },
+        ]);
+    });
     it.each(['wrongObject', 'unreachableRelease', 'overwritten', 'clearIsNotRelease', 'lifecycleLeak'])(
         'keeps the original allocation obligation for %s', name => {
             const result = run(name);

@@ -24,6 +24,7 @@ import type { ResourceRule } from './rules/ResourceRule';
 interface ExitFact {
     readonly fact: ResourceFact;
     readonly exit: Stmt;
+    readonly partialRelease: boolean;
 }
 
 function listenerHandleIdentity(value: ResourceFact['handles'][number]): string {
@@ -88,7 +89,18 @@ export class ReleaseObligationRunner {
             solver.solve();
             onSolved?.(solver);
             const byStatement = new Map<Stmt, ResourceFact[]>();
+            const exceptionalExits = new Map<Stmt, Set<ResourceFact>>();
             for (const edge of solver.getPathEdgeSet()) {
+                if (this.metadata.scope === 'resource' && edge.edgeStart === edge.edgeEnd) {
+                    for (const { node, fact } of solver.getExceptionalEndSummaries(edge.edgeStart)) {
+                        // An implicit SDK failure can leave a method without a throw statement in its IR.
+                        if (fact.state !== 'allocated' || fact.failureSite !== node ||
+                            node.getCfg() !== edge.edgeStart.node.getCfg() || node.getCfg() !== fact.allocationSite?.getCfg()) continue;
+                        const exits = exceptionalExits.get(node) ?? new Set<ResourceFact>();
+                        exits.add(fact);
+                        exceptionalExits.set(node, exits);
+                    }
+                }
                 const statement = edge.edgeEnd.node;
                 const facts = byStatement.get(statement) ?? [];
                 facts.push(edge.edgeEnd.fact);
@@ -101,7 +113,7 @@ export class ReleaseObligationRunner {
                 entryMethod,
                 unsupportedApiFamilies: this.metadata.unsupportedApiFamilies,
                 ruleIds: this.rules.map(rule => rule.id),
-                diagnostics: this.collectDiagnostics(byStatement, dummyMain, icfg),
+                diagnostics: this.collectDiagnostics(byStatement, dummyMain, icfg, exceptionalExits),
                 reachedStatements: byStatement.size,
                 reachedFacts: [...byStatement.values()].reduce((sum, facts) => sum + facts.length, 0),
                 unresolvedRuleIds: this.metadata.unresolvedRuleIds,
@@ -160,7 +172,8 @@ export class ReleaseObligationRunner {
     private collectDiagnostics(
         byStatement: ReadonlyMap<Stmt, readonly ResourceFact[]>,
         entryMethod: ArkMethod,
-        icfg: InterproceduralCFG
+        icfg: InterproceduralCFG,
+        exceptionalExits: ReadonlyMap<Stmt, ReadonlySet<ResourceFact>>
     ): ResourceDiagnostic[] {
         const groups = new Map<string, ExitFact[]>();
         const seenOverwrites = new Set<string>();
@@ -175,6 +188,8 @@ export class ReleaseObligationRunner {
         };
         const keyOf = (fact: ResourceFact) => `${fact.ruleId}|${siteId(fact.allocationSite!)}|${fact.acquisitionContext.map(siteId).join(',')}|${fact.owner ?? ''}`;
         const released = new Set<string>();
+        const releasedAtReturn = new Set<string>();
+        const releasedAfterFailure = new Set<string>();
         const releasedStatements = new Map<string, Set<Stmt>>();
         const releasedTimerHandles = new Map<string, Set<string>>();
         const releasedListenerCallbacks = new Map<string, Map<string, {
@@ -189,6 +204,11 @@ export class ReleaseObligationRunner {
             if (fact.state !== 'released' || !fact.allocationSite) continue;
             const key = keyOf(fact);
             released.add(key);
+            if (statement.getCfg() === fact.allocationSite.getCfg() &&
+                (statement instanceof ArkReturnStmt || statement instanceof ArkReturnVoidStmt)) {
+                releasedAtReturn.add(key);
+            }
+            if (fact.failureSite) releasedAfterFailure.add(`${key}|${siteId(fact.failureSite)}`);
             const statements = releasedStatements.get(key) ?? new Set<Stmt>();
             statements.add(statement);
             releasedStatements.set(key, statements);
@@ -214,8 +234,9 @@ export class ReleaseObligationRunner {
                 releasedTimerTokens.set(identityKey, tokens);
             }
         }
-        for (const [exit, facts] of byStatement) {
-            const atExit = (exit instanceof ArkReturnStmt || exit instanceof ArkReturnVoidStmt || exit instanceof ArkThrowStmt) && icfg.isExitStatement(exit);
+        for (const exits of [byStatement, exceptionalExits]) for (const [exit, facts] of exits) {
+            const atExit = exits === exceptionalExits ||
+                (exit instanceof ArkReturnStmt || exit instanceof ArkReturnVoidStmt || exit instanceof ArkThrowStmt) && icfg.isExitStatement(exit);
             const method = exit.getCfg()?.getDeclaringMethod();
             if (!method) continue;
             for (const fact of facts) {
@@ -225,7 +246,7 @@ export class ReleaseObligationRunner {
                 if (!fact.boundary && fact.owner && method !== entryMethod) continue;
                 const lost = fact.hasLostHandles();
                 if (!lost && !atExit && !fact.boundary) continue;
-                // Preserve the existing contract until branch/exception classification is implemented.
+                // A release on another path lowers confidence when the exits cannot be distinguished.
                 const matchingRelease = fact.registration?.event === 'timer'
                     ? (() => {
                         const releasedTokens = releasedTimerTokens.get(
@@ -257,10 +278,16 @@ export class ReleaseObligationRunner {
                     cleanupSummary?.clearsBeforeAllocation(allocationSite, fact.handles) === true;
                 const guardedReentry = lost && fact.registration?.event === 'timer' &&
                     cleanupSummary?.isGuardedReentry(allocationSite) === true;
-                // A boundary fact is the same outstanding obligation observed at an owner
-                // exit; a matching release already proves the cleanup edge.
-                if (!lost && (matchingRelease || ownerCleanup || ownerEventCleanup ||
-                    pureForwardingWrapper)) continue;
+                // A release elsewhere does not discharge this local return or an observed failure path.
+                const localExit = atExit && this.metadata.scope === 'resource' &&
+                    method === allocationSite.getCfg()?.getDeclaringMethod();
+                const separateReturn = localExit && fact.state === 'allocated' &&
+                    releasedAtReturn.has(keyOf(fact)) && !releasedStatements.get(keyOf(fact))?.has(exit);
+                const failedLocally = localExit && fact.state === 'allocated' && fact.failureSite &&
+                    !releasedAfterFailure.has(`${keyOf(fact)}|${siteId(fact.failureSite)}`);
+                const partialRelease = !lost && matchingRelease && !failedLocally && !separateReturn;
+                if (!lost && ((partialRelease && (!localExit || fact.state !== 'allocated')) ||
+                    ownerCleanup || ownerEventCleanup || pureForwardingWrapper)) continue;
                 if (cleanupBeforeRegistration || guardedReentry) continue;
                 if (lost && this.releasedBeforeReentry(fact, icfg, releasedStatements.get(keyOf(fact)))) continue;
                 if (!fact.boundary && !fact.registration && !lost && this.transferredAtExit(exit, fact, method !== entryMethod)) continue;
@@ -272,7 +299,7 @@ export class ReleaseObligationRunner {
                     seenOverwrites.add(overwriteKey);
                 }
                 const group = groups.get(key) ?? [];
-                group.push({ fact, exit: lost ? fact.eventSite! : fact.boundary ?? exit });
+                group.push({ fact, exit: lost ? fact.eventSite! : fact.boundary ?? exit, partialRelease });
                 groups.set(key, group);
             }
         }
@@ -285,8 +312,9 @@ export class ReleaseObligationRunner {
             const preferred = (items: ExitFact[]): ExitFact | undefined =>
                 items.find(item => item.exit.getCfg()?.getDeclaringMethod() === item.fact.allocationSite?.getCfg()?.getDeclaringMethod()) ?? items[0];
             const lost = group.filter(item => item.fact.hasLostHandles());
-            const chosen = (preferred(lost.filter(item => item.fact.state === 'allocated')) ?? preferred(lost) ?? preferred(leaks) ?? preferred(unknowns))!;
-            const { fact, exit } = chosen;
+            const chosen = (preferred(lost.filter(item => item.fact.state === 'allocated')) ?? preferred(lost) ??
+                preferred(leaks.filter(item => !item.partialRelease)) ?? preferred(leaks) ?? preferred(unknowns))!;
+            const { fact, exit, partialRelease } = chosen;
             const reason: ResourceLeakReason = fact.hasLostHandles()
                 ? 'overwritten'
                 : fact.state === 'unknown' || fact.state === 'pending'
@@ -295,10 +323,11 @@ export class ReleaseObligationRunner {
                     ? 'overwritten'
                     : fact.event === 'wrong-release'
                       ? 'wrong-release'
-                      : 'unreleased';
+                      : partialRelease ? 'partially-released' : 'unreleased';
             const allocation = this.location(fact.allocationSite!);
             const boundary = this.location(exit);
             const evidence = [allocation];
+            if (fact.failureSite && fact.failureSite !== exit) evidence.push(this.location(fact.failureSite));
             if (fact.eventSite) evidence.push(this.location(fact.eventSite));
             evidence.push(boundary);
             diagnostics.push({
@@ -306,7 +335,7 @@ export class ReleaseObligationRunner {
                 allocation,
                 boundary,
                 reason,
-                confidence: fact.state === 'unknown' || fact.state === 'pending' ? 'low' : 'high',
+                confidence: partialRelease || fact.state === 'unknown' || fact.state === 'pending' ? 'low' : 'high',
                 evidence,
             });
         }

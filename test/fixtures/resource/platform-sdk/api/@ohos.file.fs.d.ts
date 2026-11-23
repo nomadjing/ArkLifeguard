@@ -9,3 +9,5 @@ export function closeSync(file: number | File): void;
 export function close(file: number | File): Promise<void>;
 /** @throws Error */
 export function writeSync(fd: number, data: string): number;
+/** @throws Error */
+export function write(fd: number, data: string): Promise<number>;

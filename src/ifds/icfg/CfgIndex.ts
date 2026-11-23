@@ -31,6 +31,7 @@ interface FinallyRegion {
 /** Builds and queries a statement-level view of ArkAnalyzer CFGs. */
 export class CfgIndex {
     private readonly stmtSuccessors = new Map<Stmt, StmtSuccessors>();
+    private readonly loweredReturns = new Set<Stmt>();
     private readonly exceptionPolicy: ExceptionPolicy;
 
     constructor(private readonly scene: Scene) {
@@ -39,6 +40,7 @@ export class CfgIndex {
 
     initialize(entryMethod: ArkMethod): void {
         this.stmtSuccessors.clear();
+        this.loweredReturns.clear();
         this.attachCfgToStatements();
 
         // Scene.getMethods() may expose the Scene's backing array. Mutating it
@@ -69,7 +71,7 @@ export class CfgIndex {
     }
 
     mayThrow(stmt: Stmt): boolean {
-        return this.exceptionPolicy.mayThrow(stmt);
+        return !this.loweredReturns.has(stmt) && this.exceptionPolicy.mayThrow(stmt);
     }
 
     isExitStatement(stmt: Stmt): boolean {
@@ -180,14 +182,22 @@ export class CfgIndex {
             }
         }
 
-        // Block edges may omit explicit throws or include several enclosing
-        // handlers. A completion must enter the nearest handler first.
-        for (const block of blocks) {
-            const trap = traps.find(candidate => candidate.getTryBlocks().includes(block));
-            const handler = trap?.getCatchBlocks()[0]?.getHead();
+        // ArkAnalyzer builds traps before merging loop-entry blocks. The old
+        // trap block still contains the moved statement, but its new block may
+        // also contain statements outside the protected region.
+        const indexedStatements = new Set(blocks.flatMap(block => block.getStmts()));
+        const protectedStatements = new Set<Stmt>();
+        for (const trap of traps) {
+            const handler = trap.getCatchBlocks()[0]?.getHead();
             if (!handler) continue;
-            for (const stmt of block.getStmts()) {
-                if (this.mayThrow(stmt) || stmt.getInvokeExpr()) this.stmtSuccessors.get(stmt)!.exceptional = new Set([handler]);
+            for (const block of trap.getTryBlocks()) {
+                for (const stmt of block.getStmts()) {
+                    if (!indexedStatements.has(stmt) || protectedStatements.has(stmt)) continue;
+                    protectedStatements.add(stmt);
+                    if (this.mayThrow(stmt) || stmt.getInvokeExpr()) {
+                        this.stmtSuccessors.get(stmt)!.exceptional = new Set([handler]);
+                    }
+                }
             }
         }
         // Lowered finally copies are not always listed in an outer trap's try
@@ -287,6 +297,8 @@ export class CfgIndex {
                         // A return in finally replaces the pending completion,
                         // but still executes any enclosing finally regions.
                         successors.normal.add(completion(stmt, pending.slice(i + 1)));
+                        this.loweredReturns.add(copy);
+                        continue;
                     } else {
                         for (const target of this.getNormalSuccessors(stmt)) {
                             successors.normal.add(copies.get(target) ?? target);
@@ -300,7 +312,10 @@ export class CfgIndex {
                 next = copies.get(entry) ?? next;
             }
             if (!snapshot) return next;
-            this.stmtSuccessors.set(snapshot, { normal: new Set([next]), exceptional: new Set() });
+            this.stmtSuccessors.set(snapshot, {
+                normal: new Set([next]),
+                exceptional: new Set(this.getExceptionHandlers(source)),
+            });
             return snapshot;
         };
 
@@ -312,6 +327,8 @@ export class CfgIndex {
             this.stmtSuccessors.set(tail, {
                 normal: new Set([completion(tail, pending)]), exceptional: new Set(),
             });
+            // The snapshot now evaluates the operand, including any rejection.
+            this.loweredReturns.add(tail);
         }
     }
 

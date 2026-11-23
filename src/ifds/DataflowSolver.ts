@@ -426,6 +426,10 @@ export class DataflowSolver<D> {
         return reached;
     }
 
+    public getExceptionalEndSummaries(entry: PathEdgePoint<D>): ReadonlySet<PathEdgePoint<D>> {
+        return this.summaryStore.getExceptionalEndSummaries(entry);
+    }
+
     public getPathEdgeSet(): Set<PathEdge<D>> {
         return this.pathEdgeStore.asSet();
     }

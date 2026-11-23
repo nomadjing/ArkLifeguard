@@ -95,9 +95,9 @@ describe('new resource-leak IFDS flow', () => {
         expect(run('finallyThrowOverridesReturnCaller').diagnostics).toHaveLength(1);
     });
 
-    it('accepts reachable conditional cleanup but reports missing cleanup', () => {
+    it('reports both conditional and missing cleanup in finally', () => {
         expect(run('finallyMissingCleanup').diagnostics).toHaveLength(1);
-        expect(run('finallyConditional').diagnostics).toEqual([]);
+        expect(run('finallyConditional').diagnostics).toMatchObject([{ reason: 'partially-released', confidence: 'low' }]);
     });
 
     it('does not resurrect allocated resources through invented caller exceptions', () => {
@@ -198,10 +198,10 @@ describe('new resource-leak IFDS flow', () => {
         });
     });
 
-    it('distinguishes wrong release and overwrite while accepting partial release', () => {
+    it('distinguishes wrong release and overwrite and reports partial release', () => {
         expect(run('wrongRelease').diagnostics.map(item => item.reason)).toEqual(['wrong-release']);
         expect(run('overwritten').diagnostics.map(item => item.reason)).toEqual(['overwritten']);
-        expect(run('partial').diagnostics).toEqual([]);
+        expect(run('partial').diagnostics).toMatchObject([{ reason: 'partially-released', confidence: 'low' }]);
     });
 
     it('keeps two allocation sites separate', () => {
