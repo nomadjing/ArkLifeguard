@@ -85,7 +85,7 @@ const result: ProjectAnalysisResult = {
     },
     resourceAnalysis: {
         enabled: true, status: 'success', success: true, entryMethod: 'DummyMain.main()',
-        diagnostics: [{ ruleId: 'FileNotClosed', reason: 'unreleased', confidence: 'high',
+        diagnostics: [{ ruleId: 'FileNotClosed', reason: 'unreleased',
             allocation: { filePath: '/project/Index.ets', line: 20, col: 5 },
             boundary: { filePath: '/project/Index.ets', line: 30, col: 1 }, evidence: [],
         }], reachedStatements: 8, reachedFacts: 10,
@@ -109,15 +109,25 @@ describe('ReportGenerator', () => {
         const input: ProjectAnalysisResult = { ...result,
             listenerAnalysis: { enabled: true, status: 'success', success: true, entryMethod: 'main',
                 diagnostics: [{ ruleId: 'EmitterRegistration', allocation: location, boundary: location,
-                    reason: 'unregistered', confidence: 'high', evidence: [location] }] } };
+                    reason: 'unregistered', evidence: [location] }] } };
         const report = new ReportGenerator().generate(input, { format });
         expect(report).toContain('EmitterRegistration');
         expect(report).toContain('unregistered');
         expect(report).not.toContain('retentionPath');
         expect(report).not.toContain('capturedObject');
         expect(report).not.toContain('memoryAnalysis');
-        if (format === 'json') expect(JSON.parse(report).summary.listenerLeaks).toBe(1);
-        else expect(report).toContain('/project/Listener.ets:7:1');
+        if (format === 'json') {
+            const json = JSON.parse(report);
+            expect(json.summary.listenerLeaks).toBe(1);
+            expect(json.listenerAnalysis.diagnostics[0]).not.toHaveProperty('confidence');
+            expect(json.resourceAnalysis.diagnostics[0]).not.toHaveProperty('confidence');
+            expect(json.nullness.diagnostics[0].confidence).toBe('high');
+        } else {
+            expect(report).toContain('/project/Listener.ets:7:1');
+            expect(report).not.toContain('unregistered（');
+            expect(report).not.toContain('unreleased（');
+            expect(report).toContain('Definite null dereference（high）');
+        }
     });
     it.each(['json', 'text', 'markdown', 'html'] as const)('preserves listener failure in %s', format => {
         const input: ProjectAnalysisResult = { ...result, status: 'failed',

@@ -68,7 +68,7 @@ describe('new resource-leak IFDS flow', () => {
         expect(result.status).toBe('success');
         expect(result.diagnostics).toHaveLength(1);
         expect(result.diagnostics[0]).toMatchObject({
-            ruleId: 'HandleNotReleased', reason: 'unreleased', confidence: 'high',
+            ruleId: 'HandleNotReleased', reason: 'unreleased',
         });
         expect(result.diagnostics[0].allocation.line).toBeGreaterThan(0);
         expect(result.diagnostics[0].boundary.line).toBeGreaterThan(0);
@@ -97,7 +97,7 @@ describe('new resource-leak IFDS flow', () => {
 
     it('reports both conditional and missing cleanup in finally', () => {
         expect(run('finallyMissingCleanup').diagnostics).toHaveLength(1);
-        expect(run('finallyConditional').diagnostics).toMatchObject([{ reason: 'partially-released', confidence: 'low' }]);
+        expect(run('finallyConditional').diagnostics).toMatchObject([{ reason: 'partially-released' }]);
     });
 
     it('does not resurrect allocated resources through invented caller exceptions', () => {
@@ -131,7 +131,7 @@ describe('new resource-leak IFDS flow', () => {
         'keeps factory acquisition contexts distinct in %s', name => {
             const result = run(name);
             expect(result.status).toBe('success');
-            expect(result.diagnostics).toMatchObject([{ reason: 'unreleased', confidence: 'high' }]);
+            expect(result.diagnostics).toMatchObject([{ reason: 'unreleased' }]);
             expect(result.diagnostics).toHaveLength(1);
         },
     );
@@ -148,7 +148,7 @@ describe('new resource-leak IFDS flow', () => {
     it('does not release an old allocation through a replaced call-result handle', () => {
         const result = run('overwriteByReturn');
         expect(result.status).toBe('success');
-        expect(result.diagnostics).toMatchObject([{ reason: 'overwritten', confidence: 'high' }]);
+        expect(result.diagnostics).toMatchObject([{ reason: 'overwritten' }]);
         expect(result.diagnostics).toHaveLength(1);
         expect(run('preserveReturnedAlias').diagnostics).toEqual([]);
         expect(run('preserveOtherAlias').diagnostics).toEqual([]);
@@ -165,7 +165,7 @@ describe('new resource-leak IFDS flow', () => {
         'reports the lost old obligation at its overwrite in %s', name => {
             const result = run(name);
             expect(result.status).toBe('success');
-            expect(result.diagnostics).toMatchObject([{ reason: 'overwritten', confidence: 'high' }]);
+            expect(result.diagnostics).toMatchObject([{ reason: 'overwritten' }]);
             expect(result.diagnostics).toHaveLength(1);
             expect(result.diagnostics[0].boundary.line).toBeGreaterThan(0);
         },
@@ -201,7 +201,7 @@ describe('new resource-leak IFDS flow', () => {
     it('distinguishes wrong release and overwrite and reports partial release', () => {
         expect(run('wrongRelease').diagnostics.map(item => item.reason)).toEqual(['wrong-release']);
         expect(run('overwritten').diagnostics.map(item => item.reason)).toEqual(['overwritten']);
-        expect(run('partial').diagnostics).toMatchObject([{ reason: 'partially-released', confidence: 'low' }]);
+        expect(run('partial').diagnostics).toMatchObject([{ reason: 'partially-released' }]);
     });
 
     it('keeps two allocation sites separate', () => {
@@ -247,12 +247,12 @@ describe('new resource-leak IFDS flow', () => {
 
     it('keeps unknown ownership uncertain and honors explicit nullification rules', () => {
         expect(run('unknownOwnership').diagnostics).toMatchObject([{
-            reason: 'unknown-ownership', confidence: 'low',
+            reason: 'unknown-ownership',
         }]);
         expect(run('nullify').diagnostics).toEqual([]);
         expect(run('returnToCaller').diagnostics).toEqual([]);
         expect(run('storeInContainer').diagnostics).toMatchObject([{
-            reason: 'unknown-ownership', confidence: 'low',
+            reason: 'unknown-ownership',
         }]);
     });
 

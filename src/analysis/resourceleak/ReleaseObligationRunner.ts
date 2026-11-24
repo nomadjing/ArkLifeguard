@@ -246,7 +246,7 @@ export class ReleaseObligationRunner {
                 if (!fact.boundary && fact.owner && method !== entryMethod) continue;
                 const lost = fact.hasLostHandles();
                 if (!lost && !atExit && !fact.boundary) continue;
-                // A release on another path lowers confidence when the exits cannot be distinguished.
+                // Match releases by resource or registration identity.
                 const matchingRelease = fact.registration?.event === 'timer'
                     ? (() => {
                         const releasedTokens = releasedTimerTokens.get(
@@ -335,14 +335,12 @@ export class ReleaseObligationRunner {
                 allocation,
                 boundary,
                 reason,
-                confidence: partialRelease || fact.state === 'unknown' || fact.state === 'pending' ? 'low' : 'high',
                 evidence,
             });
         }
         const seen = new Set<string>();
         return diagnostics.filter(item => {
-            const key = JSON.stringify([item.ruleId, item.allocation, item.boundary, item.reason,
-                item.confidence, item.evidence]);
+            const key = JSON.stringify([item.ruleId, item.allocation, item.boundary, item.reason, item.evidence]);
             if (seen.has(key)) return false;
             seen.add(key);
             return true;

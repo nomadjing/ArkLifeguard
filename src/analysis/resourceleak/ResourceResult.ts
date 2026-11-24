@@ -20,7 +20,6 @@ export interface ResourceDiagnostic {
     readonly allocation: ResourceLocation;
     readonly boundary: ResourceLocation;
     readonly reason: ResourceLeakReason;
-    readonly confidence: 'high' | 'low';
     readonly evidence: readonly ResourceLocation[];
 }
 

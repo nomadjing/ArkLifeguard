@@ -27,7 +27,7 @@ describe('HarmonyOS SDK resource rules', () => {
         const leaking = run('playerFactoryPairLeak');
         expect(leaking.status).toBe('success');
         expect(leaking.diagnostics).toMatchObject([{
-            ruleId: 'AVPlayerNotReleased', reason: 'unreleased', confidence: 'high',
+            ruleId: 'AVPlayerNotReleased', reason: 'unreleased',
         }]);
         expect(leaking.diagnostics).toHaveLength(1);
         const released = run('playerFactoryPairRelease');
@@ -44,7 +44,7 @@ describe('HarmonyOS SDK resource rules', () => {
     ])('detects a missing release and accepts the matching release for %s', (name, ruleId) => {
         const leaking = run(`${name}Leak`);
         expect(leaking.status).toBe('success');
-        expect(leaking.diagnostics).toMatchObject([{ ruleId, reason: 'unreleased', confidence: 'high' }]);
+        expect(leaking.diagnostics).toMatchObject([{ ruleId, reason: 'unreleased' }]);
         expect(leaking.diagnostics).toHaveLength(1);
         expect(run(`${name}Release`).diagnostics).toEqual([]);
     });
@@ -68,19 +68,20 @@ describe('HarmonyOS SDK resource rules', () => {
         const result = run(name);
         expect(result.status).toBe('success');
         expect(result.diagnostics).toHaveLength(1);
-        expect(result.diagnostics[0].confidence).toBe('high');
     });
 
     it.each(['fileDescriptorZeroLeak', 'fileDescriptorTruthyLeak', 'fileConditionalRelease', 'fileioZeroLeak'])
-    ('reports conditional cleanup as a low-confidence candidate: %s', name => {
+    ('reports conditional cleanup as partially released: %s', name => {
         const result = run(name);
         expect(result.status).toBe('success');
-        expect(result.diagnostics).toMatchObject([{ reason: 'partially-released', confidence: 'low' }]);
+        expect(result.diagnostics).toMatchObject([{ reason: 'partially-released' }]);
     });
 
     it.each(['fileCalleeAllocationFailsBeforeClose', 'fileFactoryWorkCaller', 'fileWorkFailsBeforeClose', 'fileEarlyReturn'])
     ('reports a local exit that bypasses cleanup: %s', name => {
-        expect(run(name).diagnostics).toMatchObject([{ ruleId: 'FileNotClosed', reason: 'unreleased' }]);
+        expect(run(name).diagnostics).toMatchObject([{
+            ruleId: 'FileNotClosed', reason: 'unreleased',
+        }]);
     });
 
     it('keeps each outstanding file when a later open or a sibling close fails', () => {
@@ -162,7 +163,7 @@ describe('HarmonyOS SDK resource rules', () => {
             method.getName() === 'fileGuardedDescriptor');
         const rules = resolveHarmonyResourceRules(scene).rules.map(rule => ({ ...rule, handleValidity: undefined }));
         expect(new ResourceRunner(scene, rules).runWithDummyMain(method!).diagnostics).toMatchObject([
-            { reason: 'partially-released', confidence: 'low' },
+            { reason: 'partially-released' },
         ]);
     });
 
@@ -170,10 +171,10 @@ describe('HarmonyOS SDK resource rules', () => {
         expect(run('fileAwaitRelease').diagnostics).toEqual([]);
         expect(run('pixelAwaitRelease').diagnostics).toEqual([]);
         expect(run('pendingPlayer').diagnostics).toMatchObject([{
-            reason: 'unknown-ownership', confidence: 'low',
+            reason: 'unknown-ownership',
         }]);
         expect(run('callbackPlayer').diagnostics).toMatchObject([{
-            reason: 'unknown-ownership', confidence: 'low',
+            reason: 'unknown-ownership',
         }]);
     });
 

@@ -67,7 +67,6 @@ interface ProjectResult {
     resourceAnalysis?: ResourceAnalysisResult;
     listenerAnalysis?: ResourceAnalysisResult;
     listenerAnalysisTimeMs?: number;
-    highConfidenceCount: number;
     unknownOwnershipCount: number;
     matchedAllocatorCalls: number;
     reachedAllocatorCalls: number;
@@ -96,7 +95,6 @@ interface RealAppsReport {
         projectsWithCandidates: number;
         resourceLeakCount: number;
         listenerLeakCount?: number;
-        highConfidenceCount: number;
         unknownOwnershipCount: number;
         unknownRegistrationCount?: number;
         matchedAllocatorCalls: number;
@@ -345,7 +343,6 @@ function emptyProjectResult(metadata: ProjectMetadata): ProjectResult {
         lifecycleModelingTimeMs: 0,
         resourceAnalysisTimeMs: 0,
         peakRssMB: null,
-        highConfidenceCount: 0,
         unknownOwnershipCount: 0,
         matchedAllocatorCalls: 0,
         reachedAllocatorCalls: 0,
@@ -381,7 +378,6 @@ async function analyzeProject(metadata: ProjectMetadata, options: Options): Prom
         const diagnostics = selectedAnalysis.diagnostics;
         record.resourceLeakCount = diagnostics.length;
         if (options.analysis === 'listener') record.listenerLeakCount = diagnostics.length;
-        record.highConfidenceCount = diagnostics.filter(item => item.confidence === 'high').length;
         record.unknownOwnershipCount = diagnostics.filter(item =>
             item.reason === (options.analysis === 'listener' ? 'unknown-registration' : 'unknown-ownership')).length;
         const coverage = selectedAnalysis.coverage ?? [];
@@ -430,7 +426,6 @@ function emptySummary(selectedProjects: number): RealAppsReport['summary'] {
         timedOutProjects: 0,
         projectsWithCandidates: 0,
         resourceLeakCount: 0,
-        highConfidenceCount: 0,
         unknownOwnershipCount: 0,
         matchedAllocatorCalls: 0,
         reachedAllocatorCalls: 0,
@@ -465,7 +460,6 @@ function updateSummary(report: RealAppsReport): void {
             listenerLeakCount: candidateCounts.reduce((sum, count) => sum + count, 0),
             unknownRegistrationCount: successful.reduce((sum, item) => sum + item.unknownOwnershipCount, 0),
         } : {}),
-        highConfidenceCount: successful.reduce((sum, item) => sum + item.highConfidenceCount, 0),
         unknownOwnershipCount: successful.reduce((sum, item) => sum + item.unknownOwnershipCount, 0),
         matchedAllocatorCalls: successful.reduce((sum, item) => sum + item.matchedAllocatorCalls, 0),
         reachedAllocatorCalls: successful.reduce((sum, item) => sum + item.reachedAllocatorCalls, 0),
@@ -620,7 +614,7 @@ async function main(): Promise<void> {
         console.log(
             `  ${record.status.toUpperCase()} candidates=${options.analysis === 'listener'
                 ? (record.listenerLeakCount ?? 0) : record.resourceLeakCount} ` +
-            `high=${record.highConfidenceCount} unknown=${record.unknownOwnershipCount} ` +
+            `unknown=${record.unknownOwnershipCount} ` +
             `allocators=${record.reachedAllocatorCalls}/${record.matchedAllocatorCalls} time=${record.totalTimeMs}ms ` +
             `lifecycle=${record.lifecycleModelingTimeMs}ms ` +
             `${options.analysis === 'listener' ? 'listener' : 'resource'}=` +

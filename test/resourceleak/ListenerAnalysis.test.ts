@@ -42,7 +42,7 @@ describe('listener registration cleanup obligations without capture analysis', (
     it('bypasses unrelated opaque helpers without declaring the registration safe', () => {
         const result = run('EventUnrelatedHelper');
         expect(result.success, result.error).toBe(true);
-        expect(result.diagnostics).toMatchObject([{ reason: 'unknown-registration', confidence: 'low' }]);
+        expect(result.diagnostics).toMatchObject([{ reason: 'unknown-registration' }]);
         expect(result.propagationStatistics?.emptyHandleEntries).toBe(0);
         expect(result.propagationStatistics?.skipped).toBeGreaterThan(0);
     });
@@ -61,7 +61,7 @@ describe('listener registration cleanup obligations without capture analysis', (
         expect(run('TimerHelper').diagnostics).toEqual([]);
         const wrong = run('WrongTimerHelper');
         expect(wrong.diagnostics).toHaveLength(1);
-        expect(wrong.diagnostics[0]).toMatchObject({ reason: 'unknown-registration', confidence: 'low' });
+        expect(wrong.diagnostics[0]).toMatchObject({ reason: 'unknown-registration' });
         expect(wrong.propagationStatistics?.emptyHandleEntries).toBe(0);
     });
     it('reuses callee summaries without losing deep calls or mixing caller tokens', () => {
@@ -77,10 +77,10 @@ describe('listener registration cleanup obligations without capture analysis', (
         expect(run('StaticTimerRelease').diagnostics).toEqual([]);
         const overwritten = run('StaticTimerOverwrite');
         // Existing static ownership handling yields UNKNOWN; pruning must not erase it.
-        expect(overwritten.diagnostics).toMatchObject([{ reason: 'unknown-registration', confidence: 'low' }]);
+        expect(overwritten.diagnostics).toMatchObject([{ reason: 'unknown-registration' }]);
         expect(overwritten.propagationStatistics?.entered).toBeGreaterThan(0);
         const unrelated = run('StaticTimerUnrelated');
-        expect(unrelated.diagnostics).toMatchObject([{ reason: 'unknown-registration', confidence: 'low' }]);
+        expect(unrelated.diagnostics).toMatchObject([{ reason: 'unknown-registration' }]);
         expect(unrelated.propagationStatistics?.skipped).toBeGreaterThan(0);
     });
     it('skips unrelated receiver fields and retains transitive instance-token cleanup', () => {
@@ -243,16 +243,16 @@ describe('listener registration cleanup obligations without capture analysis', (
         expect(run('ResetGuardTimer').diagnostics).toMatchObject([{ reason: 'overwritten' }]);
     });
     it.each(['UnknownEvent', 'UnknownCallback'])(
-        'preserves uncertain identities as low-confidence candidates: %s', name => {
+        'preserves uncertain identities as unresolved registrations: %s', name => {
             const result = run(name);
             expect(result.success, result.error).toBe(true);
             expect(result.diagnostics).toHaveLength(1);
-            expect(result.diagnostics[0]).toMatchObject({ reason: 'unknown-registration', confidence: 'low' });
+            expect(result.diagnostics[0]).toMatchObject({ reason: 'unknown-registration' });
         });
-    it('reports a definitely replaced registrar as a high-confidence unregistered listener', () => {
+    it('reports a definitely replaced registrar as an unregistered listener', () => {
         const result = run('ReplacedRegistrar');
         expect(result.success, result.error).toBe(true);
-        expect(result.diagnostics).toMatchObject([{ reason: 'unregistered', confidence: 'high' }]);
+        expect(result.diagnostics).toMatchObject([{ reason: 'unregistered' }]);
     });
     it('does not seed nested registrations from an unexecuted callback body', () => {
         const result = run('NestedCallbackRegistration');

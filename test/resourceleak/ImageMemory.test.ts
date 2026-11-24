@@ -24,7 +24,7 @@ describe('image memory in unified resource obligations', () => {
             const method = (suffix: string) => entry(platform, 'PlatformCases', `${name}${suffix}`);
             const leak = new ResourceRunner(platform).runWithDummyMain(method('Leak'));
             expect(leak.success, leak.error).toBe(true);
-            expect(leak.diagnostics).toMatchObject([{ ruleId, reason: 'unreleased', confidence: 'high' }]);
+            expect(leak.diagnostics).toMatchObject([{ ruleId, reason: 'unreleased' }]);
             expect(leak.diagnostics).toHaveLength(1);
             expect(leak.diagnostics[0].allocation.line).toBeGreaterThan(0);
             expect(new ResourceRunner(platform).runWithDummyMain(method('Release')).diagnostics).toEqual([]);
@@ -38,9 +38,9 @@ describe('image memory in unified resource obligations', () => {
             expect(result.solverStatistics?.processedEdges).toBeGreaterThan(0);
             expect(result).not.toHaveProperty('memoryRetentionCandidates');
         });
-    it('reports conditional image release with low confidence', () => {
+    it('reports conditional image release as partially released', () => {
         expect(run('conditionalRelease').diagnostics).toMatchObject([
-            { ruleId: 'PixelMapNotReleased', reason: 'partially-released', confidence: 'low' },
+            { ruleId: 'PixelMapNotReleased', reason: 'partially-released' },
         ]);
     });
     it.each(['wrongObject', 'unreachableRelease', 'overwritten', 'clearIsNotRelease', 'lifecycleLeak'])(

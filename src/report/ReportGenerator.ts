@@ -57,7 +57,7 @@ export class ReportGenerator {
         else if (!resource.success) lines.push(`分析失败：${resource.error ?? '未知错误'}`);
         else if (!resource.diagnostics.length) lines.push('未检出资源泄漏候选问题。');
         else for (const item of resource.diagnostics) {
-            lines.push(`- ${item.ruleId}：${item.reason}（${item.confidence}）`,
+            lines.push(`- ${item.ruleId}：${item.reason}`,
                 `  创建：${this.locationText(item.allocation)}`, `  边界：${this.locationText(item.boundary)}`);
             for (const event of item.evidence.slice(1, -1)) lines.push(`  关键节点：${this.locationText(event)}`);
         }
@@ -102,7 +102,7 @@ export class ReportGenerator {
         if (!listener.success) lines.push(`分析未完成：${listener.error ?? '未知错误'}`);
         else lines.push(`未解除注册候选：${listener.diagnostics.length}。`);
         for (const item of listener.diagnostics) lines.push(
-            `- ${item.ruleId}：${item.reason}（${item.confidence}）`,
+            `- ${item.ruleId}：${item.reason}`,
             `  注册：${this.locationText(item.allocation)}；边界：${this.locationText(item.boundary)}`);
         if (listener.unresolvedRuleIds?.length) lines.push(`未解析规则：${listener.unresolvedRuleIds.join(', ')}。`);
         if (listener.unsupportedApiFamilies?.length) lines.push(`覆盖限制：${listener.unsupportedApiFamilies.join(', ')}。`);
