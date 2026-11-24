@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 
 type SdkVersion = string | number | null;
 
+interface ProjectSize {
+    lines: number;
+    nonBlankLines: number;
+}
+
 interface InputProject {
     repo: string;
 }
@@ -24,6 +29,7 @@ interface ProjectMetadata {
     compileSdkVersion: SdkVersion;
     compatibleSdkVersion: SdkVersion;
     targetSdkVersion: SdkVersion;
+    size: ProjectSize;
 }
 
 interface FailedProjectMetadata {
@@ -52,7 +58,8 @@ function printHelp(): void {
         '  2. clones a missing repository without updating an existing checkout;',
         '  3. records the current branch and full commit;',
         '  4. extracts SDK versions from build-profile.json5;',
-        '  5. rewrites meta.json atomically.',
+        '  5. counts total and non-blank lines in tracked .ets, .ts and .js source files;',
+        '  6. rewrites meta.json atomically.',
     ].join('\n'));
 }
 
@@ -318,6 +325,26 @@ function readSdkVersions(projectPath: string): Pick<
     };
 }
 
+function countProjectSize(projectPath: string): ProjectSize {
+    const size: ProjectSize = { lines: 0, nonBlankLines: 0 };
+    const entries = runGit([
+        'ls-files', '--stage', '-z', '--',
+        '*.ets', '*.ts', '*.js',
+        ':(exclude,glob)**/node_modules/**',
+        ':(exclude,glob)**/oh_modules/**',
+    ], projectPath);
+    for (const entry of entries.split('\0')) {
+        if (!entry.startsWith('100')) continue;
+        const file = entry.slice(entry.indexOf('\t') + 1);
+        const source = fs.readFileSync(path.join(projectPath, file), 'utf8');
+        const lines = source.split(/\r\n|\n|\r/);
+        if (lines.at(-1) === '') lines.pop();
+        size.lines += lines.length;
+        size.nonBlankLines += lines.filter(line => line.trim().length > 0).length;
+    }
+    return size;
+}
+
 function inspectProject(repo: string, projectsRoot: string, metaDir: string): ProjectMetadata {
     const name = deriveName(repo);
     const projectPath = path.join(projectsRoot, name);
@@ -331,6 +358,7 @@ function inspectProject(repo: string, projectsRoot: string, metaDir: string): Pr
         revision,
         resolvedCommit,
         ...readSdkVersions(projectPath),
+        size: countProjectSize(projectPath),
     };
 }
 

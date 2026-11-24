@@ -1,15 +1,28 @@
 # HarmonyRealApps
 
-本项目提供了一个真实应用集合，供 ArkLifeguard 测试使用。每个项目都包含了完整的 Git 仓库信息、SDK 版本信息和编译信息。
+本目录维护供 ArkLifeguard 测试使用的鸿蒙真实应用清单，记录各项目的 Git 版本、声明的 SDK 版本和源码规模。
+
+| 源码规模（`size.lines`，总物理行数） | 项目数 |
+| ------------------------------------- | -----: |
+| 少于 1,000 行                         |      3 |
+| 1,000–9,999 行                        |     36 |
+| 10,000–49,999 行                      |     15 |
+| 50,000–99,999 行                      |      4 |
+| 100,000 行及以上                      |      9 |
+| 合计                                  |     67 |
 
 `meta.json` 是真实应用集合的清单。每个项目只需要手动填写仓库地址：
 
 ```json
 {
-  "projects": [
-    { "repo": "https://gitee.com/harmonyos_codelabs/OxHornCampus.git" },
-    { "repo": "https://github.com/Z-P-J/AnimeZ.git" }
-  ]
+    "projects": [
+        {
+            "repo": "https://gitee.com/harmonyos_codelabs/OxHornCampus.git"
+        },
+        {
+            "repo": "https://github.com/Z-P-J/AnimeZ.git"
+        }
+    ]
 }
 ```
 
@@ -19,9 +32,22 @@
 npm run sync:real-apps
 ```
 
-脚本会自动生成 `name` 和 `path`，克隆本地不存在的仓库，记录当前分支及完整commit，并从项目根目录的 `build-profile.json5` 提取 compile、compatible 和target SDK 版本。项目没有声明的版本会写成 `null`，不会用`targetSdkVersion` 冒充缺失的 `compileSdkVersion`。
+脚本会克隆本地不存在的仓库，并更新 `meta.json`。对于已经存在的项目，脚本读取当前干净的工作区。
 
-对于已经存在的项目，脚本不会自动执行 `pull` 或切换分支，只记录当前干净的checkout。如果项目存在未提交修改、origin 与 `repo` 不一致，或者 Git 根目录实际指向外层 ArkLifeguard 仓库，该项目会报错。
+## 项目字段
 
-单个项目克隆或解析失败不会中断整个任务。脚本会继续处理后续项目，在该项目中保留 `repo` 并写入自动生成的 `error`，最后汇总成功和失败数量。下次重新运行时会再次尝试失败项目。GitHub、Gitee 和 GitCode 的 HTTPS 克隆失败后，会自动尝试对应
-的 SSH 地址。
+| 字段                   | 含义                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `repo`                 | 仓库地址，唯一需要手动填写的字段。                                                               |
+| `name`                 | 从仓库地址提取的项目名，也是本地目录名。                                                         |
+| `path`                 | 项目目录相对于清单的路径，例如 `projects/AnimeZ`。                                               |
+| `revision`             | 当前 Git 分支名，处于 detached HEAD 时记录完整提交哈希。                                         |
+| `resolvedCommit`       | 当前 HEAD 的完整 Git 提交哈希。                                                                  |
+| `compileSdkVersion`    | 项目根目录 `build-profile.json5` 声明的编译 SDK 版本。                                           |
+| `compatibleSdkVersion` | 同一配置声明的兼容 SDK 版本。                                                                    |
+| `targetSdkVersion`     | 同一配置声明的目标 SDK 版本。                                                                    |
+| `size.lines`           | 物理行数，包含空白行和注释行。文件末尾的换行符只结束当前行，空文件计 0 行。                      |
+| `size.nonBlankLines`   | 含至少一个非空白字符的行数，包含注释行。                                                         |
+| `error`                | 同步失败的原因。失败条目只包含 `repo` 和 `error`，下次同步会重试。                               |
+
+SDK 版本保留配置中的字符串或数字，缺失的字段记录为 `null`。

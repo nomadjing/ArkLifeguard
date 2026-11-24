@@ -8,7 +8,11 @@
       "resolvedCommit": "b27fde235566e8d1ba312c6527eb76c23413747e",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 2151,
+        "nonBlankLines": 1990
+      }
     },
     {
       "name": "Accouting_ArkTS",
@@ -18,7 +22,11 @@
       "resolvedCommit": "8c663c85f2c11738d4eabf269c23dc1ec84eb013",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 4536,
+        "nonBlankLines": 3956
+      }
     },
     {
       "name": "Aigis",
@@ -28,7 +36,11 @@
       "resolvedCommit": "585de9128882d868484438d32832ca9b9b50442d",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 7358,
+        "nonBlankLines": 6833
+      }
     },
     {
       "name": "browser",
@@ -38,7 +50,11 @@
       "resolvedCommit": "f44fff759c50c162739c1585149018e6f0277471",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.1.0(18)",
-      "targetSdkVersion": "5.1.0(18)"
+      "targetSdkVersion": "5.1.0(18)",
+      "size": {
+        "lines": 1250,
+        "nonBlankLines": 1096
+      }
     },
     {
       "name": "ccplayer",
@@ -48,7 +64,11 @@
       "resolvedCommit": "92a09a15668548588a6198d2dbb559ab3081f4e7",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.2(14)",
-      "targetSdkVersion": "6.1.0(23)"
+      "targetSdkVersion": "6.1.0(23)",
+      "size": {
+        "lines": 7452,
+        "nonBlankLines": 6778
+      }
     },
     {
       "name": "cloud-foundation-kit_-codelab_-arkts",
@@ -58,7 +78,11 @@
       "resolvedCommit": "e303aefba7d9c83b26b266d40be2c580e81627f8",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.5(17)",
-      "targetSdkVersion": "6.1.0(23)"
+      "targetSdkVersion": "6.1.0(23)",
+      "size": {
+        "lines": 1043,
+        "nonBlankLines": 959
+      }
     },
     {
       "name": "CloudMusic-HarmonyOSNex",
@@ -68,7 +92,11 @@
       "resolvedCommit": "724702c9eb5ae0695651eb995829c0b0c7834e0a",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.4(16)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 15483,
+        "nonBlankLines": 14401
+      }
     },
     {
       "name": "ColdStartPerformanceIssue",
@@ -78,7 +106,11 @@
       "resolvedCommit": "af37f55660eb7991b62075a75af30d9b0b1a09bb",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 4211,
+        "nonBlankLines": 3920
+      }
     },
     {
       "name": "CoolMallArkTS",
@@ -88,7 +120,11 @@
       "resolvedCommit": "17b6899086a57a4d48448842a14f9e325e3e35a3",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.0.1(21)",
-      "targetSdkVersion": "6.0.1(21)"
+      "targetSdkVersion": "6.0.1(21)",
+      "size": {
+        "lines": 37679,
+        "nonBlankLines": 35004
+      }
     },
     {
       "name": "DistributedMail",
@@ -98,7 +134,11 @@
       "resolvedCommit": "75c9820357055c380c35152fb56ef9cb39a9e8fd",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.5(17)",
-      "targetSdkVersion": "6.0.2(22)"
+      "targetSdkVersion": "6.0.2(22)",
+      "size": {
+        "lines": 392,
+        "nonBlankLines": 353
+      }
     },
     {
       "name": "echo",
@@ -108,7 +148,11 @@
       "resolvedCommit": "2b1439ff9c97f7ae5e51b26fadac2ff7bfd7512b",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 2795,
+        "nonBlankLines": 2565
+      }
     },
     {
       "name": "AnimeZ",
@@ -118,7 +162,11 @@
       "resolvedCommit": "dbeeea6d96c08bce4a88a4f45d3384d829738fa1",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 14662,
+        "nonBlankLines": 13193
+      }
     },
     {
       "name": "ElderMate",
@@ -128,7 +176,11 @@
       "resolvedCommit": "da4b4d1f946feb93ec38017e5b323ea84a1964b2",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.1(13)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 11914,
+        "nonBlankLines": 11030
+      }
     },
     {
       "name": "ExploreHarmonyNext",
@@ -138,7 +190,11 @@
       "resolvedCommit": "d1601c8eb95b72d12938c111c6ddcbd343ccd839",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 2368,
+        "nonBlankLines": 2135
+      }
     },
     {
       "name": "FinVideo",
@@ -148,7 +204,11 @@
       "resolvedCommit": "669916b3581c7d92514f7639232565cd5ac3f775",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.3(15)",
-      "targetSdkVersion": "6.0.0(20)"
+      "targetSdkVersion": "6.0.0(20)",
+      "size": {
+        "lines": 8304,
+        "nonBlankLines": 7169
+      }
     },
     {
       "name": "Gramony",
@@ -158,7 +218,11 @@
       "resolvedCommit": "0a1ee4b026b6736671f0030ba9859aceaa962298",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.1.0(18)",
-      "targetSdkVersion": "5.1.0(18)"
+      "targetSdkVersion": "5.1.0(18)",
+      "size": {
+        "lines": 9621,
+        "nonBlankLines": 8822
+      }
     },
     {
       "name": "Harflix",
@@ -168,7 +232,11 @@
       "resolvedCommit": "10a7f6dde740c938307a73dd6363b5ca6a2b825f",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.5(17)",
-      "targetSdkVersion": "5.0.5(17)"
+      "targetSdkVersion": "5.0.5(17)",
+      "size": {
+        "lines": 6171,
+        "nonBlankLines": 5581
+      }
     },
     {
       "name": "HarmoneyOpenEye",
@@ -178,7 +246,11 @@
       "resolvedCommit": "57f0542795336009aa0d46fd9fa5b07facc2ae87",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 4749,
+        "nonBlankLines": 4289
+      }
     },
     {
       "name": "harmony-utils",
@@ -188,7 +260,11 @@
       "resolvedCommit": "f8da888faaa30e9ebcd95b85f16184d86a1f02cd",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 45095,
+        "nonBlankLines": 40713
+      }
     },
     {
       "name": "HarmonyAtomicService",
@@ -198,7 +274,11 @@
       "resolvedCommit": "27d237fb097a7f92e7bead55c16abc65a0e42f88",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 3135,
+        "nonBlankLines": 2837
+      }
     },
     {
       "name": "HarmonyKit",
@@ -208,7 +288,11 @@
       "resolvedCommit": "f97197ce157df7f303244fba42e34918306dfb08",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.0.1(21)",
-      "targetSdkVersion": "6.0.1(21)"
+      "targetSdkVersion": "6.0.1(21)",
+      "size": {
+        "lines": 13989,
+        "nonBlankLines": 13031
+      }
     },
     {
       "name": "HarmonyOS-mall",
@@ -218,7 +302,11 @@
       "resolvedCommit": "7e49c993066676da90ff6968bc91a83669a523f7",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 4152,
+        "nonBlankLines": 3722
+      }
     },
     {
       "name": "HarmonyOS",
@@ -228,7 +316,11 @@
       "resolvedCommit": "b2c129923352b69e88f12a0c238254de7cd573e0",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 5905,
+        "nonBlankLines": 5340
+      }
     },
     {
       "name": "HarmonyOsRefresh",
@@ -238,7 +330,11 @@
       "resolvedCommit": "f07bc89a02d45a9208172435eac3177c0dc00b77",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 22014,
+        "nonBlankLines": 20364
+      }
     },
     {
       "name": "HarmonyUtilCode",
@@ -248,7 +344,11 @@
       "resolvedCommit": "9751d1af45ed7c847e636f760f9c38168f1e479a",
       "compileSdkVersion": "5.0.0(12)",
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 8415,
+        "nonBlankLines": 7679
+      }
     },
     {
       "name": "Homogram",
@@ -258,7 +358,11 @@
       "resolvedCommit": "fb9aaaa7209164c96a7ef70dc312515e9cd40774",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.1.0(18)",
-      "targetSdkVersion": "5.1.0(18)"
+      "targetSdkVersion": "5.1.0(18)",
+      "size": {
+        "lines": 9920,
+        "nonBlankLines": 9005
+      }
     },
     {
       "name": "interview-handbook-project-next",
@@ -268,7 +372,11 @@
       "resolvedCommit": "24b3143aea56b636f6c006d613c19974083cce32",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 8625,
+        "nonBlankLines": 8122
+      }
     },
     {
       "name": "JellyFin_HarmonyOS",
@@ -278,7 +386,11 @@
       "resolvedCommit": "d49c9e850ab55836f46e57af333eb98e71eec119",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.5(17)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 57989,
+        "nonBlankLines": 51997
+      }
     },
     {
       "name": "jingmo-for-HarmonyOS",
@@ -288,7 +400,11 @@
       "resolvedCommit": "a208f3fdc95c0914749072e811301b9dfd6678d6",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.1.1(19)",
-      "targetSdkVersion": "6.0.1(21)"
+      "targetSdkVersion": "6.0.1(21)",
+      "size": {
+        "lines": 27415,
+        "nonBlankLines": 25618
+      }
     },
     {
       "name": "KeePassHO",
@@ -298,7 +414,11 @@
       "resolvedCommit": "f4e80a3116d77492f54a382a87e66c3747f018de",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.0.0(20)",
-      "targetSdkVersion": "6.0.0(20)"
+      "targetSdkVersion": "6.0.0(20)",
+      "size": {
+        "lines": 65062,
+        "nonBlankLines": 58632
+      }
     },
     {
       "name": "LinysBrowser_NEXT",
@@ -308,7 +428,11 @@
       "resolvedCommit": "b322dabecb97dae725eba3e8954b083c443c9ace",
       "compileSdkVersion": 23,
       "compatibleSdkVersion": "6.1.0(23)",
-      "targetSdkVersion": "6.1.0(23)"
+      "targetSdkVersion": "6.1.0(23)",
+      "size": {
+        "lines": 27682,
+        "nonBlankLines": 25477
+      }
     },
     {
       "name": "mcCharts",
@@ -318,7 +442,11 @@
       "resolvedCommit": "8dcf1e4d6d7c6e5e603c64435befc7fdad978df8",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "4.1.0(11)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 6243,
+        "nonBlankLines": 5944
+      }
     },
     {
       "name": "MiShop_HarmonyOS",
@@ -328,7 +456,11 @@
       "resolvedCommit": "a94d941f50550522c8324416afe4551ed4a2df93",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 1318,
+        "nonBlankLines": 1192
+      }
     },
     {
       "name": "MultiVideoApplication",
@@ -338,7 +470,11 @@
       "resolvedCommit": "05d4952baa17611070370c24a4a039a09cd92121",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 17663,
+        "nonBlankLines": 17004
+      }
     },
     {
       "name": "MusicHome",
@@ -348,7 +484,11 @@
       "resolvedCommit": "7a21f3842fe3741f373fe09ad797b75ae4c486f6",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.0.2(22)",
-      "targetSdkVersion": "6.1.0(23)"
+      "targetSdkVersion": "6.1.0(23)",
+      "size": {
+        "lines": 12738,
+        "nonBlankLines": 11892
+      }
     },
     {
       "name": "ohos_electron_hap",
@@ -358,7 +498,11 @@
       "resolvedCommit": "0da7eb4c57a21e6ca0cffac247fb26977cb42f9d",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.3(15)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 18428,
+        "nonBlankLines": 16869
+      }
     },
     {
       "name": "open_neteasy_cloud",
@@ -368,7 +512,11 @@
       "resolvedCommit": "b562a70ffdbee5e192a1c3fb7fc8a4fb27119af4",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 1119,
+        "nonBlankLines": 1045
+      }
     },
     {
       "name": "OxHornCampus",
@@ -378,7 +526,11 @@
       "resolvedCommit": "4e6e191346424916b118d6fb45736732193e5e67",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.5(17)",
-      "targetSdkVersion": "6.0.2(22)"
+      "targetSdkVersion": "6.0.2(22)",
+      "size": {
+        "lines": 4655,
+        "nonBlankLines": 4394
+      }
     },
     {
       "name": "PageSlipPerformanceIssue",
@@ -388,7 +540,11 @@
       "resolvedCommit": "36c5d6287b73d2392306afdc2ad391964e863f52",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 4084,
+        "nonBlankLines": 3787
+      }
     },
     {
       "name": "rdbStore",
@@ -398,7 +554,11 @@
       "resolvedCommit": "11e6ab91862f10482d9ca0acf57c07f48d0cef76",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.1(13)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 6024,
+        "nonBlankLines": 5258
+      }
     },
     {
       "name": "ringtone-kit_-sample-code_-demo",
@@ -408,7 +568,11 @@
       "resolvedCommit": "61b47980efba070194798ba9cee65dfa53d1fd67",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 140,
+        "nonBlankLines": 126
+      }
     },
     {
       "name": "TransitionPerformanceIssue",
@@ -418,7 +582,11 @@
       "resolvedCommit": "9b4dd39041982ee9e5a77a65912996a495d36ef2",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 2506,
+        "nonBlankLines": 2280
+      }
     },
     {
       "name": "uidesign_kit_codelab_hdsnavigation_arkts",
@@ -428,7 +596,11 @@
       "resolvedCommit": "e6f961492aa8a636ff3d624f8b973c7d05ab28e3",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.1.0(18)",
-      "targetSdkVersion": "6.1.0(23)"
+      "targetSdkVersion": "6.1.0(23)",
+      "size": {
+        "lines": 492,
+        "nonBlankLines": 463
+      }
     },
     {
       "name": "Wechat_HarmonyOS",
@@ -438,7 +610,11 @@
       "resolvedCommit": "38a1671c76d889e79701a601c00f05e9112db6f7",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.3(15)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 3535,
+        "nonBlankLines": 3232
+      }
     },
     {
       "name": "Youtube-Music-ArkTS-Clone",
@@ -448,7 +624,11 @@
       "resolvedCommit": "f925981b8a5c4483be371bfd672722526b4986cf",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 2662,
+        "nonBlankLines": 2435
+      }
     },
     {
       "name": "hll-wp-therouter-harmony",
@@ -458,7 +638,11 @@
       "resolvedCommit": "d90329c6ffc8ccdf37f424336ba89dcb48c3134a",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 5768,
+        "nonBlankLines": 5243
+      }
     },
     {
       "name": "Rental",
@@ -468,7 +652,11 @@
       "resolvedCommit": "8c6eb31b4d04411b1247b762e33b806b1c61e675",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 5759,
+        "nonBlankLines": 5233
+      }
     },
     {
       "name": "STUFFS_NEXT",
@@ -478,7 +666,11 @@
       "resolvedCommit": "e35b7584aba160d9cae22509c0dae8184b5b5d86",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 2681,
+        "nonBlankLines": 2405
+      }
     },
     {
       "name": "Telegram-X-HarmonyNext",
@@ -488,7 +680,11 @@
       "resolvedCommit": "23864f7a3b188ce88455528bfaac97c5d7939c78",
       "compileSdkVersion": "26.0.0",
       "compatibleSdkVersion": "6.1.1(24)",
-      "targetSdkVersion": "6.1.1(24)"
+      "targetSdkVersion": "6.1.1(24)",
+      "size": {
+        "lines": 295657,
+        "nonBlankLines": 271705
+      }
     },
     {
       "name": "Ehviewer_OHOS",
@@ -498,7 +694,11 @@
       "resolvedCommit": "f7b141ca466942871ea3de93cfbf5c446da74499",
       "compileSdkVersion": "26.0.0",
       "compatibleSdkVersion": "6.0.0(20)",
-      "targetSdkVersion": "26.0.0"
+      "targetSdkVersion": "26.0.0",
+      "size": {
+        "lines": 85740,
+        "nonBlankLines": 79860
+      }
     },
     {
       "name": "Hey",
@@ -508,7 +708,11 @@
       "resolvedCommit": "3371128127712d5b669d6a1c5944705d2d4cf869",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 45266,
+        "nonBlankLines": 41813
+      }
     },
     {
       "name": "TunBox",
@@ -518,7 +722,11 @@
       "resolvedCommit": "f71f968c6e715fc524b81908f4930e741bbb8439",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 92112,
+        "nonBlankLines": 87671
+      }
     },
     {
       "name": "ohos-weather",
@@ -528,7 +736,11 @@
       "resolvedCommit": "f197791bce462c5eb1b22945c25f5bcd5fcc9f7c",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.3(15)",
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 3980,
+        "nonBlankLines": 3727
+      }
     },
     {
       "name": "lv-markdown-in",
@@ -538,7 +750,11 @@
       "resolvedCommit": "2adcf6990b97bc4f83d22eff4333e65dd8dc5fb1",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": "5.0.5(17)"
+      "targetSdkVersion": "5.0.5(17)",
+      "size": {
+        "lines": 20254,
+        "nonBlankLines": 18440
+      }
     },
     {
       "name": "HarmonyOSMusicPlayer",
@@ -548,17 +764,11 @@
       "resolvedCommit": "f94dad791188c10611346479c7e42dd3173b9677",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.1.1(24)",
-      "targetSdkVersion": "6.1.1(24)"
-    },
-    {
-      "name": "legado-Harmony",
-      "path": "projects/legado-Harmony",
-      "repo": "git@github.com:mgz0227/legado-Harmony.git",
-      "revision": "main",
-      "resolvedCommit": "7419807075b5e8ab33320ac06f36dac51d5da707",
-      "compileSdkVersion": null,
-      "compatibleSdkVersion": "5.0.4(16)",
-      "targetSdkVersion": null
+      "targetSdkVersion": "6.1.1(24)",
+      "size": {
+        "lines": 31835,
+        "nonBlankLines": 29775
+      }
     },
     {
       "name": "wan-harmony",
@@ -568,7 +778,11 @@
       "resolvedCommit": "6969b82cc963ba932446715f3610999c2ea3d525",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "6.1.0(23)",
-      "targetSdkVersion": "6.1.1(24)"
+      "targetSdkVersion": "6.1.1(24)",
+      "size": {
+        "lines": 4121,
+        "nonBlankLines": 3817
+      }
     },
     {
       "name": "TodayNews_harmony",
@@ -578,7 +792,11 @@
       "resolvedCommit": "95387a7fb7fd63610019f68608922469c8d22c38",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 4704,
+        "nonBlankLines": 3820
+      }
     },
     {
       "name": "aira-browser",
@@ -588,7 +806,11 @@
       "resolvedCommit": "c973feced3bf78002b080313d2b3744e0110df23",
       "compileSdkVersion": null,
       "compatibleSdkVersion": null,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 634263,
+        "nonBlankLines": 591107
+      }
     },
     {
       "name": "harmony-netease",
@@ -598,7 +820,11 @@
       "resolvedCommit": "5f3d226b72ba8579cacfbd229e4eb0054d63abef",
       "compileSdkVersion": 9,
       "compatibleSdkVersion": 9,
-      "targetSdkVersion": null
+      "targetSdkVersion": null,
+      "size": {
+        "lines": 6390,
+        "nonBlankLines": 5872
+      }
     },
     {
       "name": "ohos_smart_dialog",
@@ -608,7 +834,109 @@
       "resolvedCommit": "7935936d52cb4e1b502a07ef69a3e488c884c59e",
       "compileSdkVersion": null,
       "compatibleSdkVersion": "5.0.0(12)",
-      "targetSdkVersion": "6.0.0(20)"
+      "targetSdkVersion": "6.0.0(20)",
+      "size": {
+        "lines": 3534,
+        "nonBlankLines": 3160
+      }
+    },
+    {
+      "name": "qingye-reader",
+      "path": "projects/qingye-reader",
+      "repo": "https://github.com/wip3l/qingye-reader.git",
+      "revision": "main",
+      "resolvedCommit": "7c918cef339285eb68da5177c06e0bf96a5f6b19",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": "6.0.0(20)",
+      "targetSdkVersion": "26.0.0",
+      "size": {
+        "lines": 305113,
+        "nonBlankLines": 285217
+      }
+    },
+    {
+      "name": "lnga_harmony",
+      "path": "projects/lnga_harmony",
+      "repo": "https://github.com/apap6628114/lnga_harmony.git",
+      "revision": "main",
+      "resolvedCommit": "8212695bc8b77a7ee84a82582afab7bbfe73b8ed",
+      "compileSdkVersion": null,
+      "compatibleSdkVersion": "26.0.0",
+      "targetSdkVersion": "26.0.0",
+      "size": {
+        "lines": 147084,
+        "nonBlankLines": 137339
+      }
+    },
+    {
+      "name": "applications_photos",
+      "path": "projects/applications_photos",
+      "repo": "https://gitcode.com/openharmony/applications_photos.git",
+      "revision": "master",
+      "resolvedCommit": "282f7c21c72e110451897197b1254d5e3702fb15",
+      "compileSdkVersion": "26.1.0",
+      "compatibleSdkVersion": 23,
+      "targetSdkVersion": 23,
+      "size": {
+        "lines": 582963,
+        "nonBlankLines": 522598
+      }
+    },
+    {
+      "name": "applications_settings",
+      "path": "projects/applications_settings",
+      "repo": "https://gitcode.com/openharmony/applications_settings.git",
+      "revision": "master",
+      "resolvedCommit": "4858fce3352f5aebfc851c193a3b569f85f71d3a",
+      "compileSdkVersion": "26.1.0",
+      "compatibleSdkVersion": 23,
+      "targetSdkVersion": 23,
+      "size": {
+        "lines": 358964,
+        "nonBlankLines": 329573
+      }
+    },
+    {
+      "name": "applications_contacts",
+      "path": "projects/applications_contacts",
+      "repo": "https://gitcode.com/openharmony/applications_contacts.git",
+      "revision": "master",
+      "resolvedCommit": "c97879e6f3a3cac4db96cb28314d5dfd81a97df3",
+      "compileSdkVersion": "26.1.0",
+      "compatibleSdkVersion": 20,
+      "targetSdkVersion": 20,
+      "size": {
+        "lines": 195658,
+        "nonBlankLines": 180939
+      }
+    },
+    {
+      "name": "applications_mms",
+      "path": "projects/applications_mms",
+      "repo": "https://gitcode.com/openharmony/applications_mms.git",
+      "revision": "master",
+      "resolvedCommit": "9ddd46ba004a29e531b3932273132a8a04badf86",
+      "compileSdkVersion": "23",
+      "compatibleSdkVersion": "20",
+      "targetSdkVersion": "20",
+      "size": {
+        "lines": 191571,
+        "nonBlankLines": 175647
+      }
+    },
+    {
+      "name": "applications_filepicker",
+      "path": "projects/applications_filepicker",
+      "repo": "https://gitcode.com/openharmony/applications_filepicker.git",
+      "revision": "master",
+      "resolvedCommit": "0bfa7020c97f841e08078ae7b3fda1c23359f2c7",
+      "compileSdkVersion": "26.1.0",
+      "compatibleSdkVersion": 23,
+      "targetSdkVersion": 23,
+      "size": {
+        "lines": 107263,
+        "nonBlankLines": 98565
+      }
     }
   ]
 }
