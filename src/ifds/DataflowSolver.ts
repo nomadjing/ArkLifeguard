@@ -20,8 +20,7 @@ import {
     ArkThrowStmt,
 } from '../adapter/arkanalyzer';
 import { DataflowProblem } from './DataflowProblem';
-import { ArkInterproceduralCFG } from './icfg/ArkInterproceduralCFG';
-import type { InterproceduralCFG } from './icfg/InterproceduralCFG';
+import { InterproceduralCFG } from './icfg/InterproceduralCFG';
 import { PathEdge, PathEdgePoint } from './PathEdge';
 import { PathEdgeStore } from './PathEdgeStore';
 import { SummaryStore } from './SummaryStore';
@@ -46,7 +45,7 @@ export class DataflowSolver<D> {
         problem: DataflowProblem<D>,
         scene: Scene,
         private readonly options: DataflowSolverOptions = {},
-        icfg: InterproceduralCFG = new ArkInterproceduralCFG(scene)
+        icfg: InterproceduralCFG = new InterproceduralCFG(scene)
     ) {
         this.problem = problem;
         this.zeroFact = problem.createZeroValue();

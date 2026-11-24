@@ -7,7 +7,7 @@ import { ResourceProblem } from '../../src/analysis/resourceleak/ResourceProblem
 import { ListenerCleanupSummary } from '../../src/analysis/resourceleak/ListenerCleanupSummary';
 import { listenerContracts } from '../../src/analysis/resourceleak/ListenerProblem';
 import { ListenerIdentity } from '../../src/analysis/resourceleak/ListenerIdentity';
-import { ArkInterproceduralCFG } from '../../src/ifds/icfg/ArkInterproceduralCFG';
+import { InterproceduralCFG } from '../../src/ifds/icfg/InterproceduralCFG';
 
 describe('listener registration cleanup obligations without capture analysis', () => {
     let scene: Scene;
@@ -160,7 +160,7 @@ describe('listener registration cleanup obligations without capture analysis', (
         expect(run('GuardedTimerMethodSummary').diagnostics).toEqual([]);
     });
     it('requires cleanup on every path that retains a live timer token', () => {
-        const icfg = new ArkInterproceduralCFG(scene);
+        const icfg = new InterproceduralCFG(scene);
         icfg.initialize(entry('GuardedTimerMethodSummary'));
         const rule = resolveListenerRules(scene).rules.find(item => item.id === 'IntervalRegistration')!;
         const contract = listenerContracts([rule])[0];
@@ -185,7 +185,7 @@ describe('listener registration cleanup obligations without capture analysis', (
         expect(summarize('ConditionalTimerMethodSummary')).toBe(false);
     });
     it('matches exact direct and helper event cleanup methods', () => {
-        const icfg = new ArkInterproceduralCFG(scene);
+        const icfg = new InterproceduralCFG(scene);
         icfg.initialize(entry('EventRelease'));
         const rule = resolveListenerRules(scene).rules.find(item => item.id === 'EmitterRegistration')!;
         const contract = listenerContracts([rule])[0];
@@ -217,7 +217,7 @@ describe('listener registration cleanup obligations without capture analysis', (
         expect(check('ConditionalEventRelease')).toBe(false);
     });
     it('recognizes only forwarding wrappers that pass the callback unchanged', () => {
-        const icfg = new ArkInterproceduralCFG(scene);
+        const icfg = new InterproceduralCFG(scene);
         icfg.initialize(entry('EventRelease'));
         const rule = resolveListenerRules(scene).rules.find(item => item.id === 'EmitterRegistration')!;
         const contract = listenerContracts([rule])[0];

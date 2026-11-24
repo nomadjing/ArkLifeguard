@@ -1,5 +1,5 @@
 import { ArkInstanceInvokeExpr, type Scene } from '../../adapter/arkanalyzer';
-import { ArkInterproceduralCFG } from '../../ifds';
+import { InterproceduralCFG } from '../../ifds';
 import { createArkUiSynchronousCallbackModel } from '../callgraph/ArkUiSynchronousCallbacks';
 
 const NONE: ReadonlySet<number> = new Set();
@@ -9,9 +9,9 @@ const ARRAY_FOR_EACH_CALLBACK: ReadonlySet<number> = new Set([0]);
 export function createNullnessInterproceduralCFG(
     scene: Scene,
     reuseCfgIndex = false
-): ArkInterproceduralCFG {
+): InterproceduralCFG {
     const arkUiCallbacks = createArkUiSynchronousCallbackModel(scene);
-    return new ArkInterproceduralCFG(
+    return new InterproceduralCFG(
         scene,
         reuseCfgIndex,
         true,

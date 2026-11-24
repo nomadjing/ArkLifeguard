@@ -12,8 +12,7 @@ export type { PathEdgeInsertResult } from "./PathEdgeStore";
 export { SummaryStore } from "./SummaryStore";
 export { getRecallMethodInParam } from "./CallResolver";
 export {
-  ArkInterproceduralCFG,
+  InterproceduralCFG,
   CallGraphManager,
   CfgIndex,
 } from "./icfg";
-export type { InterproceduralCFG } from "./icfg";

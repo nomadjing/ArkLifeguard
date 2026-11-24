@@ -54,10 +54,6 @@ export class CallGraphManager {
         }, this.synchronousOnly, this.synchronousCallbackModel);
     }
 
-    getAllCalleeMethods(call: Stmt): Set<ArkMethod> {
-        return this.getCalleesOfCallAt(call);
-    }
-
     getCalleesOfCallAt(call: Stmt): Set<ArkMethod> {
         if (!this.resolver) throw new Error('CallGraphManager must be initialized before querying callees');
         if (!this.synchronousOnly) return this.resolver.getCallees(call);

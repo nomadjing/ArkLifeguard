@@ -13,7 +13,7 @@ import {
     DataflowProblem,
     DataflowSolver,
     FlowFunction,
-    ArkInterproceduralCFG,
+    InterproceduralCFG,
     PathEdge,
     PathEdgePoint,
 } from '../../src/ifds';
@@ -104,7 +104,7 @@ class IdentitySolver extends DataflowSolver<string> {
 
 }
 
-class SummaryTestICFG extends ArkInterproceduralCFG {
+class SummaryTestICFG extends InterproceduralCFG {
     constructor(
         scene: Scene,
         private readonly returnSite: Stmt,
@@ -230,7 +230,7 @@ function buildScene(fixture = 'normal-flow'): Scene {
 describe('IFDS migration smoke tests', () => {
     it('preserves exceptional reachability when independent roots share a CFG index', () => {
         const scene = buildScene('exception-flow');
-        const shared = new ArkInterproceduralCFG(scene, true);
+        const shared = new InterproceduralCFG(scene, true);
         for (const name of ['callAndCatch', 'documentedAwait', 'defaultAwait']) {
             const method = scene.getMethods().find(candidate => candidate.getName() === name)!;
             const problem = () => new IdentityProblem(method.getCfg()!.getStartingStmt(), method);
@@ -297,7 +297,7 @@ describe('IFDS migration smoke tests', () => {
         expect(catchContinuation).toBeDefined();
 
         const problem = new IdentityProblem(cfg!.getStartingStmt(), method!);
-        const icfg = new ArkInterproceduralCFG(scene);
+        const icfg = new InterproceduralCFG(scene);
         const solver = new IdentitySolver(problem, scene, {}, icfg);
         solver.solve();
 
@@ -405,7 +405,7 @@ describe('IFDS migration smoke tests', () => {
             const cfg = method.getCfg()!;
             const handler = cfg.getStmts().find(stmt => stmt.getUses().some(value => value instanceof ArkCaughtExceptionRef))!;
             expect(handler).toBeDefined();
-            const icfg = new ArkInterproceduralCFG(scene);
+            const icfg = new InterproceduralCFG(scene);
             const solver = new IdentitySolver(new IdentityProblem(cfg.getStartingStmt(), method), scene, {}, icfg);
             solver.solve();
             const continuation = icfg.getHandlerContinuation(handler);
@@ -420,7 +420,7 @@ describe('IFDS migration smoke tests', () => {
             const cfg = method.getCfg()!;
             const handler = cfg.getStmts().find(stmt => stmt.getUses().some(value => value instanceof ArkCaughtExceptionRef))!;
             expect(handler).toBeDefined();
-            const icfg = new ArkInterproceduralCFG(scene);
+            const icfg = new InterproceduralCFG(scene);
             const solver = new IdentitySolver(new IdentityProblem(cfg.getStartingStmt(), method), scene, {}, icfg);
             solver.solve();
             expect([...solver.getPathEdgeSet()].some(edge => edge.edgeEnd.node === icfg.getHandlerContinuation(handler))).toBe(true);

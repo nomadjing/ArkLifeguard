@@ -1,4 +1,3 @@
-export { ArkInterproceduralCFG } from './ArkInterproceduralCFG';
+export { InterproceduralCFG } from './InterproceduralCFG';
 export { CallGraphManager } from './CallGraphManager';
 export { CfgIndex } from './CfgIndex';
-export type { InterproceduralCFG } from './InterproceduralCFG';

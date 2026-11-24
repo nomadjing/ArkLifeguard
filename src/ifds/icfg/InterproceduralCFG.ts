@@ -1,29 +1,70 @@
-import type { ArkMethod, Stmt } from '../../adapter/arkanalyzer';
+import type { ArkMethod, Scene, Stmt } from '../../adapter/arkanalyzer';
+import { CallGraphManager } from './CallGraphManager';
+import { CfgIndex } from './CfgIndex';
+import type { SynchronousCallbackModel } from '../CallResolver';
 
-/**
- * Graph queries required by the IFDS solver.
- *
- * Implementations own CFG/call-graph indexing. The solver only consumes the
- * resulting interprocedural graph and remains responsible for fact scheduling.
- */
-export interface InterproceduralCFG {
-    initialize(entryMethod: ArkMethod): void;
+/** Default ICFG backed by ArkAnalyzer CFGs and a CHA call graph. */
+export class InterproceduralCFG {
+    private readonly cfgIndex: CfgIndex;
+    private readonly callGraphManager: CallGraphManager;
+    private cfgInitialized = false;
 
-    getNormalSuccessors(stmt: Stmt): readonly Stmt[];
-    getExceptionalSuccessors(stmt: Stmt): readonly Stmt[];
-    getHandlerContinuation(handler: Stmt): Stmt;
+    /** Reuse requires a fixed Scene containing all roots before the first initialization. */
+    constructor(scene: Scene, private readonly reuseCfgIndex = false, synchronousOnly = false,
+        synchronousCallbackModel?: SynchronousCallbackModel) {
+        this.cfgIndex = new CfgIndex(scene);
+        this.callGraphManager = new CallGraphManager(scene, synchronousOnly, synchronousCallbackModel);
+    }
 
-    /** The statement itself can fail: explicit throw or a declared API exception.
-     * Callee-body throws propagate through exceptional summaries separately. */
-    mayThrow(stmt: Stmt): boolean;
-    isCallStatement(stmt: Stmt): boolean;
-    isExitStatement(stmt: Stmt): boolean;
+    initialize(entryMethod: ArkMethod): void {
+        this.callGraphManager.initialize(entryMethod);
+        if (!this.reuseCfgIndex || !this.cfgInitialized) {
+            this.cfgIndex.initialize(entryMethod);
+            this.cfgInitialized = true;
+        }
+    }
 
-    getAllCalleeMethods(call: Stmt): Set<ArkMethod>;
-    getCalleesOfCallAt(call: Stmt): Set<ArkMethod>;
-    getReturnSiteOfCallAt(call: Stmt): Stmt | null;
-    /** Structural caller handlers, also used for actual throws inside callees. */
-    getExceptionalReturnSitesOfCallAt(call: Stmt): readonly Stmt[];
-    getStartPointOf(method: ArkMethod): Stmt | null;
-    getStartPointOfCaller(call: Stmt): Stmt | null;
+    getNormalSuccessors(stmt: Stmt): readonly Stmt[] {
+        return this.cfgIndex.getNormalSuccessors(stmt);
+    }
+
+    getExceptionalSuccessors(stmt: Stmt): readonly Stmt[] {
+        return this.cfgIndex.getExceptionalSuccessors(stmt);
+    }
+
+    getHandlerContinuation(handler: Stmt): Stmt {
+        return this.cfgIndex.getHandlerContinuation(handler);
+    }
+
+    mayThrow(stmt: Stmt): boolean {
+        return this.cfgIndex.mayThrow(stmt);
+    }
+
+    isCallStatement(stmt: Stmt): boolean {
+        return this.callGraphManager.isCallStatement(stmt);
+    }
+
+    isExitStatement(stmt: Stmt): boolean {
+        return this.cfgIndex.isExitStatement(stmt);
+    }
+
+    getCalleesOfCallAt(call: Stmt): Set<ArkMethod> {
+        return this.callGraphManager.getCalleesOfCallAt(call);
+    }
+
+    getReturnSiteOfCallAt(call: Stmt): Stmt | null {
+        return this.cfgIndex.getReturnSiteOfCall(call);
+    }
+
+    getExceptionalReturnSitesOfCallAt(call: Stmt): readonly Stmt[] {
+        return this.cfgIndex.getExceptionalReturnSitesOfCall(call);
+    }
+
+    getStartPointOf(method: ArkMethod): Stmt | null {
+        return this.cfgIndex.getStartPointOf(method);
+    }
+
+    getStartPointOfCaller(call: Stmt): Stmt | null {
+        return this.cfgIndex.getStartPointOfCaller(call);
+    }
 }

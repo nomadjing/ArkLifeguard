@@ -32,7 +32,7 @@
 
 ## ICFG 与调用解析
 
-[ArkInterproceduralCFG](../../src/ifds/icfg/ArkInterproceduralCFG.ts) 组合：
+[InterproceduralCFG](../../src/ifds/icfg/InterproceduralCFG.ts) 组合：
 
 - [CfgIndex](../../src/ifds/icfg/CfgIndex.ts)：语句级后继、返回点、异常 handler 和 CFG 兼容修复。
 - [CallGraphManager](../../src/ifds/icfg/CallGraphManager.ts)：调用图与调用点缓存。

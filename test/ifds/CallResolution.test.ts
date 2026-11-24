@@ -2,7 +2,7 @@ import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import 'arkanalyzer';
 import { ArkMethod, Scene, SceneConfig, Stmt } from '../../src/adapter/arkanalyzer';
-import { ArkInterproceduralCFG, DataflowProblem, DataflowSolver } from '../../src/ifds';
+import { InterproceduralCFG, DataflowProblem, DataflowSolver } from '../../src/ifds';
 import { findRecursiveMethods } from '../../src/ifds/CallResolver';
 
 class ReachabilityProblem extends DataflowProblem<string> {
@@ -62,7 +62,7 @@ describe('enhanced call resolution', () => {
         ['runReassignedPointer', ['unused', 'used']],
         ['runCrossClassSdk', ['first', 'second']],
     ])(`resolves %s without inventing unused callback edges`, (entryName, expected) => {
-        const icfg = new ArkInterproceduralCFG(scene);
+        const icfg = new InterproceduralCFG(scene);
         icfg.initialize(method(entryName as string));
         const stmt = call(entryName as string);
         expect(icfg.isCallStatement(stmt)).toBe(true);
@@ -71,7 +71,7 @@ describe('enhanced call resolution', () => {
     });
 
     it(`preserves virtual targets and unions their invoked parameters`, () => {
-        const icfg = new ArkInterproceduralCFG(scene);
+        const icfg = new InterproceduralCFG(scene);
         icfg.initialize(method('runVirtual'));
         expect([...icfg.getCalleesOfCallAt(call('runVirtual'))]
             .map(m => `${m.getDeclaringArkClass().getName()}.${m.getName()}`).sort())
@@ -79,7 +79,7 @@ describe('enhanced call resolution', () => {
     });
 
     it.each([false, true])(`clears call caches on initialize with CFG reuse=%s`, reuseCfgIndex => {
-        const icfg = new ArkInterproceduralCFG(scene, reuseCfgIndex);
+        const icfg = new InterproceduralCFG(scene, reuseCfgIndex);
         const entry = method('runUsed');
         icfg.initialize(entry);
         const stmt = call('runUsed');

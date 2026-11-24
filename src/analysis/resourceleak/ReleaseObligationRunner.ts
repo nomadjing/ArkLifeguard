@@ -12,8 +12,7 @@ import {
     Stmt,
 } from '../../adapter/arkanalyzer';
 import { DataflowSolver } from '../../ifds/DataflowSolver';
-import { ArkInterproceduralCFG } from '../../ifds/icfg/ArkInterproceduralCFG';
-import type { InterproceduralCFG } from '../../ifds/icfg/InterproceduralCFG';
+import { InterproceduralCFG } from '../../ifds/icfg/InterproceduralCFG';
 import { ResourceFact, hasResourceHandle, resourceValueKey } from './ResourceFact';
 import { ResourceProblem } from './ResourceProblem';
 import { OwnerBoundaryProblem, type ReleaseOwner } from './OwnerBoundaryProblem';
@@ -74,7 +73,7 @@ export class ReleaseObligationRunner {
             // statement after parameter bindings as the method entry identity.
             const entry = cfg?.getStartingBlock()?.getStmts()[dummyMain.getParameters().length] ?? cfg?.getStartingStmt() ?? cfg?.getStartingBlock()?.getHead();
             if (!entry) throw new Error(`${this.metadata.label}分析入口没有 CFG 语句`);
-            const icfg = new ArkInterproceduralCFG(this.scene);
+            const icfg = new InterproceduralCFG(this.scene);
             const problem = this.createProblem(entry, dummyMain, this.rules, stmt => icfg.getNormalSuccessors(stmt));
             const solver = new DataflowSolver(new OwnerBoundaryProblem(problem, dummyMain, this.owners),
                 this.scene, { collectStatistics: this.collectStatistics,

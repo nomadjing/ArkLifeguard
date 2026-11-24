@@ -18,7 +18,7 @@ import type { Stmt } from '../../adapter/arkanalyzer';
 import { PathEdge, PathEdgePoint } from '../../ifds';
 import type { ArkMethod } from '../../adapter/arkanalyzer';
 import { DataflowSolver } from '../../ifds';
-import type { DataflowSolverOptions, InterproceduralCFG } from '../../ifds';
+import type { InterproceduralCFG, DataflowSolverOptions } from '../../ifds';
 import { NullnessFact } from './NullnessFact';
 import { NullnessProblem } from './NullnessProblem';
 import { findRecursiveMethods } from '../../ifds/CallResolver';
